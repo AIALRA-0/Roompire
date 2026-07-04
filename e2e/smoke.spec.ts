@@ -29,6 +29,33 @@ async function clickMemberMutationWithRetry(
   throw new Error(`${method} member mutation failed with status ${lastStatus}`);
 }
 
+async function clickOwnershipTransferWithRetry(page: Page, button: Locator) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/households/") &&
+        response.url().includes("/members/") &&
+        response.url().includes("/transfer-ownership") &&
+        response.request().method() === "POST",
+    );
+
+    await button.click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Ownership transferred")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST ownership transfer failed with status ${lastStatus}`);
+}
+
 async function setDevSessionWithRetry(page: Page, email: string, displayName: string) {
   let lastStatus = 0;
   let lastError = "";
@@ -1166,6 +1193,116 @@ test.describe("Roompire real browser smoke", () => {
     );
     await expect(page.getByText("Member removed")).toBeVisible();
     await expect(page.getByText(inviteeEmail)).toHaveCount(0);
+  });
+
+  test("owner transfers ownership and preserves self-removal guard", async ({ page }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `transfer-owner+${suffix}@example.test`;
+    const nextOwnerEmail = `transfer-next+${suffix}@example.test`;
+    const householdName = `Transfer House ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "Transfer Starter E2E");
+    await page.goto("/en-US/app");
+    await page.getByTestId("create-household-name").fill(householdName);
+    await page.getByTestId("create-household-timezone").fill("America/Los_Angeles");
+    await page.getByTestId("create-household-currency").fill("CNY");
+    await clickHouseholdCreateWithRetry(page);
+    await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
+
+    const sessionResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(sessionResponse.ok()).toBeTruthy();
+    const sessionPayload = (await sessionResponse.json()) as {
+      household: { id: string } | null;
+    };
+    const householdId = sessionPayload.household?.id;
+    expect(householdId).toBeTruthy();
+    if (!householdId) {
+      throw new Error("Expected transfer household id.");
+    }
+
+    await page.getByLabel("Invite email").fill(nextOwnerEmail);
+    await page.getByLabel("Invite role").selectOption("MEMBER");
+    await clickInviteCreateWithRetry(page);
+    const inviteHref = await page.getByTestId("invite-link").getAttribute("href");
+    expect(inviteHref).toBeTruthy();
+
+    await setDevSessionWithRetry(page, nextOwnerEmail, "Transfer Successor E2E");
+    await page.goto(inviteHref!);
+    await page.getByRole("button", { name: "Accept invite" }).click();
+    await expect(page.getByText("Invite accepted")).toBeVisible();
+
+    await setDevSessionWithRetry(page, ownerEmail, "Transfer Starter E2E");
+    await page.goto("/en-US/app");
+    const nextOwnerRow = page.getByTestId(`member-row-${nextOwnerEmail}`);
+    await expect(nextOwnerRow).toBeVisible();
+    await clickOwnershipTransferWithRetry(
+      page,
+      nextOwnerRow.getByRole("button", { name: "Transfer ownership" }),
+    );
+    await expect(nextOwnerRow).toContainText("Owner");
+
+    const membersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(membersResponse.ok()).toBeTruthy();
+    const membersPayload = (await membersResponse.json()) as {
+      members: Array<{ id: string; email: string; role: string }>;
+    };
+    const previousOwnerMembership = membersPayload.members.find(
+      (member) => member.email === ownerEmail,
+    );
+    const nextOwnerMembership = membersPayload.members.find(
+      (member) => member.email === nextOwnerEmail,
+    );
+    expect(previousOwnerMembership).toEqual(expect.objectContaining({ role: "ADMIN" }));
+    expect(nextOwnerMembership).toEqual(expect.objectContaining({ role: "OWNER" }));
+    if (!previousOwnerMembership || !nextOwnerMembership) {
+      throw new Error("Expected ownership transfer memberships.");
+    }
+
+    const oldOwnerTransferResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members/${previousOwnerMembership.id}/transfer-ownership`,
+      {
+        data: {},
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(oldOwnerTransferResponse.status()).toBe(403);
+
+    await setDevSessionWithRetry(page, nextOwnerEmail, "Transfer Successor E2E");
+    const selfRemoveResponse = await page.request.delete(
+      `/api/v1/households/${householdId}/members/${nextOwnerMembership.id}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": nextOwnerEmail,
+        },
+      },
+    );
+    expect(selfRemoveResponse.status()).toBe(400);
+    const selfRemovePayload = (await selfRemoveResponse.json()) as {
+      error: { code: string };
+    };
+    expect(selfRemovePayload.error.code).toBe("SELF_MEMBER_MUTATION_FORBIDDEN");
+
+    await page.goto("/en-US/app");
+    const previousOwnerRow = page.getByTestId(`member-row-${ownerEmail}`);
+    await expect(previousOwnerRow).toContainText("Admin");
+    await clickMemberMutationWithRetry(
+      page,
+      previousOwnerRow.getByRole("button", { name: "Remove member" }),
+      "DELETE",
+    );
+    await expect(page.getByText("Member removed")).toBeVisible();
+    await expect(page.getByText(ownerEmail)).toHaveCount(0);
   });
 
   test("invite flow enforces membership isolation before acceptance", async ({

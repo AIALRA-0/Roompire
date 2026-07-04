@@ -16,6 +16,10 @@ export function canManageMembers(role: Role) {
   return memberManagerRoles.has(role);
 }
 
+export function canTransferOwnership(role: Role) {
+  return role === "OWNER";
+}
+
 export function canUpdateHouseholdSettings(role: Role) {
   return memberManagerRoles.has(role);
 }

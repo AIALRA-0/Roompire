@@ -91,6 +91,9 @@ type IdentityLabels = {
   roleUpdated: string;
   removeMember: string;
   memberRemoved: string;
+  transferOwnership: string;
+  ownershipTransferred: string;
+  ownershipTransferHint: string;
   memberManagement: string;
   memberManagementHint: string;
   cannotInvite: string;
@@ -238,6 +241,7 @@ export function IdentityWorkspace({
     households.find((household) => household.id === activeHouseholdId) ?? null;
   const inviteHref = inviteToken ? `/${locale}/invite/${inviteToken}` : null;
   const settingsDisabled = !activeHouseholdId || !activeHousehold || !canManageMembers;
+  const canTransferOwnership = activeHousehold?.role === "OWNER";
 
   function clearActionMessages() {
     setCreateMessage(null);
@@ -366,6 +370,26 @@ export function IdentityWorkspace({
         "DELETE",
       );
       refreshAfter(setMemberMessage, labels.memberRemoved);
+    } catch (error) {
+      setMemberMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onTransferOwnership(membershipId: string) {
+    setMemberMessage(null);
+
+    if (!activeHouseholdId) {
+      setMemberMessage(labels.noHousehold);
+      return;
+    }
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}/members/${membershipId}/transfer-ownership`,
+        undefined,
+        labels.errorFallback,
+      );
+      refreshAfter(setMemberMessage, labels.ownershipTransferred);
     } catch (error) {
       setMemberMessage(error instanceof Error ? error.message : labels.errorFallback);
     }
@@ -607,6 +631,7 @@ export function IdentityWorkspace({
               const isSelf = member.email === currentUserEmail;
               const isOwner = member.role === "OWNER";
               const canEditMember = canManageMembers && !isSelf && !isOwner;
+              const canTransferMemberOwnership = canTransferOwnership && !isSelf && !isOwner;
 
               return (
                 <form
@@ -655,7 +680,19 @@ export function IdentityWorkspace({
                     >
                       {isPending ? labels.working : labels.removeMember}
                     </Button>
+                    <Button
+                      data-testid={`member-transfer-ownership-${member.email}`}
+                      disabled={isPending || !canTransferMemberOwnership}
+                      onClick={() => onTransferOwnership(member.id)}
+                      type="button"
+                      variant="outline"
+                    >
+                      {isPending ? labels.working : labels.transferOwnership}
+                    </Button>
                   </div>
+                  {canTransferMemberOwnership ? (
+                    <p className="text-xs text-muted-foreground">{labels.ownershipTransferHint}</p>
+                  ) : null}
                 </form>
               );
             })}

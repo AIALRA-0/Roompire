@@ -6,6 +6,7 @@ import { ApiError, validationError } from "@/server/api/errors";
 import { normalizeEmail } from "@/server/auth/session";
 import { prisma } from "@/server/db/prisma";
 import {
+  canTransferOwnership,
   requireActiveMembership,
   requireHouseholdSettingsManager,
   requireMemberManager,
@@ -395,6 +396,88 @@ export async function removeMemberFromHousehold(
     });
 
     return membership;
+  });
+}
+
+export async function transferHouseholdOwnership(
+  userId: string,
+  householdId: string,
+  membershipId: string,
+) {
+  const actor = await requireMemberManager(userId, householdId);
+
+  if (!canTransferOwnership(actor.role)) {
+    throw new ApiError(403, "FORBIDDEN", "Only household owners can transfer ownership.", {
+      role: actor.role,
+    });
+  }
+
+  if (actor.id === membershipId) {
+    throw new ApiError(
+      400,
+      "SELF_OWNER_TRANSFER_FORBIDDEN",
+      "Choose another active member as the next owner.",
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const target = await tx.householdMembership.findFirst({
+      where: {
+        id: membershipId,
+        householdId,
+        status: "ACTIVE",
+      },
+      include: { user: true },
+    });
+
+    if (!target) {
+      throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+    }
+
+    if (target.role === Role.OWNER) {
+      throw new ApiError(400, "TARGET_ALREADY_OWNER", "This member is already a household owner.");
+    }
+
+    const [previousOwner, nextOwner] = await Promise.all([
+      tx.householdMembership.update({
+        where: { id: actor.id },
+        data: { role: Role.ADMIN },
+        include: { user: true },
+      }),
+      tx.householdMembership.update({
+        where: { id: target.id },
+        data: { role: Role.OWNER },
+        include: { user: true },
+      }),
+    ]);
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "household_owner.transferred",
+        entityType: "HouseholdMembership",
+        entityId: nextOwner.id,
+        before: {
+          previousOwnerMembershipId: actor.id,
+          previousOwnerUserId: actor.userId,
+          previousOwnerRole: actor.role,
+          nextOwnerMembershipId: target.id,
+          nextOwnerUserId: target.userId,
+          nextOwnerRole: target.role,
+        },
+        after: {
+          previousOwnerMembershipId: previousOwner.id,
+          previousOwnerUserId: previousOwner.userId,
+          previousOwnerRole: previousOwner.role,
+          nextOwnerMembershipId: nextOwner.id,
+          nextOwnerUserId: nextOwner.userId,
+          nextOwnerRole: nextOwner.role,
+        },
+      },
+    });
+
+    return { previousOwner, nextOwner };
   });
 }
 

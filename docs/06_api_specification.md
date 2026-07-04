@@ -63,8 +63,13 @@ Current private-deployment MVP: when site-level Basic Auth is configured, verifi
 - `GET /households/{householdId}`
 - `PATCH /households/{householdId}`
 - `GET /households/{householdId}/members`
+- `PATCH /households/{householdId}/members/{membershipId}`
+- `DELETE /households/{householdId}/members/{membershipId}`
+- `POST /households/{householdId}/members/{membershipId}/transfer-ownership`
 - `POST /households/{householdId}/invites`
 - `POST /invites/{token}/accept`
+
+Current implementation lets owners and admins manage non-self member roles and removals, with admins limited to regular members and viewers. Ownership transfer is an owner-only explicit action: the selected active member becomes `OWNER`, the transferring owner becomes `ADMIN`, and a `household_owner.transferred` audit event records both membership role changes.
 
 ### Categories and tags
 
@@ -336,6 +341,7 @@ The current implementation marks the task and assignments completed, updates lin
 | -------------------------------- | ----: | ----: | -------------: | ---------: |
 | View household                   |    ✅ |    ✅ |             ✅ |         ✅ |
 | Invite member                    |    ✅ |    ✅ |             ❌ |         ❌ |
+| Transfer ownership               |    ✅ |    ❌ |             ❌ |         ❌ |
 | Create proposal                  |    ✅ |    ✅ |             ✅ |         ❌ |
 | Approve own share                |    ✅ |    ✅ |             ✅ |         ❌ |
 | Approve others' share            |    ❌ |    ❌ |             ❌ |         ❌ |
