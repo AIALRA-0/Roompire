@@ -641,8 +641,62 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: "Household statistics" })).toBeVisible();
     await expect(page.getByTestId("stats-summary-proposals")).toBeVisible();
     await expect(page.getByTestId("stats-summary-audit")).toBeVisible();
+    await expect(page.getByTestId("export-panel")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Category breakdown" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Member breakdown" })).toBeVisible();
+
+    const auditExportResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/exports`,
+      {
+        data: {
+          dataset: "audit_events",
+          format: "json",
+        },
+      },
+    );
+    expect(auditExportResponse.status()).toBe(201);
+    const auditExportPayload = (await auditExportResponse.json()) as {
+      export: { downloadUrl: string; dataset: string; format: string; status: string };
+    };
+    expect(auditExportPayload.export).toEqual(
+      expect.objectContaining({
+        dataset: "audit_events",
+        format: "json",
+        status: "READY",
+      }),
+    );
+    const auditExportDownload = await getApiWithRetry(page, auditExportPayload.export.downloadUrl);
+    expect(auditExportDownload.ok()).toBeTruthy();
+    expect(auditExportDownload.headers()["content-disposition"]).toContain("roompire-audit_events");
+    const auditExportBody = (await auditExportDownload.json()) as {
+      records: Array<{ action: string }>;
+    };
+    expect(auditExportBody.records).toContainEqual(
+      expect.objectContaining({ action: "export.created" }),
+    );
+
+    const expenseCsvExportResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/exports`,
+      {
+        data: {
+          dataset: "expense_proposals",
+          format: "csv",
+        },
+      },
+    );
+    expect(expenseCsvExportResponse.status()).toBe(201);
+    const expenseCsvExportPayload = (await expenseCsvExportResponse.json()) as {
+      export: { downloadUrl: string };
+    };
+    const expenseCsvDownload = await getApiWithRetry(
+      page,
+      expenseCsvExportPayload.export.downloadUrl,
+    );
+    expect(expenseCsvDownload.ok()).toBeTruthy();
+    expect(expenseCsvDownload.headers()["content-type"]).toContain("text/csv");
+    expect(await expenseCsvDownload.text()).toContain("Costco groceries");
 
     const auditResponse = await getApiWithRetry(
       page,

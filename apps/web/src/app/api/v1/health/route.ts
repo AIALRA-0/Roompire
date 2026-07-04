@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
+import { resolveExportSigningSecret } from "@/server/exports/service";
 import { resolveFileStorageConfig } from "@/server/files/storage-config";
 import { resolveConfiguredFxProvider } from "@/server/fx/rates";
 
@@ -12,6 +13,7 @@ export async function GET() {
   const timestamp = new Date().toISOString();
   const checks = {
     database: "ok",
+    exports: "ok",
     fx: "ok",
     storage: "ok",
   };
@@ -29,13 +31,24 @@ export async function GET() {
   }
 
   try {
+    resolveExportSigningSecret();
+  } catch {
+    checks.exports = "error";
+  }
+
+  try {
     resolveConfiguredFxProvider();
   } catch {
     checks.fx = "error";
   }
 
   const status: HealthStatus =
-    checks.database === "ok" && checks.storage === "ok" && checks.fx === "ok" ? "ok" : "unhealthy";
+    checks.database === "ok" &&
+    checks.storage === "ok" &&
+    checks.fx === "ok" &&
+    checks.exports === "ok"
+      ? "ok"
+      : "unhealthy";
 
   return NextResponse.json(
     {

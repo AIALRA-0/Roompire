@@ -416,7 +416,22 @@
     "remainingReceivable": "Remaining receivable",
     "settlementsPaid": "Settlements paid",
     "settlementsReceived": "Settlements received",
-    "noMembers": "No active members yet"
+    "noMembers": "No active members yet",
+    "exportTitle": "Exports",
+    "exportHint": "Download household records for review, backup, or reconciliation.",
+    "exportDataset": "Dataset",
+    "exportFormat": "Format",
+    "exportDownload": "Download",
+    "exportReady": "Export is ready",
+    "exportUnavailable": "No active household is selected.",
+    "exportErrorFallback": "Export failed.",
+    "exportDatasetExpenseProposals": "Expense proposals",
+    "exportDatasetLedgerObligations": "Ledger obligations",
+    "exportDatasetSettlements": "Settlements",
+    "exportDatasetAuditEvents": "Audit events",
+    "exportDatasetMembers": "Members",
+    "exportFormatJson": "JSON",
+    "exportFormatCsv": "CSV"
   },
   "Forbidden": {
     "title": "Access request needed",

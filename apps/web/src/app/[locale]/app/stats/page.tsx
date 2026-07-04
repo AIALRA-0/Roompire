@@ -14,6 +14,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import { HouseholdExportActions } from "@/components/household-export-actions";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -138,6 +139,27 @@ export default async function StatsPage({ params }: PageProps) {
       testId: "stats-summary-audit",
     },
   ];
+  const exportLabels = {
+    title: stats("exportTitle"),
+    hint: stats("exportHint"),
+    dataset: stats("exportDataset"),
+    format: stats("exportFormat"),
+    download: stats("exportDownload"),
+    ready: stats("exportReady"),
+    unavailable: stats("exportUnavailable"),
+    errorFallback: stats("exportErrorFallback"),
+    datasets: {
+      expense_proposals: stats("exportDatasetExpenseProposals"),
+      ledger_obligations: stats("exportDatasetLedgerObligations"),
+      settlements: stats("exportDatasetSettlements"),
+      audit_events: stats("exportDatasetAuditEvents"),
+      members: stats("exportDatasetMembers"),
+    },
+    formats: {
+      json: stats("exportFormatJson"),
+      csv: stats("exportFormatCsv"),
+    },
+  };
 
   return (
     <main className="min-h-svh bg-background text-foreground" data-testid="stats-page">
@@ -232,6 +254,10 @@ export default async function StatsPage({ params }: PageProps) {
                 </div>
               ))}
             </section>
+
+            <div className="mt-6">
+              <HouseholdExportActions activeHouseholdId={activeHouseholdId} labels={exportLabels} />
+            </div>
 
             <section className="mt-6 rounded-lg border border-border bg-card">
               <div className="border-b border-border p-5">

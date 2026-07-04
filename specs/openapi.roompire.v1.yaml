@@ -180,6 +180,39 @@ components:
       properties:
         open: { type: integer, minimum: 0 }
         completed: { type: integer, minimum: 0 }
+    ExportDataset:
+      type: string
+      enum: [expense_proposals, ledger_obligations, settlements, audit_events, members]
+    ExportFormat:
+      type: string
+      enum: [json, csv]
+    CreateExportRequest:
+      type: object
+      required: [dataset, format]
+      properties:
+        dataset: { $ref: "#/components/schemas/ExportDataset" }
+        format: { $ref: "#/components/schemas/ExportFormat" }
+    HouseholdExport:
+      type: object
+      required: [id, householdId, dataset, format, status, createdAt, expiresAt, downloadUrl]
+      properties:
+        id:
+          type: string
+          description: Signed short-lived export download identifier.
+        householdId: { type: string, format: uuid }
+        dataset: { $ref: "#/components/schemas/ExportDataset" }
+        format: { $ref: "#/components/schemas/ExportFormat" }
+        status:
+          type: string
+          enum: [READY]
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        downloadUrl: { type: string }
+    ExportResponse:
+      type: object
+      required: [export]
+      properties:
+        export: { $ref: "#/components/schemas/HouseholdExport" }
     StatsSummary:
       type: object
       required:
@@ -2555,6 +2588,70 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MemberStatsListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/exports:
+    post:
+      summary: Create household export
+      description: Creates a signed short-lived download URL for a read-only household dataset export.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExportRequest" }
+      responses:
+        "201":
+          description: Export ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExportResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/exports/{exportId}:
+    get:
+      summary: Download household export
+      description: Downloads the signed export as JSON or CSV. The caller must still be an active member of the household.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: exportId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Export file
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/csv:
+              schema:
+                type: string
+        "403":
+          description: Export token is invalid or expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Household not found or caller is not an active member
           content:

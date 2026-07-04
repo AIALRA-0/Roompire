@@ -416,7 +416,22 @@
     "remainingReceivable": "剩余应收",
     "settlementsPaid": "已付还款",
     "settlementsReceived": "已收还款",
-    "noMembers": "暂无活跃成员"
+    "noMembers": "暂无活跃成员",
+    "exportTitle": "导出",
+    "exportHint": "下载家庭记录，用于复核、备份或对账。",
+    "exportDataset": "数据集",
+    "exportFormat": "格式",
+    "exportDownload": "下载",
+    "exportReady": "导出已准备好",
+    "exportUnavailable": "尚未选择当前家庭。",
+    "exportErrorFallback": "导出失败。",
+    "exportDatasetExpenseProposals": "费用提案",
+    "exportDatasetLedgerObligations": "账本债务",
+    "exportDatasetSettlements": "还款记录",
+    "exportDatasetAuditEvents": "审计事件",
+    "exportDatasetMembers": "成员",
+    "exportFormatJson": "JSON",
+    "exportFormatCsv": "CSV"
   },
   "Forbidden": {
     "title": "需要访问权限",
