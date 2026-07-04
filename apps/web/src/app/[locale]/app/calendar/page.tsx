@@ -142,6 +142,8 @@ export default async function CalendarPage({ params }: PageProps) {
                 description: calendar("description"),
                 assignees: calendar("assignees"),
                 allDay: calendar("allDay"),
+                recurrence: calendar("recurrence"),
+                recurrenceCount: calendar("recurrenceCount"),
                 createEvent: calendar("createEvent"),
                 createTask: calendar("createTask"),
                 completeTask: calendar("completeTask"),
@@ -169,6 +171,12 @@ export default async function CalendarPage({ params }: PageProps) {
                   LOW: calendar("priorityLow"),
                   NORMAL: calendar("priorityNormal"),
                   HIGH: calendar("priorityHigh"),
+                },
+                recurrences: {
+                  NONE: calendar("recurrenceNone"),
+                  DAILY: calendar("recurrenceDaily"),
+                  WEEKLY: calendar("recurrenceWeekly"),
+                  MONTHLY: calendar("recurrenceMonthly"),
                 },
                 statuses: {
                   OPEN: calendar("statusOpen"),

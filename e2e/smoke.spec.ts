@@ -803,6 +803,7 @@ test.describe("Roompire real browser smoke", () => {
     await page.goto(detailUrl);
     await expect(page.getByRole("button", { name: "Approve share" })).toBeVisible();
     await clickShareApproveWithRetry(page, shareId!);
+    await page.reload();
 
     await expect(page.getByText("In ledger").first()).toBeVisible();
     await expect(
@@ -1975,13 +1976,17 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("calendar-event-title").fill(eventTitle);
     await page.getByTestId("calendar-event-type").selectOption("BILL_DUE");
     await page.getByTestId("calendar-event-start").fill("2026-07-09T09:00");
+    await page.getByTestId("calendar-event-recurrence").selectOption("WEEKLY");
+    await page.getByTestId("calendar-event-recurrence-count").fill("3");
     await page.getByTestId("calendar-event-description").fill("Review rent payment status");
     await clickCalendarEventSubmitWithRetry(page);
-    await expect(page.getByText(eventTitle)).toBeVisible();
+    await expect(page.getByText(eventTitle).first()).toBeVisible();
 
     await page.getByTestId("task-title").fill(taskTitle);
     await page.getByTestId("task-priority").selectOption("HIGH");
     await page.getByTestId("task-due-at").fill("2026-07-09T10:00");
+    await page.getByTestId("task-recurrence").selectOption("WEEKLY");
+    await page.getByTestId("task-recurrence-count").fill("2");
     await page.getByTestId(`task-assignee-row-${memberEmail}`).click();
     await expect(page.getByTestId(`task-assignee-${memberEmail}`)).toBeChecked();
     await page.getByTestId("task-description").fill("Reset counters and recycling");
@@ -1999,15 +2004,26 @@ test.describe("Roompire real browser smoke", () => {
         id: string;
         title: string;
         status: string;
+        dueAt: string | null;
         assignments: Array<{ assignedUserId: string; status: string }>;
         linkedEventIds: string[];
       }>;
     };
-    const createdTask = tasksPayload.tasks.find((task) => task.title === taskTitle);
+    const createdTasks = tasksPayload.tasks.filter((task) => task.title === taskTitle);
+    expect(createdTasks).toHaveLength(2);
+    const createdTask =
+      createdTasks.find((task) => task.dueAt?.startsWith("2026-07-09T10:00")) ?? createdTasks[0];
     expect(createdTask).toBeTruthy();
     expect(createdTask!.status).toBe("OPEN");
     expect(createdTask!.assignments).toHaveLength(1);
     expect(createdTask!.linkedEventIds).toHaveLength(1);
+    for (const task of createdTasks) {
+      expect(task).toMatchObject({
+        status: "OPEN",
+        assignments: [expect.objectContaining({ status: "ASSIGNED" })],
+      });
+      expect(task.linkedEventIds).toHaveLength(1);
+    }
 
     const eventsResponse = await getApiWithRetry(
       page,
@@ -2025,20 +2041,41 @@ test.describe("Roompire real browser smoke", () => {
         title: string;
         type: string;
         status: string;
+        startAt: string;
         links: Array<{ linkedType: string; linkedId: string }>;
       }>;
     };
+    const recurringEvents = eventsPayload.events.filter(
+      (event) => event.title === eventTitle && event.type === "BILL_DUE",
+    );
+    expect(recurringEvents).toHaveLength(3);
+    expect(recurringEvents.map((event) => event.startAt.slice(0, 10))).toEqual([
+      "2026-07-09",
+      "2026-07-16",
+      "2026-07-23",
+    ]);
     expect(
-      eventsPayload.events.find((event) => event.title === eventTitle && event.type === "BILL_DUE"),
-    ).toBeTruthy();
-    const taskEvent = eventsPayload.events.find(
+      recurringEvents.every((event) =>
+        event.links.some((link) => link.linkedType === "recurrence_rule"),
+      ),
+    ).toBe(true);
+    const taskEvents = eventsPayload.events.filter(
       (event) => event.title === taskTitle && event.type === "TASK",
+    );
+    expect(taskEvents).toHaveLength(2);
+    const taskEvent = taskEvents.find((event) =>
+      event.links.some((link) => link.linkedType === "task" && link.linkedId === createdTask!.id),
     );
     expect(taskEvent).toBeTruthy();
     expect(taskEvent!.links).toContainEqual(
       expect.objectContaining({
         linkedType: "task",
         linkedId: createdTask!.id,
+      }),
+    );
+    expect(taskEvent!.links).toContainEqual(
+      expect.objectContaining({
+        linkedType: "recurrence_rule",
       }),
     );
 
@@ -2087,6 +2124,12 @@ test.describe("Roompire real browser smoke", () => {
         status: "COMPLETED",
       },
     );
+    const remainingTaskEvent = completedEventsPayload.events.find(
+      (event) => event.title === taskTitle && event.id !== taskEvent!.id,
+    );
+    expect(remainingTaskEvent).toMatchObject({
+      status: "OPEN",
+    });
   });
 
   test("viewer cannot create household invites", async ({ page }, testInfo) => {

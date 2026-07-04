@@ -30,7 +30,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Docker Compose defines Postgres 18 and Redis 8 with overrideable host ports.
 - Deterministic seed script creates `USC 3B2B`, Alice/Bob/Chen/Dana, 11 categories, one submitted grocery proposal, two pending shares, and one audit event.
 - Vitest covers decimal equal split behavior using `decimal.js`.
-- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, household settings update, owner invite code/link creation, non-member isolation before invite acceptance, invite code/link acceptance, member role update/removal, viewer invite denial, submitted expense proposal creation without formal ledger impact, debtor approval maturity, duplicate approval safety, formal ledger API/page visibility, settlement suggestion API/page visibility, debtor settlement submission, creditor settlement confirmation, suggested-transfer settlement submission with multi-obligation allocation, owner/admin ledger adjustment creation, obligation reversal, persisted idempotency replay/conflict checks for proposal/approval/rejection/settlement/correction mutations, and debtor rejection without ledger impact.
+- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, household settings update, owner invite code/link creation, non-member isolation before invite acceptance, invite code/link acceptance, member role update/removal, viewer invite denial, submitted expense proposal creation without formal ledger impact, debtor approval maturity, duplicate approval safety, formal ledger API/page visibility, settlement suggestion API/page visibility, debtor settlement submission, creditor settlement confirmation, suggested-transfer settlement submission with multi-obligation allocation, recurring calendar event/task creation, task-event recurrence links, owner/admin ledger adjustment creation, obligation reversal, persisted idempotency replay/conflict checks for proposal/approval/rejection/settlement/correction mutations, and debtor rejection without ledger impact.
 - Phase 1 identity/RBAC slice implemented on branch `feat/phase-1-identity-rbac`: dev session cookie, Prisma-backed session/household/member/invite APIs, household settings API, member role/removal API, RBAC helpers, database-backed dashboard, member directory page, tokenized invite page, localized identity management UI, and updated OpenAPI contract.
 - Phase 2 expense proposal creation slice implemented on branch `feat/expense-proposals`: dashboard proposal form, proposal queue, proposal detail page, list/create/detail proposal APIs, expense proposal service/serializers, RBAC creator guard, locked FX metadata, audit event emission, localized en-US/zh-CN copy, and updated OpenAPI contract.
 - Phase 2 approval/ledger slice implemented on branch `feat/expense-approvals-ledger`: debtor-only approve/reject share APIs, proposal detail share actions, approved-share maturity into append-only `LedgerTransaction` + `DebtObligation`, duplicate maturity guard through unique `sourceShareId`, formal balance list from open obligations, localized copy, OpenAPI updates, and real-browser E2E coverage.
@@ -41,10 +41,11 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Phase 2 settlement suggestions slice implemented on branch `feat/settlement-suggestions`: read-only settlement optimizer that nets open obligations by currency, `/settlement-suggestions` API, ledger-page suggestion section, OpenAPI/docs updates, unit tests for chained/multi-currency netting, and real-browser E2E/API coverage.
 - Phase 2 calendar/task shell slice implemented on branch `feat/calendar-tasks`: localized `/[locale]/app/calendar` workspace, calendar event list/create API/UI, task list/create/assignment API/UI, due-task auto-linking to `TASK` calendar events through `EventLink`, task completion that also completes linked events, viewer read-only guard, OpenAPI/docs updates, and real-browser desktop/mobile E2E coverage.
 - Phase 2 multi-obligation settlement slice implemented on branch `feat/multi-obligation-settlements`: settlement create API now accepts either legacy `debtObligationId` or suggested-transfer `payeeUserId + currency`, ledger UI exposes actionable direct suggested-transfer forms for debtors, creditor confirmation allocates one settlement across matching open obligations in oldest-first order, docs/OpenAPI/i18n updated, and real-browser desktop/mobile E2E covers two obligations settled by one confirmed transfer.
+- Phase 2 recurring calendar/task slice implemented on branch `feat/recurring-calendar-rules`: event/task create APIs and UI support finite daily/weekly/monthly recurrence, recurrence rules are stored in `RecurrenceRule`, generated event/task instances are materialized immediately, generated task instances copy assignments and create linked `TASK` calendar events, recurrence-linked events use `EventLink`, docs/OpenAPI/i18n updated, and real-browser desktop/mobile E2E covers recurring events/tasks plus task completion of one generated series member.
 
 ## Current phase
 
-Phase 2: expense proposals, formal ledger, and first calendar/task shell. Current scope creates submitted proposals, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides calendar event/task creation plus task completion with task-event links, and keeps rejected/pending proposals out of formal balances. Remaining Phase 2 work should add broader split methods, recurring/task-to-expense workflows, and production auth/session semantics.
+Phase 2: expense proposals, formal ledger, and first calendar/task shell. Current scope creates submitted proposals, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides one-off and finite recurring calendar event/task creation plus task completion with task-event links, and keeps rejected/pending proposals out of formal balances. Remaining Phase 2 work should add broader split methods, calendar views, repayment/task-to-expense workflows, and production auth/session semantics.
 
 ## Decisions log
 
@@ -68,6 +69,7 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 | 2026-07-04 | Keep settlement suggestion API read-only                   | Suggestions guide repayment without directly mutating balances; actual balance changes still require submitted and confirmed settlements.                                                         |
 | 2026-07-04 | Auto-link due tasks to calendar events                     | The first calendar/task shell should give users one operational surface immediately; task recurrence and task-to-expense proposal links can follow later.                                         |
 | 2026-07-04 | Make direct suggested transfers actionable                 | A debtor can submit one settlement for a suggested debtor/payee/currency pair when matching direct open obligations exist; creditor confirmation allocates oldest-first across those obligations. |
+| 2026-07-04 | Materialize finite recurrence for MVP                      | Daily/weekly/monthly recurrences are capped at 12 instances and written as concrete event/task rows so current list APIs, linked task events, and E2E flows stay simple and auditable.            |
 
 ## Open questions for later human review
 
@@ -78,7 +80,7 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 
 ## Next recommended tasks
 
-1. Add recurring calendar/task rules, month/week views, repayment deadline auto-events, and task-to-expense proposal links.
+1. Add calendar month/week views, repayment deadline auto-events, and task-to-expense proposal links.
 2. Decide whether fully netted suggestions without matching direct obligations should stay guidance-only or gain a separate clearing policy.
 3. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
 4. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
@@ -87,6 +89,17 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 
 ## Last session verification
 
+- 2026-07-04 Phase 2 recurring calendar/task rules:
+  - `pnpm format:check` passed.
+  - `pnpm lint` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm test` passed: 3 test files, 7 tests.
+  - `pnpm build` passed with `/[locale]/app/calendar`, `/api/v1/households/[householdId]/calendar/events`, `/api/v1/households/[householdId]/tasks`, and `/tasks/[taskId]/complete` in the Next route manifest.
+  - `pnpm db:validate` passed.
+  - `pnpm db:migrate` passed with no pending migrations.
+  - `pnpm db:seed` passed.
+  - Targeted Playwright passed for recurring calendar/task creation and existing approval refresh stability on Chromium desktop and mobile.
+  - `pnpm e2e` passed from a clean `.next` cache: 20 Playwright tests across Chromium desktop and mobile, including weekly recurring calendar events, weekly recurring tasks with copied assignments, linked `TASK` events for each generated task, recurrence-rule event links, and completing one task instance without completing the next recurrence.
 - 2026-07-04 Phase 2 multi-obligation settlements:
   - `pnpm format:check` passed.
   - `pnpm lint` passed.

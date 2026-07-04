@@ -242,9 +242,13 @@ Only the debtor can submit it. The creditor must confirm it before the service c
   "startAt": "2026-07-09T09:00:00.000Z",
   "endAt": "2026-07-09T09:30:00.000Z",
   "allDay": false,
+  "recurrenceFrequency": "WEEKLY",
+  "recurrenceCount": 3,
   "description": "Check rent transfer status."
 }
 ```
+
+`recurrenceCount` is finite and includes the first created instance. Current implementation materializes the additional event rows immediately and links them to a stored recurrence rule.
 
 ### Create task
 
@@ -254,11 +258,13 @@ Only the debtor can submit it. The creditor must confirm it before the service c
   "priority": "HIGH",
   "dueAt": "2026-07-09T10:00:00.000Z",
   "assignedUserIds": ["user_bob"],
+  "recurrenceFrequency": "WEEKLY",
+  "recurrenceCount": 2,
   "description": "Clean counters and take out recycling."
 }
 ```
 
-If `dueAt` is present, the current implementation creates a `TASK` calendar event and an `EventLink` from the event to the task.
+If `dueAt` is present, the current implementation creates a `TASK` calendar event and an `EventLink` from the event to the task. Recurring tasks require `dueAt`; the service materializes additional task rows, copies assignments, creates linked `TASK` events for each generated task, and links those events to a stored recurrence rule.
 
 ### Complete task
 

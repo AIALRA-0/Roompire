@@ -18,9 +18,11 @@ const eventTypeKeys = [
 ] as const;
 
 const priorityKeys = ["LOW", "NORMAL", "HIGH"] as const;
+const recurrenceKeys = ["NONE", "DAILY", "WEEKLY", "MONTHLY"] as const;
 
 type EventTypeKey = (typeof eventTypeKeys)[number];
 type PriorityKey = (typeof priorityKeys)[number];
+type RecurrenceKey = (typeof recurrenceKeys)[number];
 type StatusKey = "OPEN" | "COMPLETED";
 
 type CalendarWorkspaceMember = {
@@ -47,6 +49,8 @@ type CalendarWorkspaceLabels = {
   description: string;
   assignees: string;
   allDay: string;
+  recurrence: string;
+  recurrenceCount: string;
   createEvent: string;
   createTask: string;
   completeTask: string;
@@ -63,6 +67,7 @@ type CalendarWorkspaceLabels = {
   linkedTask: string;
   eventTypes: Record<EventTypeKey, string>;
   priorities: Record<PriorityKey, string>;
+  recurrences: Record<RecurrenceKey, string>;
   statuses: Record<StatusKey, string>;
 };
 
@@ -198,6 +203,8 @@ export function CalendarWorkspace({
           startAt: String(formData.get("startAt") ?? ""),
           endAt: String(formData.get("endAt") ?? ""),
           allDay: formData.get("allDay") === "on",
+          recurrenceFrequency: String(formData.get("recurrenceFrequency") ?? "NONE"),
+          recurrenceCount: Number(formData.get("recurrenceCount") ?? 1),
           description: String(formData.get("description") ?? ""),
         },
         labels.errorFallback,
@@ -228,6 +235,8 @@ export function CalendarWorkspace({
           priority: String(formData.get("priority") ?? "NORMAL"),
           dueAt: String(formData.get("dueAt") ?? ""),
           assignedUserIds: formData.getAll("assignedUserIds").map(String),
+          recurrenceFrequency: String(formData.get("recurrenceFrequency") ?? "NONE"),
+          recurrenceCount: Number(formData.get("recurrenceCount") ?? 1),
           description: String(formData.get("description") ?? ""),
         },
         labels.errorFallback,
@@ -328,6 +337,35 @@ export function CalendarWorkspace({
               />
               {labels.allDay}
             </label>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <Field label={labels.recurrence}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="calendar-event-recurrence"
+                  defaultValue="NONE"
+                  disabled={!canCreateWorkItems}
+                  name="recurrenceFrequency"
+                >
+                  {recurrenceKeys.map((recurrence) => (
+                    <option key={recurrence} value={recurrence}>
+                      {labels.recurrences[recurrence]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={labels.recurrenceCount}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="calendar-event-recurrence-count"
+                  defaultValue="1"
+                  disabled={!canCreateWorkItems}
+                  max="12"
+                  min="1"
+                  name="recurrenceCount"
+                  type="number"
+                />
+              </Field>
+            </div>
             <Field label={labels.description}>
               <textarea
                 className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm focus-ring"
@@ -389,6 +427,35 @@ export function CalendarWorkspace({
                   disabled={!canCreateWorkItems}
                   name="dueAt"
                   type="datetime-local"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <Field label={labels.recurrence}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="task-recurrence"
+                  defaultValue="NONE"
+                  disabled={!canCreateWorkItems}
+                  name="recurrenceFrequency"
+                >
+                  {recurrenceKeys.map((recurrence) => (
+                    <option key={recurrence} value={recurrence}>
+                      {labels.recurrences[recurrence]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={labels.recurrenceCount}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="task-recurrence-count"
+                  defaultValue="1"
+                  disabled={!canCreateWorkItems}
+                  max="12"
+                  min="1"
+                  name="recurrenceCount"
+                  type="number"
                 />
               </Field>
             </div>

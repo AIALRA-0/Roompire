@@ -29,6 +29,13 @@ const taskQuerySchema = z.object({
   status: z.enum(["OPEN", "COMPLETED"]).optional(),
 });
 
+const recurrenceFrequencySchema = z.enum(["NONE", "DAILY", "WEEKLY", "MONTHLY"]);
+
+const recurrenceCountSchema = z.preprocess(
+  (value) => (value === "" || value === null || value === undefined ? undefined : value),
+  z.coerce.number().int().min(1).max(12).default(1),
+);
+
 export const createCalendarEventSchema = z.object({
   title: z.string().trim().min(2).max(120),
   description: optionalDescriptionSchema,
@@ -36,6 +43,8 @@ export const createCalendarEventSchema = z.object({
   startAt: z.string().trim().min(1),
   endAt: optionalDateTimeSchema,
   allDay: z.boolean().default(false),
+  recurrenceFrequency: recurrenceFrequencySchema.default("NONE"),
+  recurrenceCount: recurrenceCountSchema,
 });
 
 export const createTaskSchema = z.object({
@@ -44,6 +53,8 @@ export const createTaskSchema = z.object({
   priority: z.enum(["LOW", "NORMAL", "HIGH"]).default("NORMAL"),
   dueAt: optionalDateTimeSchema,
   assignedUserIds: z.array(z.string().uuid()).max(20).default([]),
+  recurrenceFrequency: recurrenceFrequencySchema.default("NONE"),
+  recurrenceCount: recurrenceCountSchema,
 });
 
 export const completeTaskSchema = z.object({
@@ -71,6 +82,49 @@ function dateTimeInputToUtc(value: string, fieldName: string) {
   }
 
   return date;
+}
+
+type RecurrenceFrequency = z.infer<typeof recurrenceFrequencySchema>;
+
+type RecurrenceSettings = {
+  frequency: Exclude<RecurrenceFrequency, "NONE">;
+  count: number;
+};
+
+function normalizeRecurrence(
+  frequency: RecurrenceFrequency,
+  count: number,
+): RecurrenceSettings | null {
+  if (frequency === "NONE" || count <= 1) {
+    return null;
+  }
+
+  return {
+    frequency,
+    count,
+  };
+}
+
+function addRecurrenceInterval(
+  date: Date,
+  frequency: RecurrenceSettings["frequency"],
+  index: number,
+) {
+  const next = new Date(date);
+
+  if (frequency === "DAILY") {
+    next.setUTCDate(next.getUTCDate() + index);
+  } else if (frequency === "WEEKLY") {
+    next.setUTCDate(next.getUTCDate() + index * 7);
+  } else {
+    next.setUTCMonth(next.getUTCMonth() + index);
+  }
+
+  return next;
+}
+
+function recurrenceRuleText(recurrence: RecurrenceSettings) {
+  return `FREQ=${recurrence.frequency};COUNT=${recurrence.count}`;
 }
 
 async function attachLinksToEvents(
@@ -256,12 +310,14 @@ export async function createCalendarEventForHousehold(
   const data = parsed.data;
   const startAt = dateTimeInputToUtc(data.startAt, "startAt");
   const endAt = data.endAt ? dateTimeInputToUtc(data.endAt, "endAt") : undefined;
+  const recurrence = normalizeRecurrence(data.recurrenceFrequency, data.recurrenceCount);
 
   if (endAt && endAt < startAt) {
     throw validationError("Event end time cannot be before the start time.");
   }
 
   return prisma.$transaction(async (tx) => {
+    const durationMs = endAt ? endAt.getTime() - startAt.getTime() : null;
     const event = await tx.calendarEvent.create({
       data: {
         householdId,
@@ -275,6 +331,61 @@ export async function createCalendarEventForHousehold(
         createdByUserId: userId,
       },
     });
+    let recurrenceRuleId: string | null = null;
+    const generatedEventIds: string[] = [];
+
+    if (recurrence) {
+      const recurrenceRule = await tx.recurrenceRule.create({
+        data: {
+          householdId,
+          ownerType: "calendar_event",
+          ownerId: event.id,
+          rruleText: recurrenceRuleText(recurrence),
+          dtstart: startAt,
+          timezone: membership.household.timezone,
+          count: recurrence.count,
+        },
+      });
+
+      recurrenceRuleId = recurrenceRule.id;
+
+      await tx.eventLink.create({
+        data: {
+          eventId: event.id,
+          linkedType: "recurrence_rule",
+          linkedId: recurrenceRule.id,
+        },
+      });
+
+      for (let index = 1; index < recurrence.count; index += 1) {
+        const occurrenceStartAt = addRecurrenceInterval(startAt, recurrence.frequency, index);
+        const occurrenceEndAt =
+          durationMs === null ? undefined : new Date(occurrenceStartAt.getTime() + durationMs);
+        const occurrence = await tx.calendarEvent.create({
+          data: {
+            householdId,
+            type: data.type,
+            title: data.title,
+            description: data.description,
+            startAt: occurrenceStartAt,
+            endAt: occurrenceEndAt,
+            allDay: data.allDay,
+            timezone: membership.household.timezone,
+            createdByUserId: userId,
+          },
+        });
+
+        generatedEventIds.push(occurrence.id);
+
+        await tx.eventLink.create({
+          data: {
+            eventId: occurrence.id,
+            linkedType: "recurrence_rule",
+            linkedId: recurrenceRule.id,
+          },
+        });
+      }
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -289,6 +400,10 @@ export async function createCalendarEventForHousehold(
           startAt: event.startAt.toISOString(),
           endAt: event.endAt?.toISOString() ?? null,
           allDay: event.allDay,
+          recurrenceRuleId,
+          recurrenceFrequency: recurrence?.frequency ?? "NONE",
+          recurrenceCount: recurrence?.count ?? 1,
+          generatedEventIds,
         },
       },
     });
@@ -297,6 +412,68 @@ export async function createCalendarEventForHousehold(
 
     return linkedEvent!;
   });
+}
+
+async function createTaskInstance(
+  tx: Prisma.TransactionClient,
+  input: {
+    householdId: string;
+    userId: string;
+    timezone: string;
+    title: string;
+    description?: string;
+    priority: string;
+    dueAt?: Date;
+    assignedUserIds: string[];
+  },
+) {
+  const task = await tx.task.create({
+    data: {
+      householdId: input.householdId,
+      title: input.title,
+      description: input.description,
+      priority: input.priority,
+      dueAt: input.dueAt,
+      createdByUserId: input.userId,
+      assignments: {
+        create: input.assignedUserIds.map((assignedUserId) => ({
+          assignedUserId,
+        })),
+      },
+    },
+    include: {
+      assignments: true,
+    },
+  });
+  let calendarEventId: string | null = null;
+
+  if (input.dueAt) {
+    const event = await tx.calendarEvent.create({
+      data: {
+        householdId: input.householdId,
+        type: CalendarEventType.TASK,
+        title: task.title,
+        description: task.description,
+        startAt: input.dueAt,
+        timezone: input.timezone,
+        createdByUserId: input.userId,
+      },
+    });
+
+    await tx.eventLink.create({
+      data: {
+        eventId: event.id,
+        linkedType: "task",
+        linkedId: task.id,
+      },
+    });
+    calendarEventId = event.id;
+  }
+
+  return {
+    task,
+    calendarEventId,
+  };
 }
 
 export async function createTaskForHousehold(userId: string, householdId: string, input: unknown) {
@@ -312,51 +489,80 @@ export async function createTaskForHousehold(userId: string, householdId: string
     data.assignedUserIds.length > 0 ? data.assignedUserIds : [userId],
   );
   const dueAt = data.dueAt ? dateTimeInputToUtc(data.dueAt, "dueAt") : undefined;
+  const recurrence = normalizeRecurrence(data.recurrenceFrequency, data.recurrenceCount);
+
+  if (recurrence && !dueAt) {
+    throw validationError("Recurring tasks require a due date.");
+  }
 
   await getAssignableMemberships(householdId, assignedUserIds);
 
   return prisma.$transaction(async (tx) => {
-    const task = await tx.task.create({
-      data: {
-        householdId,
-        title: data.title,
-        description: data.description,
-        priority: data.priority,
-        dueAt,
-        createdByUserId: userId,
-        assignments: {
-          create: assignedUserIds.map((assignedUserId) => ({
-            assignedUserId,
-          })),
-        },
-      },
-      include: {
-        assignments: true,
-      },
+    const { task, calendarEventId } = await createTaskInstance(tx, {
+      householdId,
+      userId,
+      timezone: membership.household.timezone,
+      title: data.title,
+      description: data.description,
+      priority: data.priority,
+      dueAt,
+      assignedUserIds,
     });
-    let calendarEventId: string | null = null;
+    let recurrenceRuleId: string | null = null;
+    const generatedTaskIds: string[] = [];
+    const generatedCalendarEventIds: string[] = [];
 
-    if (dueAt) {
-      const event = await tx.calendarEvent.create({
+    if (recurrence && dueAt) {
+      const recurrenceRule = await tx.recurrenceRule.create({
         data: {
           householdId,
-          type: CalendarEventType.TASK,
-          title: task.title,
-          description: task.description,
-          startAt: dueAt,
+          ownerType: "task",
+          ownerId: task.id,
+          rruleText: recurrenceRuleText(recurrence),
+          dtstart: dueAt,
           timezone: membership.household.timezone,
-          createdByUserId: userId,
+          count: recurrence.count,
         },
       });
 
-      await tx.eventLink.create({
-        data: {
-          eventId: event.id,
-          linkedType: "task",
-          linkedId: task.id,
-        },
-      });
-      calendarEventId = event.id;
+      recurrenceRuleId = recurrenceRule.id;
+
+      if (calendarEventId) {
+        await tx.eventLink.create({
+          data: {
+            eventId: calendarEventId,
+            linkedType: "recurrence_rule",
+            linkedId: recurrenceRule.id,
+          },
+        });
+      }
+
+      for (let index = 1; index < recurrence.count; index += 1) {
+        const occurrenceDueAt = addRecurrenceInterval(dueAt, recurrence.frequency, index);
+        const occurrence = await createTaskInstance(tx, {
+          householdId,
+          userId,
+          timezone: membership.household.timezone,
+          title: data.title,
+          description: data.description,
+          priority: data.priority,
+          dueAt: occurrenceDueAt,
+          assignedUserIds,
+        });
+
+        generatedTaskIds.push(occurrence.task.id);
+
+        if (occurrence.calendarEventId) {
+          generatedCalendarEventIds.push(occurrence.calendarEventId);
+          await tx.eventLink.create({
+            data: {
+              eventId: occurrence.calendarEventId,
+              linkedType: "recurrence_rule",
+              linkedId: recurrenceRule.id,
+            },
+          });
+        }
+      }
     }
 
     await tx.auditEvent.create({
@@ -373,6 +579,11 @@ export async function createTaskForHousehold(userId: string, householdId: string
           assignedUserIds,
           dueAt: task.dueAt?.toISOString() ?? null,
           calendarEventId,
+          recurrenceRuleId,
+          recurrenceFrequency: recurrence?.frequency ?? "NONE",
+          recurrenceCount: recurrence?.count ?? 1,
+          generatedTaskIds,
+          generatedCalendarEventIds,
         },
       },
     });
