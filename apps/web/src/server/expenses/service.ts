@@ -142,6 +142,11 @@ export const rejectExpenseShareSchema = z.object({
   reason: z.string().trim().min(1).max(1000),
 });
 
+export const createExpenseProposalCommentSchema = z.object({
+  body: z.string().trim().min(1).max(1000),
+  shareId: nullableUuidSchema,
+});
+
 type CreateExpenseProposalData = z.infer<typeof createExpenseProposalSchema>;
 type ExpenseCreatorMembership = Awaited<ReturnType<typeof requireExpenseProposalCreator>>;
 
@@ -398,8 +403,16 @@ export async function getExpenseProposalForUser(
       category: true,
       payers: true,
       shares: true,
-      approvals: true,
-      comments: true,
+      approvals: {
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
+      comments: {
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
     },
   });
 
@@ -679,6 +692,93 @@ export async function createExpenseProposalForHousehold(
   );
 
   return prisma.$transaction((tx) => createExpenseProposalRecord(tx, prepared));
+}
+
+export async function createExpenseProposalCommentForHousehold(
+  userId: string,
+  householdId: string,
+  proposalId: string,
+  input: unknown,
+) {
+  const membership = await requireActiveMembership(userId, householdId);
+
+  if (!assertCanParticipate(membership.role)) {
+    throw new ApiError(403, "FORBIDDEN", "Viewers cannot comment on expense proposals.");
+  }
+
+  const parsed = createExpenseProposalCommentSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Expense proposal comment input is invalid.", parsed.error.flatten());
+  }
+
+  const proposal = await prisma.expenseProposal.findFirst({
+    where: {
+      id: proposalId,
+      householdId,
+    },
+    include: {
+      shares: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!proposal) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  if (parsed.data.shareId && !proposal.shares.some((share) => share.id === parsed.data.shareId)) {
+    throw new ApiError(400, "INVALID_SHARE", "Comment shareId must belong to the proposal.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const comment = await tx.proposalComment.create({
+      data: {
+        proposalId,
+        shareId: parsed.data.shareId,
+        authorUserId: userId,
+        body: parsed.data.body,
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "expense_proposal.commented",
+        entityType: "ProposalComment",
+        entityId: comment.id,
+        after: {
+          proposalId,
+          shareId: parsed.data.shareId ?? null,
+        },
+      },
+    });
+
+    return tx.expenseProposal.findUniqueOrThrow({
+      where: {
+        id: proposalId,
+      },
+      include: {
+        category: true,
+        payers: true,
+        shares: true,
+        approvals: {
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
+        comments: {
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
+      },
+    });
+  });
 }
 
 export async function createExpenseProposalFromTaskForHousehold(

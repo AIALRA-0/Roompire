@@ -55,6 +55,9 @@ components:
     ApprovalPolicy:
       type: string
       enum: [PAYER_AND_EACH_DEBTOR, ALL_PARTICIPANTS, PAYER_ONLY]
+    ApprovalDecision:
+      type: string
+      enum: [APPROVED, REJECTED, REQUEST_CHANGES]
     SplitMethod:
       type: string
       enum: [EQUAL, EXACT, PERCENTAGE, SHARES, ADJUSTMENT]
@@ -330,6 +333,34 @@ components:
           nullable: true
         status: { $ref: "#/components/schemas/ShareStatus" }
         ledgerObligationId: { type: string, format: uuid, nullable: true }
+    ProposalApproval:
+      type: object
+      required: [id, shareId, approverUserId, decision, comment, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        shareId: { type: string, format: uuid, nullable: true }
+        approverUserId: { type: string, format: uuid }
+        decision: { $ref: "#/components/schemas/ApprovalDecision" }
+        comment: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    ProposalComment:
+      type: object
+      required: [id, shareId, authorUserId, body, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        shareId: { type: string, format: uuid, nullable: true }
+        authorUserId: { type: string, format: uuid }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreateProposalCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 1000 }
+        shareId:
+          type: string
+          format: uuid
+          description: Optional share-specific comment target. Must belong to this proposal.
     ExpenseProposal:
       type: object
       required:
@@ -345,6 +376,8 @@ components:
           fxPolicy,
           shares,
           payers,
+          approvals,
+          comments,
         ]
       properties:
         id: { type: string, format: uuid }
@@ -380,6 +413,12 @@ components:
         shares:
           type: array
           items: { $ref: "#/components/schemas/ExpenseShare" }
+        approvals:
+          type: array
+          items: { $ref: "#/components/schemas/ProposalApproval" }
+        comments:
+          type: array
+          items: { $ref: "#/components/schemas/ProposalComment" }
     ExpenseProposalListResponse:
       type: object
       required: [proposals]
@@ -1191,6 +1230,55 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         "200": { description: Submitted }
+  /households/{householdId}/expenses/proposals/{proposalId}/comments:
+    post:
+      summary: Add a comment to an expense proposal
+      description: Owners, admins, and members can add proposal comments. Viewers can read proposal detail but cannot comment. Matching duplicate Idempotency-Key requests replay the stored proposal response.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: proposalId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProposalCommentRequest" }
+      responses:
+        "201":
+          description: Comment added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseProposalResponse" }
+        "400":
+          description: Validation error, invalid shareId, or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer or otherwise cannot comment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or inaccessible proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Idempotent request is in progress or the Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/expenses/shares/{shareId}/approve:
     post:
       summary: Approve own assigned expense share and mature it to the ledger

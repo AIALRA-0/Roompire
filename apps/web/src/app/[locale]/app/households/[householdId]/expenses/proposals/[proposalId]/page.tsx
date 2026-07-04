@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, ReceiptText, ShieldAlert, WalletCards } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import { ExpenseProposalComments } from "@/components/expense-proposal-comments";
 import { ExpenseShareActions } from "@/components/expense-share-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,14 @@ type PageProps = {
 type SerializedProposal = ReturnType<typeof serializeExpenseProposal>;
 type ProposalStatus = SerializedProposal["status"];
 type ShareStatus = SerializedProposal["shares"][number]["status"];
+type MemberSummary = Awaited<ReturnType<typeof listMembersForHousehold>>[number];
+type TimelineItem = {
+  id: string;
+  actorName: string;
+  label: string;
+  body?: string | null;
+  occurredAt: string;
+};
 
 function statusVariant(status: ProposalStatus) {
   if (status === "APPROVED" || status === "MATURED_TO_LEDGER") {
@@ -133,6 +142,13 @@ function shareBasisLabel(
   return null;
 }
 
+function formatTimestamp(locale: Locale, value: string) {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 function ForbiddenState({
   locale,
   title,
@@ -172,13 +188,15 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
 
   let proposal: SerializedProposal | null = null;
   let memberNames = new Map<string, string>();
+  let members: MemberSummary[] = [];
 
   try {
-    const [proposalRecord, members] = await Promise.all([
+    const [proposalRecord, memberRecords] = await Promise.all([
       getExpenseProposalForUser(user.id, householdId, proposalId),
       listMembersForHousehold(user.id, householdId),
     ]);
     proposal = serializeExpenseProposal(proposalRecord);
+    members = memberRecords;
     memberNames = new Map(
       members.map((member) => [
         member.userId,
@@ -196,6 +214,8 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
     );
   }
 
+  const currentMembership = members.find((member) => member.userId === user.id);
+  const canComment = currentMembership?.role !== "VIEWER";
   const categoryName = proposal.category
     ? locale === "zh-CN"
       ? proposal.category.nameZhCn
@@ -211,6 +231,40 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
     errorFallback: expense("errorFallback"),
     working: common("working"),
   };
+  const commentLabels = {
+    addComment: expense("addComment"),
+    commentPlaceholder: expense("commentPlaceholder"),
+    commentAdded: expense("commentAdded"),
+    errorFallback: expense("errorFallback"),
+    working: common("working"),
+  };
+  const timelineItems: TimelineItem[] = [
+    {
+      id: `submitted-${proposal.id}`,
+      actorName: memberNames.get(proposal.createdByUserId) ?? proposal.createdByUserId,
+      label: expense("timelineSubmitted"),
+      occurredAt: proposal.createdAt,
+    },
+    ...proposal.approvals.map((approval) => ({
+      id: `approval-${approval.id}`,
+      actorName: memberNames.get(approval.approverUserId) ?? approval.approverUserId,
+      label:
+        approval.decision === "APPROVED"
+          ? expense("timelineApproved")
+          : expense("timelineRejected"),
+      body: approval.comment,
+      occurredAt: approval.createdAt,
+    })),
+    ...proposal.comments.map((comment) => ({
+      id: `comment-${comment.id}`,
+      actorName: memberNames.get(comment.authorUserId) ?? comment.authorUserId,
+      label: expense("timelineCommented"),
+      body: comment.body,
+      occurredAt: comment.createdAt,
+    })),
+  ].sort(
+    (left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime(),
+  );
 
   return (
     <main className="min-h-svh bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
@@ -310,9 +364,75 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
                   })}
                 </div>
               </div>
+
+              <div className="rounded-lg border border-border bg-background p-4">
+                <h2 className="text-sm font-semibold">{expense("timeline")}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">{expense("timelineHint")}</p>
+                <div className="mt-3 grid gap-3" data-testid="proposal-timeline">
+                  {timelineItems.map((item) => (
+                    <div className="border-l border-border pl-3" key={item.id}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium">
+                          {item.actorName} · {item.label}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatTimestamp(locale, item.occurredAt)}
+                        </p>
+                      </div>
+                      {item.body ? (
+                        <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+                          {item.body}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="grid gap-4 content-start">
+              <div className="rounded-lg border border-border bg-background p-4">
+                <h2 className="text-sm font-semibold">{expense("comments")}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">{expense("commentHint")}</p>
+                <div className="mt-3">
+                  {canComment ? (
+                    <ExpenseProposalComments
+                      householdId={householdId}
+                      labels={commentLabels}
+                      proposalId={proposal.id}
+                    />
+                  ) : (
+                    <p className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+                      {expense("commentReadOnly")}
+                    </p>
+                  )}
+                </div>
+                <div className="mt-4 divide-y divide-border" data-testid="proposal-comments">
+                  {proposal.comments.length > 0 ? (
+                    proposal.comments.map((comment) => (
+                      <div className="py-3 first:pt-0 last:pb-0" key={comment.id}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-medium">
+                            {memberNames.get(comment.authorUserId) ?? comment.authorUserId}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatTimestamp(locale, comment.createdAt)}
+                          </p>
+                        </div>
+                        <p
+                          className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground"
+                          data-testid={`proposal-comment-${comment.id}`}
+                        >
+                          {comment.body}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{expense("noComments")}</p>
+                  )}
+                </div>
+              </div>
+
               <div className="rounded-lg border border-border bg-background p-4">
                 <h2 className="text-sm font-semibold">{expense("payer")}</h2>
                 <div className="mt-3 grid gap-2">

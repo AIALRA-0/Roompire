@@ -795,6 +795,13 @@ test.describe("Roompire real browser smoke", () => {
       page.getByText("No formal ledger obligation has been created for this proposal."),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve share" })).toHaveCount(0);
+    const ownerComment = `Owner note ${suffix}`;
+    await page.getByTestId("proposal-comment-body").fill(ownerComment);
+    await page.getByTestId("proposal-comment-submit").click();
+    await expect(page.getByText("Comment added")).toBeVisible();
+    await expect(page.getByTestId("proposal-comments")).toContainText(ownerComment);
+    await expect(page.getByTestId("proposal-timeline")).toContainText("submitted proposal");
+    await expect(page.getByTestId("proposal-timeline")).toContainText("commented");
 
     const detailUrl = page.url();
     const detailIds = parseProposalDetailUrl(detailUrl);
@@ -819,9 +826,19 @@ test.describe("Roompire real browser smoke", () => {
           percentage: string | null;
           shareUnits: string | null;
         }>;
+        comments: Array<{
+          id: string;
+          authorUserId: string;
+          body: string;
+        }>;
       };
     };
     expect(proposalPayload.proposal.splitMethod).toBe("EXACT");
+    expect(proposalPayload.proposal.comments).toEqual([
+      expect.objectContaining({
+        body: ownerComment,
+      }),
+    ]);
     const approvedShare = proposalPayload.proposal.shares[0];
     const shareId = approvedShare?.id;
     expect(shareId).toBeTruthy();
@@ -1172,6 +1189,57 @@ test.describe("Roompire real browser smoke", () => {
       },
     );
     expect(idempotentProposalConflictResponse.status()).toBe(409);
+
+    const commentIdempotencyKey = `comment-idempotency-${Date.now()}`;
+    const commentBody = { body: `API comment ${suffix}` };
+    const idempotentCommentResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals/${detailIds.proposalId}/comments`,
+      {
+        data: commentBody,
+        headers: {
+          "Idempotency-Key": commentIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(idempotentCommentResponse.status()).toBe(201);
+    const idempotentCommentPayload = (await idempotentCommentResponse.json()) as {
+      proposal: { comments: Array<{ id: string; body: string }> };
+    };
+    const idempotentComment = idempotentCommentPayload.proposal.comments.find(
+      (comment) => comment.body === commentBody.body,
+    );
+    expect(idempotentComment).toBeTruthy();
+
+    const idempotentCommentReplayResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals/${detailIds.proposalId}/comments`,
+      {
+        data: commentBody,
+        headers: {
+          "Idempotency-Key": commentIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(idempotentCommentReplayResponse.status()).toBe(201);
+    const idempotentCommentReplayPayload =
+      (await idempotentCommentReplayResponse.json()) as typeof idempotentCommentPayload;
+    const replayedComment = idempotentCommentReplayPayload.proposal.comments.find(
+      (comment) => comment.body === commentBody.body,
+    );
+    expect(replayedComment?.id).toBe(idempotentComment!.id);
+
+    const idempotentCommentConflictResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals/${detailIds.proposalId}/comments`,
+      {
+        data: { body: `Changed API comment ${suffix}` },
+        headers: {
+          "Idempotency-Key": commentIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(idempotentCommentConflictResponse.status()).toBe(409);
 
     const percentageProposalResponse = await postApiWithRetry(
       page,

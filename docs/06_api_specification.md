@@ -171,6 +171,17 @@ Current implementation also accepts advanced split inputs through `participantSh
 }
 ```
 
+### Add proposal comment
+
+```json
+{
+  "body": "Receipt total includes household paper towels.",
+  "shareId": "optional_share_uuid"
+}
+```
+
+Current implementation lets owners, admins, and members comment on an expense proposal; viewers can read detail but cannot comment. Comments are returned on proposal detail and are also shown in the proposal timeline. The mutation requires `Idempotency-Key` and records an audit event.
+
 ### Approve share
 
 ```json
