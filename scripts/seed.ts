@@ -150,6 +150,37 @@ async function main() {
     });
   }
 
+  await prisma.fxRate.upsert({
+    where: {
+      provider_baseCurrency_quoteCurrency_rateDate: {
+        provider: "seed-static",
+        baseCurrency: "USD",
+        quoteCurrency: "CNY",
+        rateDate: new Date("2026-07-03T00:00:00.000Z"),
+      },
+    },
+    update: {
+      rate: "6.781400000000",
+      fetchedAt: new Date("2026-07-03T12:00:00.000Z"),
+      sourceMeta: {
+        seed: true,
+        requestedUse: "offline E2E FX cache for 2026-07-04 weekend expense dates",
+      },
+    },
+    create: {
+      provider: "seed-static",
+      baseCurrency: "USD",
+      quoteCurrency: "CNY",
+      rateDate: new Date("2026-07-03T00:00:00.000Z"),
+      rate: "6.781400000000",
+      fetchedAt: new Date("2026-07-03T12:00:00.000Z"),
+      sourceMeta: {
+        seed: true,
+        requestedUse: "offline E2E FX cache for 2026-07-04 weekend expense dates",
+      },
+    },
+  });
+
   const groceryCategory = await prisma.expenseCategory.findUnique({
     where: {
       householdId_key: {

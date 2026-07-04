@@ -53,10 +53,11 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Deployment foundation slice implemented on branch `feat/deployment-foundation`: production Docker Compose adds Postgres, Redis, standalone Next.js web, Caddy TLS reverse proxy, migration and demo-seed profiles, authenticated `/api/v1/health`, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, and `docs/14_deployment_runbook.md`.
 - Production site-gate session slice implemented on branch `feat/production-site-gate-session`: production requests no longer trust unsigned dev-session cookies or dev-user headers; verified site-gate Basic Auth maps to the app user email from the gate username or `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, auto-creating that user when needed.
 - Production object storage slice implemented on branch `feat/object-storage-adapter`: private receipt storage now resolves either local disk or S3-compatible storage (Cloudflare R2, AWS S3, MinIO) from environment, records the provider/bucket/object key behind the existing file API, validates storage config in `/api/v1/health`, and keeps upload/download client contracts stable.
+- FX lock/cache slice implemented on branch `feat/fx-rate-locks`: cross-currency proposal creation, revision, and task-to-expense creation can omit a manual `fxRate`; the server first uses cached `FxRate` rows, then the configured Frankfurter provider, and still accepts explicit manual rates as fallback while copying rate, rate date, provider, and lock timestamp into the proposal.
 
 ## Current phase
 
-Phase 2: expense proposals, formal ledger, and first calendar/task shell. Current scope creates submitted proposals with equal/exact/percentage/share-unit split methods, supports private receipt attachments on local disk or S3-compatible production object storage, supports proposal comments and a basic submitted/approval/rejection/change-request/comment timeline, lets debtors decide only their own shares, lets debtors request proposal changes before ledger maturity, lets original creators revise/resubmit disputed or rejected proposals without ledger obligations, matures approved shares into append-only ledger obligations exactly once, creates repayment due calendar events for matured obligations with due dates, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides one-off and finite recurring calendar event/task creation plus task completion with task-event links, offers list/week/month calendar views over loaded events, lets eligible users create one linked pending expense proposal from a task, and keeps rejected/pending/disputed proposals out of formal balances. Remaining Phase 2 work should add richer timeline/audit/file surfaces, event-to-expense creation beyond task links, and production auth/session semantics.
+Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, and first calendar/task shell. Current scope creates submitted proposals with equal/exact/percentage/share-unit split methods, supports private receipt attachments on local disk or S3-compatible production object storage, locks cross-currency FX from cached/provider rates or manual override, supports proposal comments and a basic submitted/approval/rejection/change-request/comment timeline, lets debtors decide only their own shares, lets debtors request proposal changes before ledger maturity, lets original creators revise/resubmit disputed or rejected proposals without ledger obligations, matures approved shares into append-only ledger obligations exactly once, creates repayment due calendar events for matured obligations with due dates, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides one-off and finite recurring calendar event/task creation plus task completion with task-event links, offers list/week/month calendar views over loaded events, lets eligible users create one linked pending expense proposal from a task, and keeps rejected/pending/disputed proposals out of formal balances. Remaining MVP work should add richer timeline/audit/file surfaces, event-to-expense creation beyond task links, production auth/session semantics, and the live server rollout.
 
 ## Decisions log
 
@@ -91,6 +92,7 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 | 2026-07-04 | Use Docker Compose/Caddy as the VPS production baseline    | The current domain already points at a server, and Compose keeps Postgres, Redis, Next.js, TLS reverse proxy, migration, backup, and smoke-test flows repeatable without choosing an edge platform yet. |
 | 2026-07-04 | Bridge private site gate to production app identity        | Until a full auth provider is selected, verified Basic Auth can safely identify the single private deployment user while dev-session cookies and dev-user headers stay disabled in production.          |
 | 2026-07-04 | Add S3-compatible storage behind the stable file API       | Receipts must work on real deployments without relying on a local container volume, while preserving the existing upload intent, byte upload, completion, and signed-download contracts.                |
+| 2026-07-04 | Resolve FX locks from cache before live provider lookup    | Proposal creation should work offline in tests and on cache-only deployments, while production can still fetch historical rates from a configured provider and retain manual fallback.                  |
 
 ## Open questions for later human review
 
@@ -111,6 +113,18 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 
 ## Last session verification
 
+- 2026-07-04 FX lock/cache:
+  - `pnpm typecheck` passed.
+  - `pnpm test` passed: 6 test files, 21 tests, including Frankfurter provider parsing/config tests.
+  - `pnpm lint` passed.
+  - `pnpm build` passed with `/api/v1/health` and proposal routes in the Next route manifest.
+  - `pnpm db:validate` passed.
+  - `pnpm db:migrate` passed with no pending migrations.
+  - `pnpm db:seed` passed and upserted the deterministic USD/CNY FX cache row for offline E2E.
+  - `docker compose --env-file .env.production.example -f docker-compose.prod.yml --profile migrate --profile seed config` passed with `ROOMPIRE_FX_PROVIDER` wiring present.
+  - Targeted Playwright passed for the owner proposal/approval/ledger flow on Chromium desktop and mobile, including cross-currency proposal creation without manual `fxRate` using the seeded `FxRate` cache.
+  - `pnpm e2e` passed: 24 Playwright tests across Chromium desktop and mobile.
+  - Live-domain probe still blocked direct rollout: HTTP `roompire.aialra.online` returns nginx 500, normal HTTPS fails hostname certificate validation, and this environment has no SSH private key for the VPS.
 - 2026-07-04 Production object storage adapter:
   - `pnpm format:check` passed.
   - `pnpm typecheck` passed.

@@ -22,6 +22,7 @@ Set these values in `.env.production` through the server's secret-management wor
 - `POSTGRES_PASSWORD`
 - `DATABASE_URL`
 - `ROOMPIRE_FILE_SIGNING_SECRET`
+- `ROOMPIRE_FX_PROVIDER`
 - `ROOMPIRE_FILE_STORAGE_PROVIDER`
 - `ROOMPIRE_S3_BUCKET`
 - `ROOMPIRE_S3_REGION`
@@ -35,6 +36,8 @@ Set these values in `.env.production` through the server's secret-management wor
 Do not commit real production credentials. The public site gate stays enabled when both `ROOMPIRE_SITE_GATE_USERNAME` and `ROOMPIRE_SITE_GATE_PASSWORD` are set. Verified gate requests become the Roompire app user identified by `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or by the gate username when the username is already an email address.
 
 `ROOMPIRE_FILE_STORAGE_PROVIDER=local` stores private receipts in the Docker `roompire_uploads` volume. `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` stores private receipts in an S3-compatible bucket such as Cloudflare R2, AWS S3, or MinIO. Use `ROOMPIRE_S3_FORCE_PATH_STYLE=true` for MinIO/path-style endpoints when required by the provider.
+
+`ROOMPIRE_FX_PROVIDER=frankfurter` enables automatic public historical FX lookup after the local `FxRate` cache misses. Set `ROOMPIRE_FX_PROVIDER=cache-only` when a deployment must avoid outbound FX calls; cross-currency proposals then require either a preloaded `FxRate` row for the expense date window or an explicit manual `fxRate`.
 
 ## First Deploy
 

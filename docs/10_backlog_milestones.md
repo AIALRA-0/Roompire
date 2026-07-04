@@ -74,6 +74,8 @@ Current implemented subset across expense branches: category defaults, dashboard
 - Manual fallback.
 - FX tests.
 
+Current implemented subset for FX: proposal/revision/task-expense creation locks same-currency rates as `1`, resolves cross-currency rates from cached `FxRate` rows, fetches and stores Frankfurter historical rates when configured and cache misses, preserves explicit manual `fxRate` fallback, stores provider/rate/rate date/locked timestamp on proposals, validates provider configuration in health checks, and covers provider parsing plus cached USD/CNY locking in browser E2E. Provider failover and manual-rate approval workflow remain backlog items.
+
 ### P1
 
 - Provider failover.

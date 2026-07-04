@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { resolveFileStorageConfig } from "@/server/files/storage-config";
+import { resolveConfiguredFxProvider } from "@/server/fx/rates";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export async function GET() {
   const timestamp = new Date().toISOString();
   const checks = {
     database: "ok",
+    fx: "ok",
     storage: "ok",
   };
 
@@ -26,8 +28,14 @@ export async function GET() {
     checks.storage = "error";
   }
 
+  try {
+    resolveConfiguredFxProvider();
+  } catch {
+    checks.fx = "error";
+  }
+
   const status: HealthStatus =
-    checks.database === "ok" && checks.storage === "ok" ? "ok" : "unhealthy";
+    checks.database === "ok" && checks.storage === "ok" && checks.fx === "ok" ? "ok" : "unhealthy";
 
   return NextResponse.json(
     {

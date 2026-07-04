@@ -45,7 +45,7 @@ Use this checklist before declaring a milestone complete.
 - [ ] Ledger rows are append-only.
 - [ ] Corrections use reversal/adjustment.
 - [ ] Money uses decimal arithmetic.
-- [ ] FX locks store provider/rate/rate date/locked timestamp.
+- [x] FX locks store provider/rate/rate date/locked timestamp.
 - [ ] Audit event emitted for critical mutation.
 
 ## Security

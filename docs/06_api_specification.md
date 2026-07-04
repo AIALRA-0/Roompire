@@ -152,12 +152,13 @@ Current MVP implements private receipt storage behind a stable API shape: presig
   "originalAmount": "120.00",
   "originalCurrency": "USD",
   "settlementCurrency": "CNY",
-  "fxRate": "7.200000",
   "splitMethod": "EQUAL",
   "participantUserIds": ["bob", "chen"],
   "fileIds": ["uploaded_receipt_file_id"]
 }
 ```
+
+For cross-currency proposals, `fxRate` is optional. When it is omitted, the server locks the expense-date rate from the `FxRate` cache or configured provider and copies `fxRate`, `fxRateDate`, `fxProvider`, and `fxLockedAt` into the proposal. Clients may still send `fxRate` as a manual override when provider lookup is unavailable or a reviewed manual rate is required.
 
 Current implementation also accepts advanced split inputs through `participantShares`:
 

@@ -37,6 +37,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 
 - Owners, admins, and members can create submitted expense proposals from the dashboard.
 - Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
+- Cross-currency proposals can omit `fxRate`; Roompire locks the expense-date rate from the `FxRate` cache or configured FX provider, while explicit manual rates remain supported as a fallback.
 - Dashboard proposal creation supports equal, exact-amount, percentage, and share-unit splits with a live split preview; proposal detail pages show the chosen method and stored split basis.
 - Proposal creation supports private receipt attachments through local disk in development or S3-compatible storage in production, with short-lived signed download URLs on proposal detail.
 - Proposal detail pages support member comments, revision submission for disputed/rejected proposals, and a submitted/approval/rejection/change-request/comment timeline.
@@ -115,6 +116,7 @@ For public/staging deployments, configure site-level Basic Auth and private file
 - `ROOMPIRE_SITE_GATE_USERNAME`
 - `ROOMPIRE_SITE_GATE_PASSWORD`
 - `ROOMPIRE_SITE_GATE_SESSION_EMAIL` when the gate username is not the desired app user email
+- `ROOMPIRE_FX_PROVIDER=frankfurter` for live historical FX lookup, or `cache-only` to require preloaded `FxRate` rows/manual rates
 - `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` plus `ROOMPIRE_S3_*` settings for R2/S3/MinIO private receipt storage
 
 Leave either username or password unset to disable the gate locally. In production, a verified site-gate request maps to the app user email from `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or from the gate username when the username is already an email address. Do not commit real gate credentials; set the shared deployment credentials only in the target server, CI, or hosting platform secret store.

@@ -14,6 +14,7 @@ import { splitByWeights, splitEqual } from "@/lib/money/split";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
 import { assertFilesReadyForProposal } from "@/server/files/service";
+import { resolveFxRateLock } from "@/server/fx/rates";
 import { requireActiveMembership, requireExpenseProposalCreator } from "@/server/permissions/rbac";
 
 const currencySchema = z
@@ -27,6 +28,12 @@ const decimalStringSchema = z
   .trim()
   .regex(/^\d+(\.\d{1,6})?$/)
   .refine((value) => new Decimal(value).isPositive(), "Amount must be greater than zero.");
+
+const fxRateStringSchema = z
+  .string()
+  .trim()
+  .regex(/^\d+(\.\d{1,12})?$/)
+  .refine((value) => new Decimal(value).isPositive(), "FX rate must be greater than zero.");
 
 const supportedSplitMethods = ["EQUAL", "EXACT", "PERCENTAGE", "SHARES"] as const;
 
@@ -63,7 +70,7 @@ const createExpenseProposalBaseSchema = z.object({
   originalCurrency: currencySchema,
   fxRate: z.preprocess(
     (value) => (value === "" || value === null ? undefined : value),
-    decimalStringSchema.optional(),
+    fxRateStringSchema.optional(),
   ),
   participantUserIds: z.array(z.string().uuid()).min(1).max(20).optional(),
   participantShares: z.array(participantShareSchema).min(1).max(20).optional(),
@@ -173,8 +180,10 @@ type PreparedExpenseProposalCreate = {
   originalCurrency: string;
   settlementAmount: Decimal;
   settlementCurrency: string;
-  sameCurrency: boolean;
   fxRate: Decimal;
+  fxRateDate: Date;
+  fxProvider: string;
+  fxLockedAt: Date;
   expenseDate: Date;
   dueDate?: Date;
   fileIds: string[];
@@ -223,6 +232,10 @@ function dateOnlyToUtc(value: string) {
 
 function decimalToFixed6(value: Decimal.Value) {
   return new Decimal(value).toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toFixed(6);
+}
+
+function decimalToFixed12(value: Decimal.Value) {
+  return new Decimal(value).toDecimalPlaces(12, Decimal.ROUND_HALF_UP).toFixed(12);
 }
 
 function uniqueValues(values: string[]) {
@@ -500,17 +513,15 @@ async function prepareExpenseProposalCreate(
   const originalAmount = new Decimal(data.originalAmount);
   const settlementCurrency = household.settlementCurrency;
   const originalCurrency = data.originalCurrency;
-  const sameCurrency = originalCurrency === settlementCurrency;
-
-  if (!sameCurrency && !data.fxRate) {
-    throw new ApiError(
-      400,
-      "FX_RATE_REQUIRED",
-      "FX rate is required when original currency differs from settlement currency.",
-    );
-  }
-
-  const fxRate = sameCurrency ? new Decimal(1) : new Decimal(data.fxRate!);
+  const expenseDate = dateOnlyToUtc(data.expenseDate);
+  const dueDate = data.dueDate ? dateOnlyToUtc(data.dueDate) : undefined;
+  const fxLock = await resolveFxRateLock({
+    baseCurrency: originalCurrency,
+    quoteCurrency: settlementCurrency,
+    date: expenseDate,
+    manualRate: data.fxRate,
+  });
+  const fxRate = fxLock.rate;
   const settlementAmount = originalAmount.mul(fxRate);
   let shareRows: PreparedExpenseProposalCreate["shareRows"];
 
@@ -627,9 +638,6 @@ async function prepareExpenseProposalCreate(
       shareUnits: decimalToFixed6(debtorUnits[index]!),
     }));
   }
-  const expenseDate = dateOnlyToUtc(data.expenseDate);
-  const dueDate = data.dueDate ? dateOnlyToUtc(data.dueDate) : undefined;
-
   return {
     userId,
     householdId,
@@ -640,8 +648,10 @@ async function prepareExpenseProposalCreate(
     originalCurrency,
     settlementAmount,
     settlementCurrency,
-    sameCurrency,
     fxRate,
+    fxRateDate: fxLock.rateDate,
+    fxProvider: fxLock.provider,
+    fxLockedAt: fxLock.lockedAt,
     expenseDate,
     dueDate,
     fileIds,
@@ -672,10 +682,10 @@ async function createExpenseProposalRecord(
       settlementAmount: decimalToFixed6(prepared.settlementAmount),
       splitMethod: prepared.data.splitMethod as SplitMethod,
       fxPolicy: prepared.household.fxPolicy,
-      fxRate: decimalToFixed6(prepared.fxRate),
-      fxRateDate: prepared.expenseDate,
-      fxProvider: prepared.sameCurrency ? "same-currency" : "manual-entry",
-      fxLockedAt: new Date(),
+      fxRate: decimalToFixed12(prepared.fxRate),
+      fxRateDate: prepared.fxRateDate,
+      fxProvider: prepared.fxProvider,
+      fxLockedAt: prepared.fxLockedAt,
       status: ExpenseProposalStatus.SUBMITTED,
       revisionNumber: prepared.revisionNumber ?? 1,
       supersedesProposalId: prepared.supersedesProposalId,
@@ -725,6 +735,9 @@ async function createExpenseProposalRecord(
         originalCurrency: prepared.originalCurrency,
         settlementAmount: proposal.settlementAmount.toString(),
         settlementCurrency: prepared.settlementCurrency,
+        fxRate: decimalToFixed12(prepared.fxRate),
+        fxRateDate: prepared.fxRateDate.toISOString().slice(0, 10),
+        fxProvider: prepared.fxProvider,
         splitMethod: proposal.splitMethod,
         shareStatus: ShareStatus.PENDING,
         debtorUserIds: prepared.debtorUserIds,

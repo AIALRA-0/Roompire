@@ -1355,6 +1355,48 @@ test.describe("Roompire real browser smoke", () => {
       shareUnits: "2",
     });
 
+    const cachedFxProposalResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals`,
+      {
+        data: {
+          title: `E2E Cached FX ${suffix}`,
+          expenseDate: "2026-07-04",
+          originalAmount: "20",
+          originalCurrency: "USD",
+          participantUserIds: [approvedShare!.debtorUserId],
+        },
+        headers: {
+          "Idempotency-Key": `cached-fx-proposal-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(cachedFxProposalResponse.status()).toBe(201);
+    const cachedFxProposalPayload = (await cachedFxProposalResponse.json()) as {
+      proposal: {
+        originalCurrency: string;
+        settlementCurrency: string;
+        settlementAmount: string;
+        fxRate: string;
+        fxRateDate: string;
+        fxProvider: string;
+        shares: Array<{ shareOriginalAmount: string; shareSettlementAmount: string }>;
+      };
+    };
+    expect(cachedFxProposalPayload.proposal).toMatchObject({
+      originalCurrency: "USD",
+      settlementCurrency: "CNY",
+      settlementAmount: "135.628",
+      fxRate: "6.7814",
+      fxRateDate: "2026-07-03",
+      fxProvider: "seed-static",
+    });
+    expect(cachedFxProposalPayload.proposal.shares[0]).toMatchObject({
+      shareOriginalAmount: "10",
+      shareSettlementAmount: "67.814",
+    });
+
     const approvalIdempotencyKey = `approval-idempotency-${Date.now()}`;
     const idempotentApprovalBody = { comment: "Idempotent approval" };
     const idempotentApprovalResponse = await page.request.post(

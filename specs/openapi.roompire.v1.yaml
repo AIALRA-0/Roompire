@@ -43,6 +43,9 @@ components:
     DecimalString:
       type: string
       pattern: '^-?\d+(\.\d+)?$'
+    FxRateString:
+      type: string
+      pattern: '^\d+(\.\d{1,12})?$'
     FxPolicy:
       type: string
       enum:
@@ -233,8 +236,8 @@ components:
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         fxRate:
-          description: Required when original currency differs from household settlement currency.
-          $ref: "#/components/schemas/DecimalString"
+          description: Optional manual FX override. When omitted for cross-currency expenses, Roompire locks the expense-date rate from the FX cache or configured provider.
+          $ref: "#/components/schemas/FxRateString"
         participantUserIds:
           type: array
           description: Equal-split debtor user IDs. For EQUAL, provide participantUserIds or participantShares.
@@ -278,8 +281,8 @@ components:
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         fxRate:
-          description: Required when original currency differs from household settlement currency.
-          $ref: "#/components/schemas/DecimalString"
+          description: Optional manual FX override. When omitted for cross-currency task reimbursements, Roompire locks the expense-date rate from the FX cache or configured provider.
+          $ref: "#/components/schemas/FxRateString"
         participantUserIds:
           type: array
           description: Equal-split debtor user IDs. For EQUAL, provide participantUserIds or participantShares.
@@ -507,7 +510,7 @@ components:
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         splitMethod: { $ref: "#/components/schemas/SplitMethod" }
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
-        fxRate: { $ref: "#/components/schemas/DecimalString" }
+        fxRate: { $ref: "#/components/schemas/FxRateString" }
         fxRateDate: { type: string, format: date }
         fxProvider: { type: string }
         fxLockedAt: { type: string, format: date-time, nullable: true }
