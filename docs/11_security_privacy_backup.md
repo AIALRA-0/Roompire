@@ -42,12 +42,14 @@ MVP:
 - Secure session cookies.
 - Email magic link or development auth.
 - Optional Google OAuth.
+- Private MVP deployments may bridge verified site-level Basic Auth to the app user while production auth provider selection remains open.
 
 Requirements:
 
 - HttpOnly cookies.
 - Secure cookies in production.
 - SameSite settings appropriate for app.
+- Do not trust unsigned dev-session cookies or dev-user headers in production.
 - CSRF protection for cookie-based mutations.
 - Rate limit login/invite endpoints.
 

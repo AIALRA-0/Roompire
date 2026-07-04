@@ -1,8 +1,9 @@
 import type { User } from "@prisma/client";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { NextRequest } from "next/server";
 import { ApiError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
+import { resolveSiteGateSessionEmailFromAuthorization } from "./site-gate";
 
 export const SESSION_COOKIE_NAME = "roompire_session";
 const defaultDevEmail = "alice@example.test";
@@ -43,28 +44,66 @@ export async function ensureUserForDevSession(email: string, displayName?: strin
   });
 }
 
-function sessionEmailFromRequest(request: NextRequest) {
+type SessionIdentity = {
+  email: string;
+  autoCreateUser: boolean;
+};
+
+async function findOrCreateSessionUser(identity: SessionIdentity | null) {
+  if (!identity) {
+    return null;
+  }
+
+  if (identity.autoCreateUser) {
+    return prisma.user.upsert({
+      where: { email: identity.email },
+      update: {},
+      create: {
+        email: identity.email,
+        displayName: displayNameFromEmail(identity.email),
+        preferredLocale: "en-US",
+      },
+    });
+  }
+
+  return prisma.user.findUnique({
+    where: { email: identity.email },
+  });
+}
+
+function devSessionIdentityFromRequest(request: NextRequest): SessionIdentity {
   const headerEmail = request.headers.get("x-roompire-dev-user-email");
 
   if (headerEmail) {
-    return normalizeEmail(headerEmail);
+    return { email: normalizeEmail(headerEmail), autoCreateUser: false };
   }
 
   const cookieEmail = request.cookies.get(SESSION_COOKIE_NAME)?.value;
 
   if (cookieEmail) {
-    return normalizeEmail(cookieEmail);
+    return { email: normalizeEmail(cookieEmail), autoCreateUser: false };
   }
 
-  return normalizeEmail(process.env.ROOMPIRE_DEV_SESSION_EMAIL ?? defaultDevEmail);
+  return {
+    email: normalizeEmail(process.env.ROOMPIRE_DEV_SESSION_EMAIL ?? defaultDevEmail),
+    autoCreateUser: false,
+  };
+}
+
+function sessionIdentityFromRequest(request: NextRequest): SessionIdentity | null {
+  if (isDevAuthEnabled()) {
+    return devSessionIdentityFromRequest(request);
+  }
+
+  const siteGateEmail = resolveSiteGateSessionEmailFromAuthorization(
+    request.headers.get("authorization"),
+  );
+
+  return siteGateEmail ? { email: normalizeEmail(siteGateEmail), autoCreateUser: true } : null;
 }
 
 export async function getApiUser(request: NextRequest): Promise<User | null> {
-  const email = sessionEmailFromRequest(request);
-
-  return prisma.user.findUnique({
-    where: { email },
-  });
+  return findOrCreateSessionUser(sessionIdentityFromRequest(request));
 }
 
 export async function requireApiUser(request: NextRequest): Promise<User> {
@@ -78,15 +117,26 @@ export async function requireApiUser(request: NextRequest): Promise<User> {
 }
 
 export async function getPageUser(): Promise<User | null> {
-  const cookieStore = await cookies();
-  const cookieEmail = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  const email = normalizeEmail(
-    cookieEmail ?? process.env.ROOMPIRE_DEV_SESSION_EMAIL ?? defaultDevEmail,
+  if (isDevAuthEnabled()) {
+    const cookieStore = await cookies();
+    const cookieEmail = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+    const email = normalizeEmail(
+      cookieEmail ?? process.env.ROOMPIRE_DEV_SESSION_EMAIL ?? defaultDevEmail,
+    );
+
+    return prisma.user.findUnique({
+      where: { email },
+    });
+  }
+
+  const requestHeaders = await headers();
+  const siteGateEmail = resolveSiteGateSessionEmailFromAuthorization(
+    requestHeaders.get("authorization"),
   );
 
-  return prisma.user.findUnique({
-    where: { email },
-  });
+  return findOrCreateSessionUser(
+    siteGateEmail ? { email: normalizeEmail(siteGateEmail), autoCreateUser: true } : null,
+  );
 }
 
 export async function requirePageUser(): Promise<User> {

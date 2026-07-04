@@ -113,8 +113,9 @@ For public/staging deployments, configure site-level Basic Auth through deployme
 
 - `ROOMPIRE_SITE_GATE_USERNAME`
 - `ROOMPIRE_SITE_GATE_PASSWORD`
+- `ROOMPIRE_SITE_GATE_SESSION_EMAIL` when the gate username is not the desired app user email
 
-Leave either value unset to disable the gate locally. Do not commit real gate credentials; set the shared deployment credentials only in the target server, CI, or hosting platform secret store.
+Leave either username or password unset to disable the gate locally. In production, a verified site-gate request maps to the app user email from `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or from the gate username when the username is already an email address. Do not commit real gate credentials; set the shared deployment credentials only in the target server, CI, or hosting platform secret store.
 
 ## Document Map
 

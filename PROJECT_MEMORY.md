@@ -51,6 +51,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Phase 2 proposal revision/request-changes slice implemented on branch `feat/proposal-revisions`: added debtor request-changes API/UI that moves pending shares and proposals to `DISPUTED`, creator revision/resubmit API/UI for disputed or rejected proposals without ledger obligations, version links through `supersedesProposalId`/`revisionNumber`, old-proposal cancellation, task/event link migration to the new revision, docs/OpenAPI/i18n updates, and real-browser desktop/mobile E2E coverage.
 - Deployment gate slice added on branch `feat/proposal-revisions`: `ROOMPIRE_SITE_GATE_USERNAME` and `ROOMPIRE_SITE_GATE_PASSWORD` enable site-level Basic Auth for localized pages and `/api/v1` routes, default off when unset; real credentials must be configured only through deployment secrets/server env, never committed.
 - Deployment foundation slice implemented on branch `feat/deployment-foundation`: production Docker Compose adds Postgres, Redis, standalone Next.js web, Caddy TLS reverse proxy, migration and demo-seed profiles, authenticated `/api/v1/health`, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, and `docs/14_deployment_runbook.md`.
+- Production site-gate session slice implemented on branch `feat/production-site-gate-session`: production requests no longer trust unsigned dev-session cookies or dev-user headers; verified site-gate Basic Auth maps to the app user email from the gate username or `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, auto-creating that user when needed.
 
 ## Current phase
 
@@ -87,6 +88,7 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 | 2026-07-04 | Revise proposals by superseding, not mutating              | Requested changes should preserve the old submitted proposal for audit; a new submitted revision carries `supersedesProposalId` and old task/event links move to the latest proposal.                   |
 | 2026-07-04 | Use env-configured site gate for public deployments        | The requested public-site gate should protect pages and APIs without committing shared credentials; deployment secrets provide the username/password and leaving either unset disables the gate.        |
 | 2026-07-04 | Use Docker Compose/Caddy as the VPS production baseline    | The current domain already points at a server, and Compose keeps Postgres, Redis, Next.js, TLS reverse proxy, migration, backup, and smoke-test flows repeatable without choosing an edge platform yet. |
+| 2026-07-04 | Bridge private site gate to production app identity        | Until a full auth provider is selected, verified Basic Auth can safely identify the single private deployment user while dev-session cookies and dev-user headers stay disabled in production.          |
 
 ## Open questions for later human review
 
@@ -102,12 +104,24 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 2. Complete live server rollout for `roompire.aialra.online`: remote access, TLS/nginx cleanup, production env secrets including site gate credentials, and online smoke tests.
 3. Decide whether fully netted suggestions without matching direct obligations should stay guidance-only or gain a separate clearing policy.
 4. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
-5. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
+5. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
 6. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
 7. Add event-to-expense creation beyond task-linked reimbursement proposals.
 
 ## Last session verification
 
+- 2026-07-04 Production site-gate session:
+  - `pnpm format:check` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed.
+  - `pnpm test` passed: 4 test files, 14 tests, including site-gate credential mapping tests.
+  - `pnpm build` passed with `/api/v1/session` and `/api/v1/health` in the Next route manifest.
+  - `docker build -f apps/web/Dockerfile -t roompire-web:test .` passed.
+  - Production container smoke passed with temporary credentials: verified Basic Auth email auto-created and returned the app user through `/api/v1/session`.
+  - Production container smoke confirmed `x-roompire-dev-user-email` is ignored when dev auth is disabled.
+  - Production container smoke confirmed unauthenticated and wrong-password `/api/v1/session` requests return 401.
+  - Production container page smoke confirmed authenticated `/en-US/app` returns 200.
+  - `pnpm e2e` passed: 24 Playwright tests across Chromium desktop and mobile.
 - 2026-07-04 Deployment foundation:
   - `pnpm format:check` passed.
   - `pnpm typecheck` passed.

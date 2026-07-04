@@ -24,8 +24,9 @@ Set these values in `.env.production` through the server's secret-management wor
 - `ROOMPIRE_FILE_SIGNING_SECRET`
 - `ROOMPIRE_SITE_GATE_USERNAME`
 - `ROOMPIRE_SITE_GATE_PASSWORD`
+- `ROOMPIRE_SITE_GATE_SESSION_EMAIL` if the gate username is not the app user email
 
-Do not commit real production credentials. The public site gate stays enabled when both `ROOMPIRE_SITE_GATE_USERNAME` and `ROOMPIRE_SITE_GATE_PASSWORD` are set.
+Do not commit real production credentials. The public site gate stays enabled when both `ROOMPIRE_SITE_GATE_USERNAME` and `ROOMPIRE_SITE_GATE_PASSWORD` are set. Verified gate requests become the Roompire app user identified by `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or by the gate username when the username is already an email address.
 
 ## First Deploy
 

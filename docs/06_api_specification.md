@@ -54,6 +54,8 @@ Mutation headers:
 - `POST /auth/dev-login` in development only
 - `POST /auth/logout`
 
+Current private-deployment MVP: when site-level Basic Auth is configured, verified Basic Auth requests map to the app session email from `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or from the gate username when it is already an email address. Development session headers/cookies are accepted only while dev auth is enabled.
+
 ### Households
 
 - `GET /households`
