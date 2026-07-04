@@ -138,6 +138,8 @@ Current MVP implements private receipt storage behind a stable API shape: presig
 - `POST /households/{householdId}/exports`
 - `GET /households/{householdId}/exports/{exportId}`
 
+Current implementation exposes `GET /households/{householdId}/audit-events` as a read-only active-member endpoint returning the latest household audit events with actor, action, entity, timestamp, and before/after/metadata JSON. The localized audit page uses the same service and keeps events scoped to the active household.
+
 ## Core request examples
 
 ### Create expense proposal

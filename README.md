@@ -41,6 +41,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Dashboard proposal creation supports equal, exact-amount, percentage, and share-unit splits with a live split preview; proposal detail pages show the chosen method and stored split basis.
 - Proposal creation supports private receipt attachments through local disk in development or S3-compatible storage in production, with short-lived signed download URLs on proposal detail.
 - Proposal detail pages support member comments, revision submission for disputed/rejected proposals, and a submitted/approval/rejection/change-request/comment timeline.
+- Household audit events are available through a dedicated audit page and API, with actor/entity/time plus before/after/metadata JSON for review.
 - Debtors can approve, reject, or request changes only for their own pending shares from the proposal detail page.
 - Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once, with repayment due events created when the proposal has a due date.
 - Proposal creation and share approve/reject persist `Idempotency-Key` records, replay matching duplicate requests, and reject key reuse with changed request bodies.

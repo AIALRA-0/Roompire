@@ -1,4 +1,5 @@
 import { ExpenseProposalStatus } from "@prisma/client";
+import { listAuditEventsForHousehold } from "@/server/audit/service";
 import { requirePageUser } from "@/server/auth/session";
 import { prisma } from "@/server/db/prisma";
 import {
@@ -94,15 +95,7 @@ export async function getDashboardModel() {
         status: "OPEN",
       },
     }),
-    prisma.auditEvent.findMany({
-      where: {
-        householdId: activeHousehold.id,
-      },
-      orderBy: {
-        occurredAt: "desc",
-      },
-      take: 4,
-    }),
+    listAuditEventsForHousehold(user.id, activeHousehold.id),
   ]);
 
   return {
@@ -117,7 +110,7 @@ export async function getDashboardModel() {
     pendingProposalCount,
     maturedObligationCount,
     upcomingTaskCount,
-    auditItems,
+    auditItems: auditItems.slice(0, 4),
     canInviteMembers: canManageMembers(activeMembership.role),
     canManageMembers: canManageMembers(activeMembership.role),
     canCreateExpenseProposals: canCreateExpenseProposal(activeMembership.role),

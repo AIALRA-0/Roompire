@@ -44,7 +44,7 @@ export default async function AppPage({ params }: PageProps) {
     { label: nav("ledger"), icon: WalletCards, href: `/${locale}/app/ledger` },
     { label: nav("calendar"), icon: CalendarDays, href: `/${locale}/app/calendar` },
     { label: nav("tasks"), icon: ListChecks, href: `/${locale}/app/calendar` },
-    { label: nav("audit"), icon: Activity, href: `/${locale}/app` },
+    { label: nav("audit"), icon: Activity, href: `/${locale}/app/audit` },
     { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];
 
@@ -480,6 +480,13 @@ export default async function AppPage({ params }: PageProps) {
                       </li>
                     ))}
                   </ol>
+                  <div className="border-t border-border p-5">
+                    <Button asChild size="sm" variant="outline">
+                      <Link data-testid="dashboard-audit-link" href={`/${locale}/app/audit`}>
+                        {nav("audit")}
+                      </Link>
+                    </Button>
+                  </div>
                 </div>
               </div>
             </section>

@@ -114,6 +114,36 @@ components:
     RecurrenceFrequency:
       type: string
       enum: [NONE, DAILY, WEEKLY, MONTHLY]
+    AuditEvent:
+      type: object
+      required: [id, householdId, action, entityType, entityId, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        actorUserId: { type: string, format: uuid, nullable: true }
+        action: { type: string, example: expense_proposal.submitted }
+        entityType: { type: string, example: ExpenseProposal }
+        entityId: { type: string, format: uuid }
+        before:
+          type: object
+          additionalProperties: true
+          nullable: true
+        after:
+          type: object
+          additionalProperties: true
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        occurredAt: { type: string, format: date-time }
+    AuditEventListResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/AuditEvent" }
     User:
       type: object
       required: [id, email, displayName]
@@ -2316,5 +2346,20 @@ paths:
   /households/{householdId}/audit-events:
     get:
       summary: List audit events
+      description: Returns the latest immutable household audit events, ordered newest first.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
       responses:
-        "200": { description: OK }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditEventListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }

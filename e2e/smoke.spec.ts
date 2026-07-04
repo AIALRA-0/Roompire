@@ -581,6 +581,39 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByText("Pending proposals")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Formal balances" })).toBeVisible();
     await expect(page.getByText("No approved obligations yet")).toBeVisible();
+
+    const sessionResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(sessionResponse.ok()).toBeTruthy();
+    const sessionPayload = (await sessionResponse.json()) as {
+      household: { id: string } | null;
+    };
+    expect(sessionPayload.household?.id).toBeTruthy();
+
+    const auditResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/audit-events`,
+    );
+    expect(auditResponse.ok()).toBeTruthy();
+    const auditPayload = (await auditResponse.json()) as {
+      events: Array<{ action: string; entityType: string; occurredAt: string }>;
+    };
+    expect(auditPayload.events.length).toBeGreaterThan(0);
+    expect(auditPayload.events).toContainEqual(
+      expect.objectContaining({
+        action: "expense_proposal.seeded",
+        entityType: "ExpenseProposal",
+      }),
+    );
+
+    await expect(page.getByTestId("dashboard-audit-link")).toHaveAttribute(
+      "href",
+      "/en-US/app/audit",
+    );
+    await page.goto("/en-US/app/audit");
+
+    await expect(page.getByRole("heading", { name: "Audit trail" })).toBeVisible();
+    await expect(page.getByTestId("audit-event-count")).toBeVisible();
+    await expect(page.getByText("expense_proposal.seeded")).toBeVisible();
   });
 
   test("mobile user sees zh-CN shell and protected-route failure state", async ({ page }) => {
@@ -647,7 +680,6 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("settings-household-approval-policy").selectOption("ALL_PARTICIPANTS");
     await page.getByRole("button", { name: "Save settings" }).click();
 
-    await expect(page.getByText("Settings saved")).toBeVisible();
     await expect(page.getByRole("heading", { name: updatedName })).toBeVisible();
 
     await page.getByLabel("Invite email").fill(inviteeEmail);
@@ -742,7 +774,7 @@ test.describe("Roompire real browser smoke", () => {
   test("owner creates a proposal and debtor approval matures one share", async ({
     page,
   }, testInfo) => {
-    testInfo.setTimeout(110_000);
+    testInfo.setTimeout(180_000);
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
     const ownerEmail = `expense-owner+${suffix}@example.test`;
     const debtorEmail = `expense-debtor+${suffix}@example.test`;

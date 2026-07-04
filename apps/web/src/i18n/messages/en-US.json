@@ -367,6 +367,23 @@
     "timelineCommented": "commented",
     "errorFallback": "Expense action failed."
   },
+  "Audit": {
+    "title": "Audit trail",
+    "hint": "Review immutable household activity for proposals, files, ledger changes, settlements, tasks, and access-sensitive actions.",
+    "backToDashboard": "Back to dashboard",
+    "eventCount": "Events",
+    "latestEvents": "Latest events",
+    "latestEventsHint": "Events are shown newest first and scoped to the active household.",
+    "actor": "Actor",
+    "systemActor": "System",
+    "entity": "Entity",
+    "occurredAt": "Occurred",
+    "before": "Before",
+    "after": "After",
+    "metadata": "Metadata",
+    "noEvents": "No audit events yet",
+    "noEventsHint": "Household actions will appear here as soon as proposals, approvals, files, ledger entries, or tasks change."
+  },
   "Forbidden": {
     "title": "Access request needed",
     "body": "This household area is protected by membership and role checks. Ask an owner for the right role before continuing.",

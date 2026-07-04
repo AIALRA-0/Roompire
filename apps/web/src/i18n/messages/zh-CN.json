@@ -367,6 +367,23 @@
     "timelineCommented": "发表了评论",
     "errorFallback": "费用操作失败。"
   },
+  "Audit": {
+    "title": "审计记录",
+    "hint": "查看家庭内提案、文件、账本变化、还款、任务和敏感权限操作的不可变活动记录。",
+    "backToDashboard": "返回工作台",
+    "eventCount": "事件数",
+    "latestEvents": "最新事件",
+    "latestEventsHint": "事件按时间倒序显示，并限定在当前家庭内。",
+    "actor": "操作者",
+    "systemActor": "系统",
+    "entity": "对象",
+    "occurredAt": "发生时间",
+    "before": "变更前",
+    "after": "变更后",
+    "metadata": "元数据",
+    "noEvents": "暂无审计事件",
+    "noEventsHint": "提案、审批、文件、账本或任务发生变化后，相关家庭活动会显示在这里。"
+  },
   "Forbidden": {
     "title": "需要访问权限",
     "body": "这个家庭区域受成员身份和角色权限保护。继续之前，请向 owner 申请合适角色。",
