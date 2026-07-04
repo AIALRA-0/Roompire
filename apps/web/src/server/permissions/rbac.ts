@@ -13,6 +13,10 @@ export function canManageMembers(role: Role) {
   return memberManagerRoles.has(role);
 }
 
+export function canUpdateHouseholdSettings(role: Role) {
+  return memberManagerRoles.has(role);
+}
+
 export async function getActiveMembership(userId: string, householdId: string) {
   return prisma.householdMembership.findFirst({
     where: {
@@ -42,6 +46,18 @@ export async function requireMemberManager(userId: string, householdId: string) 
 
   if (!canManageMembers(membership.role)) {
     throw new ApiError(403, "FORBIDDEN", "Only household owners and admins can manage members.", {
+      role: membership.role,
+    });
+  }
+
+  return membership;
+}
+
+export async function requireHouseholdSettingsManager(userId: string, householdId: string) {
+  const membership = await requireActiveMembership(userId, householdId);
+
+  if (!canUpdateHouseholdSettings(membership.role)) {
+    throw new ApiError(403, "FORBIDDEN", "Only household owners and admins can update settings.", {
       role: membership.role,
     });
   }

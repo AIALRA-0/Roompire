@@ -25,12 +25,13 @@ Phase 0 bootstrap is implemented:
 Phase 1 identity/RBAC slice is in progress:
 
 - Dev-session auth for local MVP testing through the `roompire_session` cookie.
-- Prisma-backed current session, household list, household creation, member list, invite creation, and invite acceptance APIs.
+- Prisma-backed current session, household list, household creation, household settings update, member list, member role update/removal, invite creation, and invite acceptance APIs.
 - Server-side membership and role checks for every implemented household-scoped route.
 - Dashboard now loads seeded household/user/member data from PostgreSQL instead of static fixtures.
-- Browser UI can switch dev users, create households, create invite codes, accept invite codes, and open member directory pages.
+- Browser UI can switch dev users, create households, edit household settings, create invite codes/links, accept invite codes or tokenized links, open member directory pages, update member roles, and remove members.
 - Viewer invite attempts are rejected by the API and verified in browser.
 - Non-members cannot view member directory pages before accepting an invite.
+- OpenAPI covers the current Phase 1 household, member, invite, and settings endpoints.
 
 ## Development
 

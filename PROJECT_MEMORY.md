@@ -30,12 +30,12 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Docker Compose defines Postgres 18 and Redis 8 with overrideable host ports.
 - Deterministic seed script creates `USC 3B2B`, Alice/Bob/Chen/Dana, 11 categories, one submitted grocery proposal, two pending shares, and one audit event.
 - Vitest covers decimal equal split behavior using `decimal.js`.
-- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, owner invite creation, non-member isolation before invite acceptance, invite acceptance, and viewer invite denial.
-- Phase 1 identity/RBAC slice implemented on branch `feat/phase-1-identity-rbac`: dev session cookie, Prisma-backed session/household/member/invite APIs, RBAC helpers, database-backed dashboard, member directory page, and localized identity management UI.
+- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, household settings update, owner invite code/link creation, non-member isolation before invite acceptance, invite code/link acceptance, member role update/removal, and viewer invite denial.
+- Phase 1 identity/RBAC slice implemented on branch `feat/phase-1-identity-rbac`: dev session cookie, Prisma-backed session/household/member/invite APIs, household settings API, member role/removal API, RBAC helpers, database-backed dashboard, member directory page, tokenized invite page, localized identity management UI, and updated OpenAPI contract.
 
 ## Current phase
 
-Phase 1: identity, household, membership, and RBAC. A functional dev-auth/RBAC slice is implemented and verified locally; remaining Phase 1 work should harden auth/session semantics, household settings, role management, and invite acceptance UX before starting Phase 2 expense proposal forms.
+Phase 1: identity, household, membership, and RBAC. A functional dev-auth/RBAC slice is implemented and verified locally, including household settings, role management, member removal, and invite link UX. Remaining Phase 1 work should harden production auth/session semantics and ownership transfer/self-removal policy before starting Phase 2 expense proposal forms.
 
 ## Decisions log
 
@@ -62,10 +62,9 @@ Phase 1: identity, household, membership, and RBAC. A functional dev-auth/RBAC s
 
 1. Push `feat/phase-1-identity-rbac` and open/merge a stacked PR after CI confirms.
 2. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
-3. Add household settings edit UI/API for locale, timezone, settlement currency, FX policy, and approval policy.
-4. Add role management UI/API for owner/admin changing member roles and removing members.
-5. Add invite acceptance page from tokenized link, not only manual token paste.
-6. Begin Phase 2 expense proposal form only after household/RBAC invariants are enforced server-side.
+3. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
+4. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
+5. Begin Phase 2 expense proposal form only after household/RBAC invariants are enforced server-side.
 
 ## Last session verification
 
@@ -78,7 +77,7 @@ Phase 1: identity, household, membership, and RBAC. A functional dev-auth/RBAC s
   - `pnpm db:validate` passed.
   - `pnpm db:migrate` passed with no pending migrations.
   - `pnpm db:seed` passed.
-  - `pnpm e2e` passed: 10 Playwright tests across Chromium desktop and mobile, including Phase 1 invite/RBAC flows.
+  - `pnpm e2e` passed: 12 Playwright tests across Chromium desktop and mobile, including household settings, tokenized invite links, member role update/removal, invite isolation, and viewer RBAC denial.
 - 2026-07-04 Phase 0 bootstrap:
 - `pnpm install` passed with pnpm 11 build-script approvals recorded in `pnpm-workspace.yaml`.
 - `pnpm format:check` passed.

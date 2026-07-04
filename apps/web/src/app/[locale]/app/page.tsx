@@ -97,6 +97,20 @@ export default async function AppPage({ params }: PageProps) {
     householdName: identity("householdName"),
     timezone: identity("timezone"),
     settlementCurrency: identity("settlementCurrency"),
+    defaultLocale: identity("defaultLocale"),
+    fxPolicy: identity("fxPolicy"),
+    approvalPolicy: identity("approvalPolicy"),
+    approvalEachDebtor: identity("approvalEachDebtor"),
+    approvalAllParticipants: identity("approvalAllParticipants"),
+    approvalPayerOnly: identity("approvalPayerOnly"),
+    fxLockExpenseDate: identity("fxLockExpenseDate"),
+    fxOriginalCurrency: identity("fxOriginalCurrency"),
+    fxManualApproval: identity("fxManualApproval"),
+    fxDifferenceAdjustment: identity("fxDifferenceAdjustment"),
+    householdSettings: identity("householdSettings"),
+    householdSettingsHint: identity("householdSettingsHint"),
+    saveSettings: identity("saveSettings"),
+    settingsSaved: identity("settingsSaved"),
     createHouseholdButton: identity("createHouseholdButton"),
     householdCreated: identity("householdCreated"),
     householdList: identity("householdList"),
@@ -110,6 +124,7 @@ export default async function AppPage({ params }: PageProps) {
     createInvite: identity("createInvite"),
     inviteCreated: identity("inviteCreated"),
     inviteCode: identity("inviteCode"),
+    inviteLink: identity("inviteLink"),
     acceptInvite: identity("acceptInvite"),
     acceptInviteHint: identity("acceptInviteHint"),
     inviteToken: identity("inviteToken"),
@@ -117,11 +132,22 @@ export default async function AppPage({ params }: PageProps) {
     inviteAccepted: identity("inviteAccepted"),
     noHousehold: identity("noHousehold"),
     openMembers: identity("openMembers"),
+    updateRole: identity("updateRole"),
+    roleUpdated: identity("roleUpdated"),
+    removeMember: identity("removeMember"),
+    memberRemoved: identity("memberRemoved"),
+    memberManagement: identity("memberManagement"),
+    memberManagementHint: identity("memberManagementHint"),
     cannotInvite: identity("cannotInvite"),
+    cannotManageMembers: identity("cannotManageMembers"),
     apiBoundary: identity("apiBoundary"),
     apiBoundaryHint: identity("apiBoundaryHint"),
     errorFallback: identity("errorFallback"),
     working: common("working"),
+    locales: {
+      "en-US": common("english"),
+      "zh-CN": common("chinese"),
+    },
     roles: {
       OWNER: common("owner"),
       ADMIN: common("admin"),
@@ -236,6 +262,7 @@ export default async function AppPage({ params }: PageProps) {
               <IdentityWorkspace
                 activeHouseholdId={model.activeHousehold?.id ?? null}
                 canInviteMembers={model.canInviteMembers}
+                canManageMembers={model.canManageMembers}
                 currentUserEmail={model.user.email}
                 devUsers={[
                   { displayName: "Alice", email: "alice@example.test" },
@@ -250,11 +277,16 @@ export default async function AppPage({ params }: PageProps) {
                   role: membership.role,
                   timezone: membership.household.timezone,
                   settlementCurrency: membership.household.settlementCurrency,
+                  defaultLocale: membership.household.defaultLocale as "en-US" | "zh-CN",
+                  fxPolicy: membership.household.fxPolicy,
+                  approvalPolicy: membership.household.approvalPolicy as
+                    "PAYER_AND_EACH_DEBTOR" | "ALL_PARTICIPANTS" | "PAYER_ONLY",
                 }))}
                 labels={identityLabels}
                 locale={locale}
                 members={model.members.map((member) => ({
                   id: member.id,
+                  userId: member.userId,
                   displayName: member.displayNameOverride ?? member.user.displayName,
                   email: member.user.email,
                   role: member.role,

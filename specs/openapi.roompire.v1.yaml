@@ -52,6 +52,9 @@ components:
           MANUAL_RATE_WITH_APPROVAL,
           FX_DIFFERENCE_ADJUSTMENT,
         ]
+    ApprovalPolicy:
+      type: string
+      enum: [PAYER_AND_EACH_DEBTOR, ALL_PARTICIPANTS, PAYER_ONLY]
     SplitMethod:
       type: string
       enum: [EQUAL, EXACT, PERCENTAGE, SHARES, ADJUSTMENT]
@@ -82,22 +85,27 @@ components:
         preferredLocale: { type: string, enum: [zh-CN, en-US] }
     Household:
       type: object
-      required: [id, name, timezone, settlementCurrency, fxPolicy]
+      required: [id, name, timezone, settlementCurrency, defaultLocale, fxPolicy, approvalPolicy]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         timezone: { type: string, example: America/Los_Angeles }
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        defaultLocale: { type: string, enum: [zh-CN, en-US] }
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
+        approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
     HouseholdMembershipSummary:
       type: object
-      required: [id, name, timezone, settlementCurrency, fxPolicy, role]
+      required:
+        [id, name, timezone, settlementCurrency, defaultLocale, fxPolicy, approvalPolicy, role]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         timezone: { type: string, example: America/Los_Angeles }
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        defaultLocale: { type: string, enum: [zh-CN, en-US] }
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
+        approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
         role: { $ref: "#/components/schemas/Role" }
     CreateHouseholdRequest:
       type: object
@@ -107,6 +115,16 @@ components:
         timezone: { type: string, example: America/Los_Angeles }
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         defaultLocale: { type: string, enum: [zh-CN, en-US] }
+    UpdateHouseholdRequest:
+      type: object
+      required: [name, timezone, settlementCurrency, defaultLocale, fxPolicy, approvalPolicy]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        timezone: { type: string, example: America/Los_Angeles }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        defaultLocale: { type: string, enum: [zh-CN, en-US] }
+        fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
+        approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
     Member:
       type: object
       required: [id, userId, role, displayName]
@@ -121,6 +139,11 @@ components:
       required: [role]
       properties:
         email: { type: string, format: email }
+        role: { type: string, enum: [ADMIN, MEMBER, VIEWER] }
+    UpdateMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
         role: { type: string, enum: [ADMIN, MEMBER, VIEWER] }
     Invite:
       type: object
@@ -288,6 +311,40 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}:
+    patch:
+      summary: Update household settings
+      description: Owners and admins can update household locale, timezone, currency, FX, and approval policy.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateHouseholdRequest" }
+      responses:
+        "200":
+          description: Household settings updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [household]
+                properties:
+                  household: { $ref: "#/components/schemas/Household" }
+        "403":
+          description: Caller is not owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/members:
     get:
       summary: List household members
@@ -310,6 +367,86 @@ paths:
                     items: { $ref: "#/components/schemas/Member" }
         "404":
           description: Not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/members/{membershipId}:
+    patch:
+      summary: Update household member role
+      description: Owners can update non-self member roles; admins can manage regular members and viewers.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: membershipId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMemberRoleRequest" }
+      responses:
+        "200":
+          description: Member role updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [membership]
+                properties:
+                  membership: { $ref: "#/components/schemas/Member" }
+        "400":
+          description: Invalid role change, self-mutation, or last-owner guard
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller cannot manage the target member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Member not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      summary: Remove household member
+      description: Owners can remove non-self members; admins can remove regular members and viewers.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: membershipId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [membership]
+                properties:
+                  membership: { $ref: "#/components/schemas/Member" }
+        "400":
+          description: Self-removal or last-owner guard
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller cannot manage the target member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Member not found or inaccessible household
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

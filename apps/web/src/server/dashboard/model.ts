@@ -22,6 +22,7 @@ export async function getDashboardModel() {
       upcomingTaskCount: 0,
       auditItems: [],
       canInviteMembers: false,
+      canManageMembers: false,
     };
   }
 
@@ -80,5 +81,6 @@ export async function getDashboardModel() {
     upcomingTaskCount,
     auditItems,
     canInviteMembers: canManageMembers(activeMembership.role),
+    canManageMembers: canManageMembers(activeMembership.role),
   };
 }

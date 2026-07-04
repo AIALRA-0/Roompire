@@ -1,11 +1,15 @@
 import { createHash, randomBytes } from "node:crypto";
-import { FxPolicy, type Prisma, type Role } from "@prisma/client";
+import { FxPolicy, Role, type Prisma } from "@prisma/client";
 import { z } from "zod";
 import categoriesSeed from "../../../../../seed-data/initial_categories.json";
 import { ApiError, validationError } from "@/server/api/errors";
 import { normalizeEmail } from "@/server/auth/session";
 import { prisma } from "@/server/db/prisma";
-import { requireActiveMembership, requireMemberManager } from "@/server/permissions/rbac";
+import {
+  requireActiveMembership,
+  requireHouseholdSettingsManager,
+  requireMemberManager,
+} from "@/server/permissions/rbac";
 
 const categorySeeds = categoriesSeed as Array<{
   key: string;
@@ -26,6 +30,23 @@ export const createHouseholdSchema = z.object({
   defaultLocale: z.enum(["en-US", "zh-CN"]).default("en-US"),
 });
 
+export const updateHouseholdSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  timezone: z.string().trim().min(2).max(80),
+  settlementCurrency: z
+    .string()
+    .trim()
+    .regex(/^[A-Z]{3}$/),
+  defaultLocale: z.enum(["en-US", "zh-CN"]),
+  fxPolicy: z.enum([
+    "LOCK_AT_EXPENSE_DATE",
+    "ORIGINAL_CURRENCY_DEBT",
+    "MANUAL_RATE_WITH_APPROVAL",
+    "FX_DIFFERENCE_ADJUSTMENT",
+  ]),
+  approvalPolicy: z.enum(["PAYER_AND_EACH_DEBTOR", "ALL_PARTICIPANTS", "PAYER_ONLY"]),
+});
+
 export const createInviteSchema = z.object({
   email: z.string().trim().email().optional(),
   role: z.enum(["ADMIN", "MEMBER", "VIEWER"]).default("MEMBER"),
@@ -33,6 +54,10 @@ export const createInviteSchema = z.object({
 
 export const acceptInviteSchema = z.object({
   token: z.string().trim().min(20),
+});
+
+export const updateMemberSchema = z.object({
+  role: z.enum(["ADMIN", "MEMBER", "VIEWER"]),
 });
 
 function slugBase(name: string) {
@@ -142,6 +167,67 @@ export async function createHouseholdForUser(userId: string, input: unknown) {
   });
 }
 
+export async function updateHouseholdForUser(userId: string, householdId: string, input: unknown) {
+  await requireHouseholdSettingsManager(userId, householdId);
+  const parsed = updateHouseholdSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Household settings input is invalid.", parsed.error.flatten());
+  }
+
+  const previous = await prisma.household.findUnique({
+    where: { id: householdId },
+  });
+
+  if (!previous) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  const data = parsed.data;
+
+  return prisma.$transaction(async (tx) => {
+    const household = await tx.household.update({
+      where: { id: householdId },
+      data: {
+        name: data.name,
+        timezone: data.timezone,
+        settlementCurrency: data.settlementCurrency,
+        defaultLocale: data.defaultLocale,
+        fxPolicy: data.fxPolicy,
+        approvalPolicy: data.approvalPolicy,
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "household.settings_updated",
+        entityType: "Household",
+        entityId: householdId,
+        before: {
+          name: previous.name,
+          timezone: previous.timezone,
+          settlementCurrency: previous.settlementCurrency,
+          defaultLocale: previous.defaultLocale,
+          fxPolicy: previous.fxPolicy,
+          approvalPolicy: previous.approvalPolicy,
+        },
+        after: {
+          name: household.name,
+          timezone: household.timezone,
+          settlementCurrency: household.settlementCurrency,
+          defaultLocale: household.defaultLocale,
+          fxPolicy: household.fxPolicy,
+          approvalPolicy: household.approvalPolicy,
+        },
+      },
+    });
+
+    return household;
+  });
+}
+
 export async function listMembersForHousehold(userId: string, householdId: string) {
   await requireActiveMembership(userId, householdId);
 
@@ -154,6 +240,161 @@ export async function listMembersForHousehold(userId: string, householdId: strin
       user: true,
     },
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+  });
+}
+
+async function assertCanMutateTargetMember(input: {
+  actorUserId: string;
+  actorRole: Role;
+  householdId: string;
+  targetMembershipId: string;
+  nextRole?: Role;
+  operation: "update" | "remove";
+}) {
+  const target = await prisma.householdMembership.findFirst({
+    where: {
+      id: input.targetMembershipId,
+      householdId: input.householdId,
+      status: "ACTIVE",
+    },
+    include: { user: true },
+  });
+
+  if (!target) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  if (target.userId === input.actorUserId) {
+    throw new ApiError(
+      400,
+      "SELF_MEMBER_MUTATION_FORBIDDEN",
+      "You cannot change your own role or remove yourself.",
+    );
+  }
+
+  if (input.actorRole === Role.ADMIN) {
+    if (target.role === Role.OWNER || target.role === Role.ADMIN || input.nextRole === Role.ADMIN) {
+      throw new ApiError(403, "FORBIDDEN", "Admins can manage regular members and viewers only.", {
+        actorRole: input.actorRole,
+        targetRole: target.role,
+        nextRole: input.nextRole,
+      });
+    }
+  }
+
+  if (target.role === Role.OWNER) {
+    const ownerCount = await prisma.householdMembership.count({
+      where: {
+        householdId: input.householdId,
+        status: "ACTIVE",
+        role: Role.OWNER,
+      },
+    });
+
+    if (ownerCount <= 1 && (input.operation === "remove" || input.nextRole !== Role.OWNER)) {
+      throw new ApiError(400, "LAST_OWNER_FORBIDDEN", "A household must keep at least one owner.");
+    }
+  }
+
+  return target;
+}
+
+export async function updateMemberRoleForHousehold(
+  userId: string,
+  householdId: string,
+  membershipId: string,
+  input: unknown,
+) {
+  const actor = await requireMemberManager(userId, householdId);
+  const parsed = updateMemberSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Member role input is invalid.", parsed.error.flatten());
+  }
+
+  const nextRole = parsed.data.role as Role;
+  const target = await assertCanMutateTargetMember({
+    actorUserId: userId,
+    actorRole: actor.role,
+    householdId,
+    targetMembershipId: membershipId,
+    nextRole,
+    operation: "update",
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const membership = await tx.householdMembership.update({
+      where: { id: membershipId },
+      data: { role: nextRole },
+      include: { user: true },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "household_member.role_updated",
+        entityType: "HouseholdMembership",
+        entityId: membership.id,
+        before: {
+          role: target.role,
+          userId: target.userId,
+        },
+        after: {
+          role: membership.role,
+          userId: membership.userId,
+        },
+      },
+    });
+
+    return membership;
+  });
+}
+
+export async function removeMemberFromHousehold(
+  userId: string,
+  householdId: string,
+  membershipId: string,
+) {
+  const actor = await requireMemberManager(userId, householdId);
+  const target = await assertCanMutateTargetMember({
+    actorUserId: userId,
+    actorRole: actor.role,
+    householdId,
+    targetMembershipId: membershipId,
+    operation: "remove",
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const membership = await tx.householdMembership.update({
+      where: { id: membershipId },
+      data: {
+        status: "REMOVED",
+      },
+      include: { user: true },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "household_member.removed",
+        entityType: "HouseholdMembership",
+        entityId: membership.id,
+        before: {
+          role: target.role,
+          status: target.status,
+          userId: target.userId,
+        },
+        after: {
+          role: membership.role,
+          status: membership.status,
+          userId: membership.userId,
+        },
+      },
+    });
+
+    return membership;
   });
 }
 
@@ -200,6 +441,47 @@ export async function createInviteForHousehold(
   });
 
   return { invite, token };
+}
+
+export async function getInvitePreviewForUser(userId: string, token: string) {
+  const tokenHash = hashInviteToken(token);
+  const invite = await prisma.householdInvite.findUnique({
+    where: { tokenHash },
+  });
+
+  if (!invite || invite.acceptedAt || invite.expiresAt.getTime() < Date.now()) {
+    return {
+      invite: null,
+      existingMembership: null,
+    };
+  }
+
+  const household = await prisma.household.findUnique({
+    where: { id: invite.householdId },
+  });
+
+  if (!household) {
+    return {
+      invite: null,
+      existingMembership: null,
+    };
+  }
+
+  const existingMembership = await prisma.householdMembership.findFirst({
+    where: {
+      householdId: invite.householdId,
+      userId,
+      status: "ACTIVE",
+    },
+  });
+
+  return {
+    invite: {
+      ...invite,
+      household,
+    },
+    existingMembership,
+  };
 }
 
 export async function acceptInviteForUser(userId: string, input: unknown) {

@@ -7,6 +7,14 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
+type DefaultLocale = "en-US" | "zh-CN";
+type FxPolicy =
+  | "LOCK_AT_EXPENSE_DATE"
+  | "ORIGINAL_CURRENCY_DEBT"
+  | "MANUAL_RATE_WITH_APPROVAL"
+  | "FX_DIFFERENCE_ADJUSTMENT";
+type ApprovalPolicy = "PAYER_AND_EACH_DEBTOR" | "ALL_PARTICIPANTS" | "PAYER_ONLY";
+type JsonMethod = "POST" | "PATCH" | "DELETE";
 
 type HouseholdSummary = {
   id: string;
@@ -14,10 +22,14 @@ type HouseholdSummary = {
   role: Role;
   timezone: string;
   settlementCurrency: string;
+  defaultLocale: DefaultLocale;
+  fxPolicy: FxPolicy;
+  approvalPolicy: ApprovalPolicy;
 };
 
 type MemberSummary = {
   id: string;
+  userId: string;
   displayName: string;
   email: string;
   role: Role;
@@ -40,6 +52,20 @@ type IdentityLabels = {
   householdName: string;
   timezone: string;
   settlementCurrency: string;
+  defaultLocale: string;
+  fxPolicy: string;
+  approvalPolicy: string;
+  approvalEachDebtor: string;
+  approvalAllParticipants: string;
+  approvalPayerOnly: string;
+  fxLockExpenseDate: string;
+  fxOriginalCurrency: string;
+  fxManualApproval: string;
+  fxDifferenceAdjustment: string;
+  householdSettings: string;
+  householdSettingsHint: string;
+  saveSettings: string;
+  settingsSaved: string;
   createHouseholdButton: string;
   householdCreated: string;
   householdList: string;
@@ -53,6 +79,7 @@ type IdentityLabels = {
   createInvite: string;
   inviteCreated: string;
   inviteCode: string;
+  inviteLink: string;
   acceptInvite: string;
   acceptInviteHint: string;
   inviteToken: string;
@@ -60,11 +87,19 @@ type IdentityLabels = {
   inviteAccepted: string;
   noHousehold: string;
   openMembers: string;
+  updateRole: string;
+  roleUpdated: string;
+  removeMember: string;
+  memberRemoved: string;
+  memberManagement: string;
+  memberManagementHint: string;
   cannotInvite: string;
+  cannotManageMembers: string;
   apiBoundary: string;
   apiBoundaryHint: string;
   errorFallback: string;
   working: string;
+  locales: Record<DefaultLocale, string>;
   roles: Record<Role, string>;
 };
 
@@ -73,6 +108,7 @@ type IdentityWorkspaceProps = {
   currentUserEmail: string;
   activeHouseholdId: string | null;
   canInviteMembers: boolean;
+  canManageMembers: boolean;
   households: HouseholdSummary[];
   members: MemberSummary[];
   devUsers: DevUser[];
@@ -85,19 +121,31 @@ type ApiErrorPayload = {
   };
 };
 
-async function submitJson<T>(url: string, body: unknown, errorFallback: string): Promise<T> {
-  const response = await fetch(url, {
-    method: "POST",
+async function submitJson<T>(
+  url: string,
+  body: unknown,
+  errorFallback: string,
+  method: JsonMethod = "POST",
+): Promise<T> {
+  const requestInit: RequestInit = {
+    method,
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
-  });
-  const payload: unknown = await response.json();
+  };
+
+  if (body !== undefined) {
+    requestInit.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(url, requestInit);
+  const isJson = response.headers.get("content-type")?.includes("application/json");
+  const payload: unknown = isJson ? await response.json() : null;
 
   if (!response.ok) {
-    const errorPayload = payload as ApiErrorPayload;
-    throw new Error(errorPayload.error?.message ?? errorFallback);
+    const errorPayload =
+      payload && typeof payload === "object" ? (payload as ApiErrorPayload) : null;
+    throw new Error(errorPayload?.error?.message ?? errorFallback);
   }
 
   return payload as T;
@@ -134,11 +182,43 @@ function roleBadgeVariant(role: Role) {
   return "warning" as const;
 }
 
+function roleInputOptions(labels: IdentityLabels, currentRole: Role) {
+  const options: Array<{ value: Role; label: string; disabled?: boolean }> = [
+    { value: "ADMIN", label: labels.roles.ADMIN },
+    { value: "MEMBER", label: labels.roles.MEMBER },
+    { value: "VIEWER", label: labels.roles.VIEWER },
+  ];
+
+  if (currentRole === "OWNER") {
+    return [{ value: "OWNER", label: labels.roles.OWNER, disabled: true }, ...options];
+  }
+
+  return options;
+}
+
+function fxPolicyOptions(labels: IdentityLabels) {
+  return [
+    { value: "LOCK_AT_EXPENSE_DATE", label: labels.fxLockExpenseDate },
+    { value: "ORIGINAL_CURRENCY_DEBT", label: labels.fxOriginalCurrency },
+    { value: "MANUAL_RATE_WITH_APPROVAL", label: labels.fxManualApproval },
+    { value: "FX_DIFFERENCE_ADJUSTMENT", label: labels.fxDifferenceAdjustment },
+  ] satisfies Array<{ value: FxPolicy; label: string }>;
+}
+
+function approvalPolicyOptions(labels: IdentityLabels) {
+  return [
+    { value: "PAYER_AND_EACH_DEBTOR", label: labels.approvalEachDebtor },
+    { value: "ALL_PARTICIPANTS", label: labels.approvalAllParticipants },
+    { value: "PAYER_ONLY", label: labels.approvalPayerOnly },
+  ] satisfies Array<{ value: ApprovalPolicy; label: string }>;
+}
+
 export function IdentityWorkspace({
   locale,
   currentUserEmail,
   activeHouseholdId,
   canInviteMembers,
+  canManageMembers,
   households,
   members,
   devUsers,
@@ -148,9 +228,23 @@ export function IdentityWorkspace({
   const [isPending, startTransition] = useTransition();
   const [devEmail, setDevEmail] = useState(currentUserEmail);
   const [createMessage, setCreateMessage] = useState<string | null>(null);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [memberMessage, setMemberMessage] = useState<string | null>(null);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [acceptMessage, setAcceptMessage] = useState<string | null>(null);
+  const activeHousehold =
+    households.find((household) => household.id === activeHouseholdId) ?? null;
+  const inviteHref = inviteToken ? `/${locale}/invite/${inviteToken}` : null;
+  const settingsDisabled = !activeHouseholdId || !activeHousehold || !canManageMembers;
+
+  function clearActionMessages() {
+    setCreateMessage(null);
+    setSettingsMessage(null);
+    setMemberMessage(null);
+    setInviteMessage(null);
+    setAcceptMessage(null);
+  }
 
   function refreshAfter(messageSetter: (message: string) => void, message: string) {
     messageSetter(message);
@@ -159,9 +253,7 @@ export function IdentityWorkspace({
 
   async function onSwitchDevUser(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setCreateMessage(null);
-    setInviteMessage(null);
-    setAcceptMessage(null);
+    clearActionMessages();
 
     const selectedUser = devUsers.find((user) => user.email === devEmail);
 
@@ -189,7 +281,7 @@ export function IdentityWorkspace({
         {
           name: String(formData.get("name") ?? ""),
           timezone: String(formData.get("timezone") ?? ""),
-          settlementCurrency: String(formData.get("settlementCurrency") ?? ""),
+          settlementCurrency: String(formData.get("settlementCurrency") ?? "").toUpperCase(),
         },
         labels.errorFallback,
       );
@@ -197,6 +289,84 @@ export function IdentityWorkspace({
       refreshAfter(setCreateMessage, labels.householdCreated);
     } catch (error) {
       setCreateMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onUpdateHouseholdSettings(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSettingsMessage(null);
+
+    if (!activeHouseholdId) {
+      setSettingsMessage(labels.noHousehold);
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}`,
+        {
+          name: String(formData.get("name") ?? ""),
+          timezone: String(formData.get("timezone") ?? ""),
+          settlementCurrency: String(formData.get("settlementCurrency") ?? "").toUpperCase(),
+          defaultLocale: String(formData.get("defaultLocale") ?? "en-US"),
+          fxPolicy: String(formData.get("fxPolicy") ?? "LOCK_AT_EXPENSE_DATE"),
+          approvalPolicy: String(formData.get("approvalPolicy") ?? "PAYER_AND_EACH_DEBTOR"),
+        },
+        labels.errorFallback,
+        "PATCH",
+      );
+      refreshAfter(setSettingsMessage, labels.settingsSaved);
+    } catch (error) {
+      setSettingsMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onUpdateMemberRole(event: React.FormEvent<HTMLFormElement>, membershipId: string) {
+    event.preventDefault();
+    setMemberMessage(null);
+
+    if (!activeHouseholdId) {
+      setMemberMessage(labels.noHousehold);
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}/members/${membershipId}`,
+        {
+          role: String(formData.get("role") ?? "MEMBER"),
+        },
+        labels.errorFallback,
+        "PATCH",
+      );
+      refreshAfter(setMemberMessage, labels.roleUpdated);
+    } catch (error) {
+      setMemberMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onRemoveMember(membershipId: string) {
+    setMemberMessage(null);
+
+    if (!activeHouseholdId) {
+      setMemberMessage(labels.noHousehold);
+      return;
+    }
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}/members/${membershipId}`,
+        undefined,
+        labels.errorFallback,
+        "DELETE",
+      );
+      refreshAfter(setMemberMessage, labels.memberRemoved);
+    } catch (error) {
+      setMemberMessage(error instanceof Error ? error.message : labels.errorFallback);
     }
   }
 
@@ -289,7 +459,8 @@ export function IdentityWorkspace({
                       </Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {household.timezone} · {household.settlementCurrency}
+                      {household.timezone} · {household.settlementCurrency} ·{" "}
+                      {labels.locales[household.defaultLocale]}
                     </p>
                   </div>
                   <Button asChild size="sm" variant="outline">
@@ -303,20 +474,190 @@ export function IdentityWorkspace({
           </div>
         </div>
 
+        <form
+          className="rounded-lg border border-border bg-card p-5"
+          data-testid="household-settings-form"
+          onSubmit={onUpdateHouseholdSettings}
+        >
+          <h2 className="text-lg font-semibold">{labels.householdSettings}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{labels.householdSettingsHint}</p>
+          {!canManageMembers ? (
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {labels.cannotManageMembers}
+            </p>
+          ) : null}
+
+          <div className="mt-4 grid gap-3">
+            <Field label={labels.householdName}>
+              <input
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                data-testid="settings-household-name"
+                defaultValue={activeHousehold?.name ?? ""}
+                disabled={settingsDisabled}
+                name="name"
+                required
+              />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.timezone}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="settings-household-timezone"
+                  defaultValue={activeHousehold?.timezone ?? "America/Los_Angeles"}
+                  disabled={settingsDisabled}
+                  name="timezone"
+                  required
+                />
+              </Field>
+              <Field label={labels.settlementCurrency}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
+                  data-testid="settings-household-currency"
+                  defaultValue={activeHousehold?.settlementCurrency ?? "CNY"}
+                  disabled={settingsDisabled}
+                  maxLength={3}
+                  minLength={3}
+                  name="settlementCurrency"
+                  required
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.defaultLocale}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="settings-household-locale"
+                  defaultValue={activeHousehold?.defaultLocale ?? "en-US"}
+                  disabled={settingsDisabled}
+                  name="defaultLocale"
+                >
+                  <option value="en-US">{labels.locales["en-US"]}</option>
+                  <option value="zh-CN">{labels.locales["zh-CN"]}</option>
+                </select>
+              </Field>
+              <Field label={labels.fxPolicy}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="settings-household-fx-policy"
+                  defaultValue={activeHousehold?.fxPolicy ?? "LOCK_AT_EXPENSE_DATE"}
+                  disabled={settingsDisabled}
+                  name="fxPolicy"
+                >
+                  {fxPolicyOptions(labels).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label={labels.approvalPolicy}>
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                data-testid="settings-household-approval-policy"
+                defaultValue={activeHousehold?.approvalPolicy ?? "PAYER_AND_EACH_DEBTOR"}
+                disabled={settingsDisabled}
+                name="approvalPolicy"
+              >
+                {approvalPolicyOptions(labels).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Button disabled={isPending || settingsDisabled} type="submit">
+              {isPending ? labels.working : labels.saveSettings}
+            </Button>
+            {settingsMessage ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                {settingsMessage}
+              </p>
+            ) : null}
+          </div>
+        </form>
+
         <div className="rounded-lg border border-border bg-card p-5">
           <h2 className="text-lg font-semibold">{labels.memberDirectory}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{labels.memberDirectoryHint}</p>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium">{labels.memberManagement}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{labels.memberManagementHint}</p>
+            </div>
+            <Badge variant={canManageMembers ? "success" : "neutral"}>
+              {canManageMembers ? labels.roles.ADMIN : labels.roles.VIEWER}
+            </Badge>
+          </div>
+          {!canManageMembers ? (
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {labels.cannotManageMembers}
+            </p>
+          ) : null}
 
-          <div className="mt-5 divide-y divide-border">
-            {members.map((member) => (
-              <div className="flex items-center justify-between gap-3 py-3" key={member.id}>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{member.displayName}</p>
-                  <p className="truncate text-xs text-muted-foreground">{member.email}</p>
-                </div>
-                <Badge variant={roleBadgeVariant(member.role)}>{labels.roles[member.role]}</Badge>
-              </div>
-            ))}
+          {memberMessage ? (
+            <p className="mt-4 text-sm text-muted-foreground" role="status">
+              {memberMessage}
+            </p>
+          ) : null}
+
+          <div className="mt-5 grid gap-3">
+            {members.map((member) => {
+              const isSelf = member.email === currentUserEmail;
+              const isOwner = member.role === "OWNER";
+              const canEditMember = canManageMembers && !isSelf && !isOwner;
+
+              return (
+                <form
+                  className="grid gap-3 rounded-lg border border-border bg-background p-4"
+                  data-testid={`member-row-${member.email}`}
+                  key={member.id}
+                  onSubmit={(event) => onUpdateMemberRole(event, member.id)}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{member.displayName}</p>
+                      <p className="truncate text-xs text-muted-foreground">{member.email}</p>
+                    </div>
+                    <Badge variant={roleBadgeVariant(member.role)}>
+                      {labels.roles[member.role]}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                    <select
+                      aria-label={`${labels.updateRole} ${member.displayName}`}
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      defaultValue={member.role}
+                      disabled={!canEditMember}
+                      name="role"
+                    >
+                      {roleInputOptions(labels, member.role).map((option) => (
+                        <option disabled={option.disabled} key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      data-testid={`member-update-${member.email}`}
+                      disabled={isPending || !canEditMember}
+                      type="submit"
+                      variant="outline"
+                    >
+                      {isPending ? labels.working : labels.updateRole}
+                    </Button>
+                    <Button
+                      data-testid={`member-remove-${member.email}`}
+                      disabled={isPending || !canEditMember}
+                      onClick={() => onRemoveMember(member.id)}
+                      type="button"
+                      variant="outline"
+                    >
+                      {isPending ? labels.working : labels.removeMember}
+                    </Button>
+                  </div>
+                </form>
+              );
+            })}
             {members.length === 0 ? (
               <div className="py-6 text-sm text-muted-foreground">{labels.noHousehold}</div>
             ) : null}
@@ -349,13 +690,18 @@ export function IdentityWorkspace({
           </div>
         </form>
 
-        <form className="rounded-lg border border-border bg-card p-5" onSubmit={onCreateHousehold}>
+        <form
+          className="rounded-lg border border-border bg-card p-5"
+          data-testid="create-household-form"
+          onSubmit={onCreateHousehold}
+        >
           <h2 className="text-lg font-semibold">{labels.createHousehold}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{labels.createHouseholdHint}</p>
           <div className="mt-4 grid gap-3">
             <Field label={labels.householdName}>
               <input
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                data-testid="create-household-name"
                 name="name"
                 required
               />
@@ -364,6 +710,7 @@ export function IdentityWorkspace({
               <Field label={labels.timezone}>
                 <input
                   className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="create-household-timezone"
                   defaultValue="America/Los_Angeles"
                   name="timezone"
                   required
@@ -372,6 +719,7 @@ export function IdentityWorkspace({
               <Field label={labels.settlementCurrency}>
                 <input
                   className="h-10 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
+                  data-testid="create-household-currency"
                   defaultValue="CNY"
                   maxLength={3}
                   minLength={3}
@@ -435,6 +783,18 @@ export function IdentityWorkspace({
                 >
                   {inviteToken}
                 </code>
+                {inviteHref ? (
+                  <div className="mt-3 border-t border-border pt-3">
+                    <p className="font-medium">{labels.inviteLink}</p>
+                    <a
+                      className="focus-ring mt-2 block break-all rounded-sm text-muted-foreground underline underline-offset-4"
+                      data-testid="invite-link"
+                      href={inviteHref}
+                    >
+                      {inviteHref}
+                    </a>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
