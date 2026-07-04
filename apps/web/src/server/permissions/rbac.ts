@@ -5,6 +5,7 @@ import { prisma } from "@/server/db/prisma";
 const memberRoles = new Set<Role>(["OWNER", "ADMIN", "MEMBER", "VIEWER"]);
 const memberManagerRoles = new Set<Role>(["OWNER", "ADMIN"]);
 const expenseCreatorRoles = new Set<Role>(["OWNER", "ADMIN", "MEMBER"]);
+const ledgerCorrectorRoles = new Set<Role>(["OWNER", "ADMIN"]);
 
 export function canViewHousehold(role: Role) {
   return memberRoles.has(role);
@@ -20,6 +21,10 @@ export function canUpdateHouseholdSettings(role: Role) {
 
 export function canCreateExpenseProposal(role: Role) {
   return expenseCreatorRoles.has(role);
+}
+
+export function canCorrectLedger(role: Role) {
+  return ledgerCorrectorRoles.has(role);
 }
 
 export async function getActiveMembership(userId: string, householdId: string) {
@@ -78,6 +83,23 @@ export async function requireExpenseProposalCreator(userId: string, householdId:
       403,
       "FORBIDDEN",
       "Only household owners, admins, and members can create expense proposals.",
+      {
+        role: membership.role,
+      },
+    );
+  }
+
+  return membership;
+}
+
+export async function requireLedgerCorrector(userId: string, householdId: string) {
+  const membership = await requireActiveMembership(userId, householdId);
+
+  if (!canCorrectLedger(membership.role)) {
+    throw new ApiError(
+      403,
+      "FORBIDDEN",
+      "Only household owners and admins can correct ledger entries.",
       {
         role: membership.role,
       },

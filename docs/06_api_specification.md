@@ -169,6 +169,33 @@ Mutation headers:
 }
 ```
 
+### Create ledger adjustment
+
+```json
+{
+  "debtorUserId": "bob",
+  "creditorUserId": "alice",
+  "amount": "15.00",
+  "currency": "CNY",
+  "occurredAt": "2026-07-08",
+  "dueDate": "2026-07-15",
+  "reason": "Utility correction."
+}
+```
+
+Current implementation allows only household owners and admins to create adjustment obligations.
+
+### Reverse obligation
+
+```json
+{
+  "reason": "Duplicate approved share.",
+  "occurredAt": "2026-07-08"
+}
+```
+
+Current implementation allows only household owners and admins to reverse open obligations with no confirmed settlement allocations. The original ledger transaction remains in history; a `REVERSAL` transaction references it and the obligation is excluded from balances.
+
 ### Record settlement
 
 ```json

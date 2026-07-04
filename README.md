@@ -46,8 +46,9 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Read-only formal ledger APIs expose balances, obligations, and transactions derived from `DebtObligation` and settlement allocations.
 - Settlement APIs let debtors submit payments against open obligations; creditor confirmation creates settlement allocations and reduces remaining balances.
 - Settlement create/confirm/reject mutations persist `Idempotency-Key` records with replay/conflict behavior.
+- Owner/admin ledger correction APIs support manual adjustments and reversal of unallocated open obligations with append-only ledger transactions.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current list/create/detail proposal, share approve/reject idempotency, balance, obligation, ledger transaction, and settlement endpoints.
+- OpenAPI covers the current list/create/detail proposal, share approve/reject idempotency, balance, obligation, ledger transaction, settlement, and ledger correction endpoints.
 
 ## Development
 
@@ -125,7 +126,7 @@ Because Phase 1 routes read PostgreSQL, run `docker compose up -d postgres redis
 - Submitted expense is a proposal, not formal debt.
 - Pending and rejected shares do not affect formal balances.
 - Each debtor approves or rejects only their own share.
-- Formal ledger is append-only; corrections use reversal or adjustment.
+- Formal ledger is append-only; owner/admin corrections use reversal or adjustment.
 - Money uses decimal arithmetic, never JavaScript floating point.
 - FX default policy is `LOCK_AT_EXPENSE_DATE`.
 - zh-CN and en-US ship from MVP.

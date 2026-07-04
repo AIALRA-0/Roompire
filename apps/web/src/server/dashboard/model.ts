@@ -6,7 +6,11 @@ import {
   listExpenseProposalsForHousehold,
 } from "@/server/expenses/service";
 import { listHouseholdsForUser } from "@/server/households/service";
-import { canCreateExpenseProposal, canManageMembers } from "@/server/permissions/rbac";
+import {
+  canCorrectLedger,
+  canCreateExpenseProposal,
+  canManageMembers,
+} from "@/server/permissions/rbac";
 
 export async function getDashboardModel() {
   const user = await requirePageUser();
@@ -31,6 +35,7 @@ export async function getDashboardModel() {
       canInviteMembers: false,
       canManageMembers: false,
       canCreateExpenseProposals: false,
+      canCorrectLedger: false,
     };
   }
 
@@ -114,5 +119,6 @@ export async function getDashboardModel() {
     canInviteMembers: canManageMembers(activeMembership.role),
     canManageMembers: canManageMembers(activeMembership.role),
     canCreateExpenseProposals: canCreateExpenseProposal(activeMembership.role),
+    canCorrectLedger: canCorrectLedger(activeMembership.role),
   };
 }

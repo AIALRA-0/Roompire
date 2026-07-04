@@ -264,6 +264,55 @@ async function clickSettlementConfirmWithRetry(page: Page, settlementId: string)
   throw new Error(`POST settlement confirm failed with status ${lastStatus}`);
 }
 
+async function clickLedgerAdjustmentSubmitWithRetry(page: Page) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/ledger/adjustments") && response.request().method() === "POST",
+    );
+
+    await page.getByTestId("ledger-adjustment-submit").click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Adjustment created")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`POST ledger adjustment failed with status ${lastStatus}`);
+}
+
+async function clickLedgerReversalSubmitWithRetry(page: Page, obligationId: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/ledger/obligations/${obligationId}/reverse`) &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByTestId(`ledger-reversal-submit-${obligationId}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Obligation reversed")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`POST ledger reversal failed with status ${lastStatus}`);
+}
+
 function parseProposalDetailUrl(url: string) {
   const parsed = new URL(url);
   const match = parsed.pathname.match(/\/households\/([^/]+)\/expenses\/proposals\/([^/]+)/);
@@ -994,6 +1043,210 @@ test.describe("Roompire real browser smoke", () => {
       },
     );
     expect(confirmSettlementConflictResponse.status()).toBe(409);
+
+    await page.goto("/en-US/app/ledger");
+    await page.getByTestId("ledger-adjustment-debtor").selectOption(approvedShare!.debtorUserId);
+    await page
+      .getByTestId("ledger-adjustment-creditor")
+      .selectOption(approvedShare!.creditorUserId);
+    await page.getByTestId("ledger-adjustment-amount").fill("15");
+    await page.getByTestId("ledger-adjustment-currency").fill("CNY");
+    await page.getByTestId("ledger-adjustment-occurred").fill("2026-07-04");
+    await page.getByTestId("ledger-adjustment-reason").fill("Manual E2E correction");
+    await clickLedgerAdjustmentSubmitWithRetry(page);
+
+    const adjustmentBalancesResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/balances`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(adjustmentBalancesResponse.ok()).toBeTruthy();
+    const adjustmentBalancesPayload = (await adjustmentBalancesResponse.json()) as {
+      balances: Array<{ amount: string; currency: string }>;
+    };
+    expect(adjustmentBalancesPayload.balances).toEqual([
+      {
+        debtorUserId: approvedShare!.debtorUserId,
+        creditorUserId: approvedShare!.creditorUserId,
+        amount: "15",
+        currency: "CNY",
+        obligationCount: 1,
+      },
+    ]);
+
+    const adjustmentObligationsResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(adjustmentObligationsResponse.ok()).toBeTruthy();
+    const adjustmentObligationsPayload = (await adjustmentObligationsResponse.json()) as {
+      obligations: Array<{
+        id: string;
+        sourceShareId: string | null;
+        remainingAmount: string;
+        status: string;
+      }>;
+    };
+    const uiAdjustmentObligation = adjustmentObligationsPayload.obligations.find(
+      (obligation) =>
+        obligation.sourceShareId === null &&
+        obligation.remainingAmount === "15" &&
+        obligation.status === "OPEN",
+    );
+    expect(uiAdjustmentObligation).toBeTruthy();
+
+    await page
+      .getByTestId(`ledger-reversal-reason-${uiAdjustmentObligation!.id}`)
+      .fill("Reverse manual E2E correction");
+    await clickLedgerReversalSubmitWithRetry(page, uiAdjustmentObligation!.id);
+
+    const reversedBalancesResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/balances`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(reversedBalancesResponse.ok()).toBeTruthy();
+    const reversedBalancesPayload = (await reversedBalancesResponse.json()) as {
+      balances: unknown[];
+    };
+    expect(reversedBalancesPayload.balances).toEqual([]);
+
+    const adjustmentIdempotencyKey = `adjustment-idempotency-${Date.now()}`;
+    const adjustmentBody = {
+      debtorUserId: approvedShare!.debtorUserId,
+      creditorUserId: approvedShare!.creditorUserId,
+      amount: "5",
+      currency: "CNY",
+      occurredAt: "2026-07-04",
+      reason: "API adjustment replay",
+    };
+    const adjustmentResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/ledger/adjustments`,
+      {
+        data: adjustmentBody,
+        headers: {
+          "Idempotency-Key": adjustmentIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(adjustmentResponse.status()).toBe(201);
+    const adjustmentPayload = (await adjustmentResponse.json()) as {
+      transaction: { id: string; obligations: Array<{ id: string }> };
+    };
+    const apiAdjustmentObligationId = adjustmentPayload.transaction.obligations[0]?.id;
+    expect(apiAdjustmentObligationId).toBeTruthy();
+
+    const adjustmentReplayResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/ledger/adjustments`,
+      {
+        data: adjustmentBody,
+        headers: {
+          "Idempotency-Key": adjustmentIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(adjustmentReplayResponse.status()).toBe(201);
+    const adjustmentReplayPayload =
+      (await adjustmentReplayResponse.json()) as typeof adjustmentPayload;
+    expect(adjustmentReplayPayload.transaction.id).toBe(adjustmentPayload.transaction.id);
+
+    const adjustmentConflictResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/ledger/adjustments`,
+      {
+        data: {
+          ...adjustmentBody,
+          reason: "Changed adjustment reason",
+        },
+        headers: {
+          "Idempotency-Key": adjustmentIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(adjustmentConflictResponse.status()).toBe(409);
+
+    const reversalIdempotencyKey = `reversal-idempotency-${Date.now()}`;
+    const reversalBody = {
+      reason: "API reversal replay",
+      occurredAt: "2026-07-04",
+    };
+    const reversalResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/ledger/obligations/${apiAdjustmentObligationId}/reverse`,
+      {
+        data: reversalBody,
+        headers: {
+          "Idempotency-Key": reversalIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(reversalResponse.ok()).toBeTruthy();
+    const reversalPayload = (await reversalResponse.json()) as {
+      transaction: { id: string; type: string; reversesTransactionId: string | null };
+    };
+    expect(reversalPayload.transaction.type).toBe("REVERSAL");
+
+    const reversalReplayResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/ledger/obligations/${apiAdjustmentObligationId}/reverse`,
+      {
+        data: reversalBody,
+        headers: {
+          "Idempotency-Key": reversalIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(reversalReplayResponse.ok()).toBeTruthy();
+    const reversalReplayPayload = (await reversalReplayResponse.json()) as typeof reversalPayload;
+    expect(reversalReplayPayload.transaction.id).toBe(reversalPayload.transaction.id);
+
+    const reversalConflictResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/ledger/obligations/${apiAdjustmentObligationId}/reverse`,
+      {
+        data: {
+          ...reversalBody,
+          reason: "Changed reversal reason",
+        },
+        headers: {
+          "Idempotency-Key": reversalIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(reversalConflictResponse.status()).toBe(409);
+
+    const reversedAdjustmentResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(reversedAdjustmentResponse.ok()).toBeTruthy();
+    const reversedAdjustmentPayload = (await reversedAdjustmentResponse.json()) as {
+      obligations: Array<{ id: string; status: string; remainingAmount: string }>;
+    };
+    expect(
+      reversedAdjustmentPayload.obligations.find(
+        (obligation) => obligation.id === apiAdjustmentObligationId,
+      ),
+    ).toMatchObject({
+      status: "REVERSED",
+      remainingAmount: "0",
+    });
   });
 
   test("debtor rejects a submitted expense share without ledger impact", async ({

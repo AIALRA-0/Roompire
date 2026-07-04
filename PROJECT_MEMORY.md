@@ -30,17 +30,18 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Docker Compose defines Postgres 18 and Redis 8 with overrideable host ports.
 - Deterministic seed script creates `USC 3B2B`, Alice/Bob/Chen/Dana, 11 categories, one submitted grocery proposal, two pending shares, and one audit event.
 - Vitest covers decimal equal split behavior using `decimal.js`.
-- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, household settings update, owner invite code/link creation, non-member isolation before invite acceptance, invite code/link acceptance, member role update/removal, viewer invite denial, submitted expense proposal creation without formal ledger impact, debtor approval maturity, duplicate approval safety, formal ledger API/page visibility, debtor settlement submission, creditor settlement confirmation, persisted idempotency replay/conflict checks for proposal/approval/rejection/settlement mutations, and debtor rejection without ledger impact.
+- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, household settings update, owner invite code/link creation, non-member isolation before invite acceptance, invite code/link acceptance, member role update/removal, viewer invite denial, submitted expense proposal creation without formal ledger impact, debtor approval maturity, duplicate approval safety, formal ledger API/page visibility, debtor settlement submission, creditor settlement confirmation, owner/admin ledger adjustment creation, obligation reversal, persisted idempotency replay/conflict checks for proposal/approval/rejection/settlement/correction mutations, and debtor rejection without ledger impact.
 - Phase 1 identity/RBAC slice implemented on branch `feat/phase-1-identity-rbac`: dev session cookie, Prisma-backed session/household/member/invite APIs, household settings API, member role/removal API, RBAC helpers, database-backed dashboard, member directory page, tokenized invite page, localized identity management UI, and updated OpenAPI contract.
 - Phase 2 expense proposal creation slice implemented on branch `feat/expense-proposals`: dashboard proposal form, proposal queue, proposal detail page, list/create/detail proposal APIs, expense proposal service/serializers, RBAC creator guard, locked FX metadata, audit event emission, localized en-US/zh-CN copy, and updated OpenAPI contract.
 - Phase 2 approval/ledger slice implemented on branch `feat/expense-approvals-ledger`: debtor-only approve/reject share APIs, proposal detail share actions, approved-share maturity into append-only `LedgerTransaction` + `DebtObligation`, duplicate maturity guard through unique `sourceShareId`, formal balance list from open obligations, localized copy, OpenAPI updates, and real-browser E2E coverage.
 - Phase 2 ledger balances slice implemented on branch `feat/ledger-balances`: read-only `/balances`, `/ledger/obligations`, and `/ledger/transactions` APIs, formal ledger service/serializers, dedicated localized ledger page, dashboard navigation to the ledger page, OpenAPI updates, and real-browser E2E/API coverage.
 - Phase 2 idempotency slice implemented on branch `feat/idempotency-keys`: `IdempotencyRecord` schema/migration, persisted user/key request hashing and replayable responses, 409 conflicts for key reuse with changed endpoint/body, proposal create idempotency, share approve/reject idempotency, OpenAPI/docs updates, and real-browser E2E/API coverage.
 - Phase 2 settlements slice implemented on branch `feat/settlements`: debtor settlement submission, creditor confirmation/rejection, allocation rows that reduce `DebtObligation.remainingAmount`, localized ledger-page settlement workbench, settlement APIs with persisted idempotency, OpenAPI/docs updates, and real-browser E2E/API coverage.
+- Phase 2 ledger corrections slice implemented on branch `feat/ledger-corrections`: owner/admin manual adjustment API/UI, reversal API/UI for unallocated open obligations, append-only `ADJUSTMENT`/`REVERSAL` ledger transactions, persisted idempotency for correction mutations, OpenAPI/docs updates, and real-browser E2E/API coverage.
 
 ## Current phase
 
-Phase 2: expense proposals and formal ledger. Proposal creation plus debtor approval/rejection are implemented and verified locally. Current scope creates submitted proposals, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, lets debtors submit settlements against open obligations, lets creditors confirm or reject those settlements, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement APIs and page, and keeps rejected/pending proposals out of formal balances. Remaining Phase 2 work should add reversal/adjustment flows, settlement suggestions, broader split methods, and production auth/session semantics.
+Phase 2: expense proposals and formal ledger. Proposal creation plus debtor approval/rejection are implemented and verified locally. Current scope creates submitted proposals, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, lets debtors submit settlements against open obligations, lets creditors confirm or reject those settlements, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/correction APIs and page, and keeps rejected/pending proposals out of formal balances. Remaining Phase 2 work should add settlement suggestions, broader split methods, calendar/task workflows, and production auth/session semantics.
 
 ## Decisions log
 
@@ -60,6 +61,7 @@ Phase 2: expense proposals and formal ledger. Proposal creation plus debtor appr
 | 2026-07-04 | Treat payer submission as payer confirmation               | Proposal creation creates the primary payer record; debtor approval then satisfies the current maturity gate for that share.          |
 | 2026-07-04 | Persist idempotency per user and key                       | Duplicate-prone financial mutations must replay identical requests and reject key reuse with changed endpoint/body.                   |
 | 2026-07-04 | Require creditor confirmation before settlement allocation | A debtor-submitted payment should be auditable immediately but should not reduce formal balances until the creditor confirms receipt. |
+| 2026-07-04 | Restrict ledger corrections to owner/admin                 | Manual adjustments and reversals are high-trust audit actions and should not be available to ordinary members or viewers.             |
 
 ## Open questions for later human review
 
@@ -70,16 +72,26 @@ Phase 2: expense proposals and formal ledger. Proposal creation plus debtor appr
 
 ## Next recommended tasks
 
-1. Implement reversal/adjustment flows for append-only corrections.
-2. Add settlement suggestions and optional multi-obligation settlement allocation policy.
-3. Extend persisted idempotency to reversal/adjustment mutations as those endpoints are added.
-4. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
-5. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
-6. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
-7. Add exact, percentage, and share-unit split methods plus receipt upload/revision/comment flows.
+1. Add settlement suggestions and optional multi-obligation settlement allocation policy.
+2. Add calendar/task shell and link expenses, repayment deadlines, and household tasks.
+3. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
+4. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
+5. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
+6. Add exact, percentage, and share-unit split methods plus receipt upload/revision/comment flows.
 
 ## Last session verification
 
+- 2026-07-04 Phase 2 ledger corrections:
+  - `pnpm format:check` passed.
+  - `pnpm lint` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm test` passed: 2 test files, 5 tests.
+  - `pnpm build` passed with `/api/v1/households/[householdId]/ledger/adjustments` and `/ledger/obligations/[obligationId]/reverse` in the Next route manifest.
+  - `pnpm db:validate` passed.
+  - `pnpm db:migrate` passed with no pending migrations.
+  - `pnpm db:seed` passed.
+  - Targeted Playwright passed for the expanded approval/settlement/correction flow on Chromium desktop.
+  - `pnpm e2e` passed from a clean `.next` cache: 16 Playwright tests across Chromium desktop and mobile, including owner/admin adjustment creation, obligation reversal, confirmed settlement balance reduction, and correction idempotency replay/conflict assertions.
 - 2026-07-04 Phase 2 settlements:
   - `pnpm format:check` passed.
   - `pnpm lint` passed.

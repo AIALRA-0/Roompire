@@ -12,6 +12,7 @@ import {
 import { getTranslations } from "next-intl/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LedgerCorrectionActions } from "@/components/ledger-correction-actions";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { SettlementActions } from "@/components/settlement-actions";
 import type { Locale } from "@/i18n/routing";
@@ -79,6 +80,12 @@ export default async function LedgerPage({ params }: PageProps) {
   );
   const serializedTransactions = transactions.map(serializeLedgerTransaction);
   const serializedSettlements = settlements.map(serializeSettlement);
+  const memberSummaries = model.members.map((member) => ({
+    userId: member.userId,
+    displayName: member.displayNameOverride ?? member.user.displayName,
+    email: member.user.email,
+    role: member.role,
+  }));
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -201,6 +208,39 @@ export default async function LedgerPage({ params }: PageProps) {
                 memberNamesByUserId={memberNamesByUserIdRecord}
                 obligations={serializedObligations}
                 settlements={serializedSettlements}
+              />
+            ) : null}
+
+            {activeHouseholdId && model.activeHousehold ? (
+              <LedgerCorrectionActions
+                canCorrectLedger={model.canCorrectLedger}
+                householdId={activeHouseholdId}
+                labels={{
+                  corrections: ledger("corrections"),
+                  correctionsHint: ledger("correctionsHint"),
+                  manualAdjustment: ledger("manualAdjustment"),
+                  reverseObligation: ledger("reverseObligation"),
+                  debtor: ledger("debtor"),
+                  creditor: ledger("creditor"),
+                  amount: ledger("amount"),
+                  currency: ledger("currency"),
+                  occurred: ledger("occurred"),
+                  dueDate: ledger("dueDate"),
+                  reason: ledger("reason"),
+                  createAdjustment: ledger("createAdjustment"),
+                  reverse: ledger("reverse"),
+                  adjustmentCreated: ledger("adjustmentCreated"),
+                  obligationReversed: ledger("obligationReversed"),
+                  noReversibleObligations: ledger("noReversibleObligations"),
+                  cannotCorrectLedger: ledger("cannotCorrectLedger"),
+                  working: common("working"),
+                  errorFallback: ledger("correctionErrorFallback"),
+                  remaining: ledger("remaining"),
+                }}
+                memberNamesByUserId={memberNamesByUserIdRecord}
+                members={memberSummaries}
+                obligations={serializedObligations}
+                settlementCurrency={model.activeHousehold.settlementCurrency}
               />
             ) : null}
 
