@@ -143,7 +143,7 @@ Current implementation exposes read-only active-member statistics endpoints for 
 
 Current implementation exposes synchronous read-only export creation for active members. `POST /exports` accepts `dataset` (`expense_proposals`, `ledger_obligations`, `settlements`, `audit_events`, or `members`) plus `format` (`json` or `csv`), records an `export.created` audit event, and returns a signed short-lived `downloadUrl`. `GET /exports/{exportId}` verifies the signed ID and active membership before generating the selected JSON or CSV attachment.
 
-Current implementation also exposes `GET /households/{householdId}/audit-events` as a read-only active-member endpoint returning the latest household audit events with actor, action, entity, timestamp, and before/after/metadata JSON. The localized audit page uses the same service and keeps events scoped to the active household.
+Current implementation also exposes `GET /households/{householdId}/audit-events` as a read-only active-member endpoint returning household audit events with actor, action, entity, timestamp, and before/after/metadata JSON. Optional query parameters are `action`, `actorUserId`, `entityType`, `entityId`, `from`, `to`, and `limit` (1-100). The localized audit page uses the same service and keeps events scoped to the active household.
 
 ## Core request examples
 

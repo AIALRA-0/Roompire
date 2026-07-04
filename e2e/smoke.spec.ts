@@ -714,6 +714,24 @@ test.describe("Roompire real browser smoke", () => {
       }),
     );
 
+    const filteredAuditResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/audit-events?action=export.created&entityType=Export&limit=25`,
+    );
+    expect(filteredAuditResponse.ok()).toBeTruthy();
+    const filteredAuditPayload = (await filteredAuditResponse.json()) as {
+      events: Array<{ action: string; entityType: string }>;
+    };
+    expect(filteredAuditPayload.events.length).toBeGreaterThan(0);
+    expect(filteredAuditPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "export.created",
+          entityType: "Export",
+        }),
+      ]),
+    );
+
     await page.goto("/en-US/app");
     await expect(page.getByText("Pending proposals")).toBeVisible();
     await expect(page.getByTestId("dashboard-audit-link")).toHaveAttribute(
@@ -725,6 +743,13 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: "Audit trail" })).toBeVisible();
     await expect(page.getByTestId("audit-event-count")).toBeVisible();
     await expect(page.getByText("expense_proposal.seeded")).toBeVisible();
+
+    await page.goto("/en-US/app/audit?action=export.created&entityType=Export&limit=25");
+    await expect(page.getByTestId("audit-filter-form")).toBeVisible();
+    await expect(page.getByTestId("audit-filter-action")).toHaveValue("export.created");
+    await expect(page.getByTestId("audit-filter-entity-type")).toHaveValue("Export");
+    await expect(page.getByText("export.created").first()).toBeVisible();
+    await expect(page.getByText("Export").first()).toBeVisible();
   });
 
   test("mobile user sees zh-CN shell and protected-route failure state", async ({ page }) => {

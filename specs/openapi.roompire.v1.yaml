@@ -2660,12 +2660,37 @@ paths:
   /households/{householdId}/audit-events:
     get:
       summary: List audit events
-      description: Returns the latest immutable household audit events, ordered newest first.
+      description: Returns immutable household audit events, ordered newest first, with optional filters.
       parameters:
         - in: path
           name: householdId
           required: true
           schema: { type: string, format: uuid }
+        - in: query
+          name: action
+          schema: { type: string, maxLength: 120 }
+          description: Case-insensitive action substring filter.
+        - in: query
+          name: actorUserId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: entityType
+          schema: { type: string, maxLength: 80 }
+          description: Case-insensitive entity type substring filter.
+        - in: query
+          name: entityId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+          description: Inclusive lower occurred-at bound. ISO date-time is also accepted.
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+          description: Inclusive upper occurred-at bound. ISO date-time is also accepted.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         "200":
           description: OK

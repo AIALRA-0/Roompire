@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Home,
   ListChecks,
+  Search,
   ReceiptText,
   Settings,
   WalletCards,
@@ -22,6 +23,7 @@ import { getDashboardModel } from "@/server/dashboard/model";
 
 type PageProps = {
   params: Promise<{ locale: Locale }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 function jsonPreview(value: unknown) {
@@ -40,8 +42,13 @@ function actorName(memberNamesByUserId: Map<string, string>, actorUserId: string
   return memberNamesByUserId.get(actorUserId) ?? actorUserId;
 }
 
-export default async function AuditPage({ params }: PageProps) {
+function firstSearchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function AuditPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
+  const rawSearchParams = await searchParams;
   const nav = await getTranslations({ locale, namespace: "Nav" });
   const common = await getTranslations({ locale, namespace: "Common" });
   const identity = await getTranslations({ locale, namespace: "Identity" });
@@ -65,13 +72,25 @@ export default async function AuditPage({ params }: PageProps) {
       member.displayNameOverride ?? member.user.displayName,
     ]),
   );
+  const filters = {
+    action: firstSearchValue(rawSearchParams.action) ?? "",
+    actorUserId: firstSearchValue(rawSearchParams.actorUserId) ?? "",
+    entityId: firstSearchValue(rawSearchParams.entityId) ?? "",
+    entityType: firstSearchValue(rawSearchParams.entityType) ?? "",
+    from: firstSearchValue(rawSearchParams.from) ?? "",
+    to: firstSearchValue(rawSearchParams.to) ?? "",
+    limit: firstSearchValue(rawSearchParams.limit) ?? "50",
+  };
   const events = activeHouseholdId
-    ? (await listAuditEventsForHousehold(model.user.id, activeHouseholdId)).map(serializeAuditEvent)
+    ? (await listAuditEventsForHousehold(model.user.id, activeHouseholdId, filters)).map(
+        serializeAuditEvent,
+      )
     : [];
   const dateFormatter = new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   });
+  const limitOptions = ["25", "50", "100"];
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -157,6 +176,110 @@ export default async function AuditPage({ params }: PageProps) {
                 <p className="mt-1 text-2xl font-semibold">{events.length}</p>
               </div>
             </div>
+
+            <section
+              className="mb-6 rounded-lg border border-border bg-card"
+              data-testid="audit-filter-form"
+            >
+              <div className="border-b border-border p-5">
+                <h2 className="text-lg font-semibold">{audit("filters")}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{audit("filtersHint")}</p>
+              </div>
+              <form className="grid gap-4 p-5 lg:grid-cols-3" method="get">
+                <label className="grid gap-2 text-sm font-medium">
+                  {audit("filterAction")}
+                  <input
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    data-testid="audit-filter-action"
+                    defaultValue={filters.action}
+                    name="action"
+                    placeholder={audit("filterActionPlaceholder")}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  {audit("filterEntityType")}
+                  <input
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    data-testid="audit-filter-entity-type"
+                    defaultValue={filters.entityType}
+                    name="entityType"
+                    placeholder={audit("filterEntityTypePlaceholder")}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  {audit("filterActor")}
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    data-testid="audit-filter-actor"
+                    defaultValue={filters.actorUserId}
+                    name="actorUserId"
+                  >
+                    <option value="">{audit("filterAnyActor")}</option>
+                    {model.members.map((member) => (
+                      <option key={member.userId} value={member.userId}>
+                        {member.displayNameOverride ?? member.user.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  {audit("filterEntityId")}
+                  <input
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    data-testid="audit-filter-entity-id"
+                    defaultValue={filters.entityId}
+                    name="entityId"
+                    placeholder={audit("filterEntityIdPlaceholder")}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  {audit("filterFrom")}
+                  <input
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    data-testid="audit-filter-from"
+                    defaultValue={filters.from}
+                    name="from"
+                    type="date"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  {audit("filterTo")}
+                  <input
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    data-testid="audit-filter-to"
+                    defaultValue={filters.to}
+                    name="to"
+                    type="date"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  {audit("filterLimit")}
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    data-testid="audit-filter-limit"
+                    defaultValue={limitOptions.includes(filters.limit) ? filters.limit : "50"}
+                    name="limit"
+                  >
+                    {limitOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-end gap-2 lg:col-span-2">
+                  <Button data-testid="audit-filter-submit" type="submit">
+                    <Search aria-hidden="true" className="h-4 w-4" />
+                    {audit("applyFilters")}
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link data-testid="audit-filter-clear" href={`/${locale}/app/audit`}>
+                      {audit("clearFilters")}
+                    </Link>
+                  </Button>
+                </div>
+              </form>
+            </section>
 
             <section className="rounded-lg border border-border bg-card">
               <div className="border-b border-border p-5">
