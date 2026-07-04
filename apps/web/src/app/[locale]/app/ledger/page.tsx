@@ -21,11 +21,13 @@ import { getDashboardModel } from "@/server/dashboard/model";
 import {
   serializeBalanceEdge,
   serializeLedgerObligation,
+  serializeSettlementSuggestion,
   serializeLedgerTransaction,
 } from "@/server/ledger/serializers";
 import {
   listBalanceEdgesForHousehold,
   listLedgerObligationsForHousehold,
+  listSettlementSuggestionsForHousehold,
   listLedgerTransactionsForHousehold,
 } from "@/server/ledger/service";
 import { serializeSettlement } from "@/server/settlements/serializers";
@@ -65,14 +67,16 @@ export default async function LedgerPage({ params }: PageProps) {
     ]),
   );
   const memberNamesByUserIdRecord = Object.fromEntries(memberNamesByUserId);
-  const [balances, obligations, transactions, settlements] = activeHouseholdId
-    ? await Promise.all([
-        listBalanceEdgesForHousehold(model.user.id, activeHouseholdId),
-        listLedgerObligationsForHousehold(model.user.id, activeHouseholdId),
-        listLedgerTransactionsForHousehold(model.user.id, activeHouseholdId),
-        listSettlementsForHousehold(model.user.id, activeHouseholdId),
-      ])
-    : [[], [], [], []];
+  const [balances, obligations, transactions, settlements, settlementSuggestions] =
+    activeHouseholdId
+      ? await Promise.all([
+          listBalanceEdgesForHousehold(model.user.id, activeHouseholdId),
+          listLedgerObligationsForHousehold(model.user.id, activeHouseholdId),
+          listLedgerTransactionsForHousehold(model.user.id, activeHouseholdId),
+          listSettlementsForHousehold(model.user.id, activeHouseholdId),
+          listSettlementSuggestionsForHousehold(model.user.id, activeHouseholdId),
+        ])
+      : [[], [], [], [], []];
   const serializedBalances = balances.map(serializeBalanceEdge);
   const serializedObligations = obligations.map(serializeLedgerObligation);
   const serializedOpenObligations = serializedObligations.filter(
@@ -80,6 +84,7 @@ export default async function LedgerPage({ params }: PageProps) {
   );
   const serializedTransactions = transactions.map(serializeLedgerTransaction);
   const serializedSettlements = settlements.map(serializeSettlement);
+  const serializedSettlementSuggestions = settlementSuggestions.map(serializeSettlementSuggestion);
   const memberSummaries = model.members.map((member) => ({
     userId: member.userId,
     displayName: member.displayNameOverride ?? member.user.displayName,
@@ -174,6 +179,45 @@ export default async function LedgerPage({ params }: PageProps) {
                 <p className="text-sm text-muted-foreground">{ledger("transactions")}</p>
                 <p className="mt-3 text-2xl font-semibold">{serializedTransactions.length}</p>
               </div>
+            </section>
+
+            <section className="mt-6 rounded-lg border border-border bg-card">
+              <div className="border-b border-border p-5">
+                <h2 className="text-lg font-semibold">{ledger("settlementSuggestions")}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {ledger("settlementSuggestionsHint")}
+                </p>
+              </div>
+              {serializedSettlementSuggestions.length > 0 ? (
+                <div className="divide-y divide-border">
+                  {serializedSettlementSuggestions.map((suggestion) => (
+                    <div
+                      className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                      data-testid={`settlement-suggestion-${suggestion.debtorUserId}-${suggestion.creditorUserId}-${suggestion.currency}`}
+                      key={`${suggestion.currency}-${suggestion.debtorUserId}-${suggestion.creditorUserId}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {memberName(memberNamesByUserId, suggestion.debtorUserId)}{" "}
+                          {ledger("pays")}{" "}
+                          {memberName(memberNamesByUserId, suggestion.creditorUserId)}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {suggestion.debtorOpenObligationCount} {ledger("debtorOpenItems")} ·{" "}
+                          {suggestion.creditorOpenObligationCount} {ledger("creditorOpenItems")}
+                        </p>
+                      </div>
+                      <Badge variant="success">
+                        {suggestion.currency} {suggestion.amount}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="p-5 text-sm text-muted-foreground">
+                  {ledger("noSettlementSuggestions")}
+                </p>
+              )}
             </section>
 
             {activeHouseholdId ? (

@@ -211,6 +211,10 @@ Current implementation allows only household owners and admins to reverse open o
 Current implementation records one submitted settlement against one open debt obligation.
 Only the debtor for that obligation can submit it. The creditor must confirm it before the service creates a settlement allocation and reduces the obligation remaining amount. Rejection leaves obligation balances unchanged.
 
+### Settlement suggestions
+
+`GET /households/{householdId}/settlement-suggestions` returns a read-only list of optimized transfers. Current implementation nets all open obligations per currency, then emits the minimal debtor-to-creditor transfer set for each currency. Pending/rejected proposals and settled/reversed obligations are excluded.
+
 ## Authorization matrix
 
 | Action                           | Owner | Admin |         Member |     Viewer |

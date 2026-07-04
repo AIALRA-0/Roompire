@@ -13,6 +13,22 @@ export type BalanceEdge = {
   obligationCount: number;
 };
 
+export type SettlementSuggestion = {
+  debtorUserId: string;
+  creditorUserId: string;
+  amount: string;
+  currency: string;
+  debtorOpenObligationCount: number;
+  creditorOpenObligationCount: number;
+};
+
+type SettlementSuggestionObligationInput = {
+  debtorUserId: string;
+  creditorUserId: string;
+  remainingAmount: Decimal.Value;
+  settlementCurrency: string;
+};
+
 const decimalStringSchema = z
   .string()
   .trim()
@@ -48,6 +64,10 @@ function dateOnlyToUtc(value: string) {
 
 function decimalToFixed6(value: Decimal.Value) {
   return new Decimal(value).toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toFixed(6);
+}
+
+function decimalToCompactString(value: Decimal.Value) {
+  return new Decimal(value).toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toString();
 }
 
 export async function listLedgerObligationsForHousehold(userId: string, householdId: string) {
@@ -147,6 +167,138 @@ export async function listBalanceEdgesForHousehold(userId: string, householdId: 
 
       return new Decimal(right.amount).cmp(left.amount);
     });
+}
+
+export function computeSettlementSuggestions(
+  obligations: SettlementSuggestionObligationInput[],
+): SettlementSuggestion[] {
+  const currencyBuckets = new Map<
+    string,
+    Map<
+      string,
+      {
+        userId: string;
+        netAmount: Decimal;
+        debtorOpenObligationCount: number;
+        creditorOpenObligationCount: number;
+      }
+    >
+  >();
+
+  for (const obligation of obligations) {
+    const amount = new Decimal(obligation.remainingAmount);
+
+    if (amount.isZero()) {
+      continue;
+    }
+
+    const bucket = currencyBuckets.get(obligation.settlementCurrency) ?? new Map();
+    const debtor = bucket.get(obligation.debtorUserId) ?? {
+      userId: obligation.debtorUserId,
+      netAmount: new Decimal(0),
+      debtorOpenObligationCount: 0,
+      creditorOpenObligationCount: 0,
+    };
+    const creditor = bucket.get(obligation.creditorUserId) ?? {
+      userId: obligation.creditorUserId,
+      netAmount: new Decimal(0),
+      debtorOpenObligationCount: 0,
+      creditorOpenObligationCount: 0,
+    };
+
+    bucket.set(obligation.debtorUserId, {
+      ...debtor,
+      netAmount: debtor.netAmount.minus(amount),
+      debtorOpenObligationCount: debtor.debtorOpenObligationCount + 1,
+    });
+    bucket.set(obligation.creditorUserId, {
+      ...creditor,
+      netAmount: creditor.netAmount.plus(amount),
+      creditorOpenObligationCount: creditor.creditorOpenObligationCount + 1,
+    });
+    currencyBuckets.set(obligation.settlementCurrency, bucket);
+  }
+
+  const suggestions: SettlementSuggestion[] = [];
+
+  for (const [currency, participants] of [...currencyBuckets.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    const debtors = [...participants.values()]
+      .filter((participant) => participant.netAmount.isNegative())
+      .map((participant) => ({
+        ...participant,
+        amount: participant.netAmount.abs(),
+      }))
+      .sort((left, right) => {
+        const amountSort = right.amount.cmp(left.amount);
+
+        return amountSort !== 0 ? amountSort : left.userId.localeCompare(right.userId);
+      });
+    const creditors = [...participants.values()]
+      .filter((participant) => participant.netAmount.isPositive())
+      .map((participant) => ({
+        ...participant,
+        amount: participant.netAmount,
+      }))
+      .sort((left, right) => {
+        const amountSort = right.amount.cmp(left.amount);
+
+        return amountSort !== 0 ? amountSort : left.userId.localeCompare(right.userId);
+      });
+    let debtorIndex = 0;
+    let creditorIndex = 0;
+
+    while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+      const debtor = debtors[debtorIndex]!;
+      const creditor = creditors[creditorIndex]!;
+      const amount = Decimal.min(debtor.amount, creditor.amount);
+
+      if (!amount.isZero()) {
+        suggestions.push({
+          debtorUserId: debtor.userId,
+          creditorUserId: creditor.userId,
+          amount: decimalToCompactString(amount),
+          currency,
+          debtorOpenObligationCount: debtor.debtorOpenObligationCount,
+          creditorOpenObligationCount: creditor.creditorOpenObligationCount,
+        });
+      }
+
+      debtor.amount = debtor.amount.minus(amount);
+      creditor.amount = creditor.amount.minus(amount);
+
+      if (debtor.amount.isZero()) {
+        debtorIndex += 1;
+      }
+
+      if (creditor.amount.isZero()) {
+        creditorIndex += 1;
+      }
+    }
+  }
+
+  return suggestions;
+}
+
+export async function listSettlementSuggestionsForHousehold(userId: string, householdId: string) {
+  await requireActiveMembership(userId, householdId);
+
+  const obligations = await prisma.debtObligation.findMany({
+    where: {
+      householdId,
+      status: DebtStatus.OPEN,
+    },
+    select: {
+      debtorUserId: true,
+      creditorUserId: true,
+      remainingAmount: true,
+      settlementCurrency: true,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+
+  return computeSettlementSuggestions(obligations);
 }
 
 export async function reverseLedgerObligationForHousehold(

@@ -545,6 +545,31 @@ components:
         settlements:
           type: array
           items: { $ref: "#/components/schemas/Settlement" }
+    SettlementSuggestion:
+      type: object
+      required:
+        [
+          debtorUserId,
+          creditorUserId,
+          amount,
+          currency,
+          debtorOpenObligationCount,
+          creditorOpenObligationCount,
+        ]
+      properties:
+        debtorUserId: { type: string, format: uuid }
+        creditorUserId: { type: string, format: uuid }
+        amount: { $ref: "#/components/schemas/DecimalString" }
+        currency: { $ref: "#/components/schemas/CurrencyCode" }
+        debtorOpenObligationCount: { type: integer, minimum: 1 }
+        creditorOpenObligationCount: { type: integer, minimum: 1 }
+    SettlementSuggestionListResponse:
+      type: object
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items: { $ref: "#/components/schemas/SettlementSuggestion" }
 paths:
   /session:
     get:
@@ -1298,6 +1323,26 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
           description: Settlement is not rejectable, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/settlement-suggestions:
+    get:
+      summary: List optimized settlement suggestions
+      description: Nets all open obligations by currency and returns a minimal set of debtor-to-creditor transfers.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettlementSuggestionListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

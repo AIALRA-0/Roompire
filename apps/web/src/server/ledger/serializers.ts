@@ -2,6 +2,7 @@ import type {
   BalanceEdge,
   LedgerObligationWithRelations,
   LedgerTransactionWithRelations,
+  SettlementSuggestion,
 } from "./service";
 
 function dateToDateOnly(value: Date | null | undefined) {
@@ -10,6 +11,10 @@ function dateToDateOnly(value: Date | null | undefined) {
 
 export function serializeBalanceEdge(edge: BalanceEdge) {
   return edge;
+}
+
+export function serializeSettlementSuggestion(suggestion: SettlementSuggestion) {
+  return suggestion;
 }
 
 export function serializeLedgerObligation(obligation: LedgerObligationWithRelations) {
@@ -82,3 +87,4 @@ export function serializeLedgerTransaction(transaction: LedgerTransactionWithRel
 
 export type SerializedLedgerObligation = ReturnType<typeof serializeLedgerObligation>;
 export type SerializedLedgerTransaction = ReturnType<typeof serializeLedgerTransaction>;
+export type SerializedSettlementSuggestion = ReturnType<typeof serializeSettlementSuggestion>;

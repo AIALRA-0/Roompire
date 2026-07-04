@@ -734,6 +734,41 @@ test.describe("Roompire real browser smoke", () => {
     );
     await expect(balanceRow).toContainText("Expense Debtor E2E owes Expense Owner E2E");
     await expect(balanceRow).toContainText("CNY 324");
+    const suggestionRow = page.getByTestId(
+      `settlement-suggestion-${approvedShare!.debtorUserId}-${approvedShare!.creditorUserId}-CNY`,
+    );
+    await expect(suggestionRow).toContainText("Expense Debtor E2E pays Expense Owner E2E");
+    await expect(suggestionRow).toContainText("CNY 324");
+
+    const suggestionsResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/settlement-suggestions`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(suggestionsResponse.ok()).toBeTruthy();
+    const suggestionsPayload = (await suggestionsResponse.json()) as {
+      suggestions: Array<{
+        debtorUserId: string;
+        creditorUserId: string;
+        amount: string;
+        currency: string;
+        debtorOpenObligationCount: number;
+        creditorOpenObligationCount: number;
+      }>;
+    };
+    expect(suggestionsPayload.suggestions).toEqual([
+      {
+        debtorUserId: approvedShare!.debtorUserId,
+        creditorUserId: approvedShare!.creditorUserId,
+        amount: "324",
+        currency: "CNY",
+        debtorOpenObligationCount: 1,
+        creditorOpenObligationCount: 1,
+      },
+    ]);
 
     await page.getByTestId(`settlement-amount-${primaryObligationId}`).fill("324");
     await page.getByTestId(`settlement-date-${primaryObligationId}`).fill("2026-07-04");
@@ -784,6 +819,19 @@ test.describe("Roompire real browser smoke", () => {
       balances: unknown[];
     };
     expect(settledBalancesPayload.balances).toEqual([]);
+    const settledSuggestionsResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/settlement-suggestions`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(settledSuggestionsResponse.ok()).toBeTruthy();
+    const settledSuggestionsPayload = (await settledSuggestionsResponse.json()) as {
+      suggestions: unknown[];
+    };
+    expect(settledSuggestionsPayload.suggestions).toEqual([]);
 
     const settledObligationsResponse = await page.request.get(
       `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
@@ -1074,6 +1122,28 @@ test.describe("Roompire real browser smoke", () => {
         amount: "15",
         currency: "CNY",
         obligationCount: 1,
+      },
+    ]);
+    const adjustmentSuggestionsResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/settlement-suggestions`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(adjustmentSuggestionsResponse.ok()).toBeTruthy();
+    const adjustmentSuggestionsPayload = (await adjustmentSuggestionsResponse.json()) as {
+      suggestions: Array<{ amount: string; currency: string }>;
+    };
+    expect(adjustmentSuggestionsPayload.suggestions).toEqual([
+      {
+        debtorUserId: approvedShare!.debtorUserId,
+        creditorUserId: approvedShare!.creditorUserId,
+        amount: "15",
+        currency: "CNY",
+        debtorOpenObligationCount: 1,
+        creditorOpenObligationCount: 1,
       },
     ]);
 
