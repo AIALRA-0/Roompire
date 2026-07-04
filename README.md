@@ -41,8 +41,10 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once.
 - Rejected shares and pending proposals do not affect formal balances.
 - Dashboard formal balances render from open `DebtObligation` rows, not proposal totals.
+- Dedicated formal ledger page lists net balances, open obligations, and append-only ledger transactions.
+- Read-only formal ledger APIs expose balances, obligations, and transactions derived from `DebtObligation` and settlement allocations.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current list/create/detail proposal and share approve/reject endpoints.
+- OpenAPI covers the current list/create/detail proposal, share approve/reject, balance, obligation, and ledger transaction endpoints.
 
 ## Development
 

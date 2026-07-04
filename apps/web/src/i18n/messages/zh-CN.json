@@ -86,6 +86,28 @@
     "auditGuard": "待审批份额未进入账本",
     "mobileNav": "工作区"
   },
+  "Ledger": {
+    "title": "正式账本",
+    "hint": "余额只从已批准债务和还款分配派生。",
+    "backToDashboard": "返回总览",
+    "balanceEdges": "谁欠谁",
+    "balanceEdgesHint": "按债务人、债权人和结算币种汇总未结清净额。",
+    "openObligations": "未结清债务",
+    "openObligationsHint": "由已批准份额生成的追加写入债务行。",
+    "transactions": "账本交易",
+    "transactionsHint": "按发生时间排序的追加写入账本影响。",
+    "noBalances": "暂无正式余额",
+    "noBalancesHint": "份额批准并入账后会显示在这里。",
+    "noObligations": "暂无未结清债务",
+    "noTransactions": "暂无账本交易",
+    "owes": "应付",
+    "obligations": "笔债务",
+    "source": "来源",
+    "remaining": "剩余",
+    "original": "原币",
+    "occurred": "发生时间",
+    "settlements": "笔还款"
+  },
   "Identity": {
     "currentUser": "当前用户",
     "signedInAs": "已作为 {name} 登录",

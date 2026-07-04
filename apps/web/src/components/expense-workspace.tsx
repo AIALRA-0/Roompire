@@ -96,6 +96,7 @@ type ApiErrorPayload = {
 async function postProposal<T>(url: string, body: unknown, errorFallback: string): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       "Idempotency-Key": crypto.randomUUID(),
@@ -379,6 +380,7 @@ export function ExpenseWorkspace({
               {activeHouseholdId ? (
                 <Button asChild size="sm" variant="outline">
                   <Link
+                    aria-label={`${labels.openDetail}: ${proposal.title}`}
                     href={`/${locale}/app/households/${activeHouseholdId}/expenses/proposals/${proposal.id}`}
                   >
                     {labels.openDetail}

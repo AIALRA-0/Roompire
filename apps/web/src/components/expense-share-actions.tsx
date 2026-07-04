@@ -29,6 +29,7 @@ type ApiErrorPayload = {
 async function postShareDecision(url: string, body: unknown, errorFallback: string): Promise<void> {
   const response = await fetch(url, {
     method: "POST",
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       "Idempotency-Key": crypto.randomUUID(),

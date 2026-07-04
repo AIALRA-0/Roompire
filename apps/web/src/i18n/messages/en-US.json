@@ -86,6 +86,28 @@
     "auditGuard": "Ledger skipped pending shares",
     "mobileNav": "Workspace"
   },
+  "Ledger": {
+    "title": "Formal ledger",
+    "hint": "Balances are derived only from approved obligations and settlement allocations.",
+    "backToDashboard": "Back to dashboard",
+    "balanceEdges": "Who owes whom",
+    "balanceEdgesHint": "Net open balances by debtor, creditor, and settlement currency.",
+    "openObligations": "Open obligations",
+    "openObligationsHint": "Concrete append-only debt rows created from approved shares.",
+    "transactions": "Ledger transactions",
+    "transactionsHint": "Append-only ledger effects ordered by occurrence time.",
+    "noBalances": "No formal balances yet",
+    "noBalancesHint": "Approved shares will appear here after they mature into obligations.",
+    "noObligations": "No open obligations",
+    "noTransactions": "No ledger transactions",
+    "owes": "owes",
+    "obligations": "obligations",
+    "source": "Source",
+    "remaining": "Remaining",
+    "original": "Original",
+    "occurred": "Occurred",
+    "settlements": "settlements"
+  },
   "Identity": {
     "currentUser": "Current user",
     "signedInAs": "Signed in as {name}",

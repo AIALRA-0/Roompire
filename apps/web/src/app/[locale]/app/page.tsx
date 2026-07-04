@@ -39,13 +39,13 @@ export default async function AppPage({ params }: PageProps) {
   const activeHouseholdName = model.activeHousehold?.name ?? t("title");
 
   const navItems = [
-    { label: nav("dashboard"), icon: Home, active: true },
-    { label: nav("expenses"), icon: ReceiptText },
-    { label: nav("ledger"), icon: WalletCards },
-    { label: nav("calendar"), icon: CalendarDays },
-    { label: nav("tasks"), icon: ListChecks },
-    { label: nav("audit"), icon: Activity },
-    { label: nav("settings"), icon: Settings },
+    { label: nav("dashboard"), icon: Home, href: `/${locale}/app`, active: true },
+    { label: nav("expenses"), icon: ReceiptText, href: `/${locale}/app` },
+    { label: nav("ledger"), icon: WalletCards, href: `/${locale}/app/ledger` },
+    { label: nav("calendar"), icon: CalendarDays, href: `/${locale}/app` },
+    { label: nav("tasks"), icon: ListChecks, href: `/${locale}/app` },
+    { label: nav("audit"), icon: Activity, href: `/${locale}/app` },
+    { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];
 
   const stats = [
@@ -228,7 +228,7 @@ export default async function AppPage({ params }: PageProps) {
                     "focus-ring inline-flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                     item.active && "bg-muted text-foreground",
                   )}
-                  href={`/${locale}/app`}
+                  href={item.href}
                   key={item.label}
                 >
                   <item.icon aria-hidden="true" className="h-4 w-4" />

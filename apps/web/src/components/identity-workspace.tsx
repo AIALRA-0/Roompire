@@ -129,6 +129,7 @@ async function submitJson<T>(
 ): Promise<T> {
   const requestInit: RequestInit = {
     method,
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
     },

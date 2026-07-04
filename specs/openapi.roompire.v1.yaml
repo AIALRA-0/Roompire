@@ -75,6 +75,15 @@ components:
     ShareStatus:
       type: string
       enum: [PENDING, APPROVED, REJECTED, DISPUTED, MATURED_TO_LEDGER]
+    LedgerTransactionType:
+      type: string
+      enum: [DEBT_CREATED, SETTLEMENT_RECORDED, REVERSAL, ADJUSTMENT, FX_ADJUSTMENT]
+    DebtStatus:
+      type: string
+      enum: [OPEN, SETTLED, REVERSED]
+    SettlementStatus:
+      type: string
+      enum: [SUBMITTED, CONFIRMED, REJECTED, CANCELLED]
     User:
       type: object
       required: [id, email, displayName]
@@ -303,12 +312,145 @@ components:
         reason: { type: string, minLength: 1, maxLength: 1000 }
     BalanceEdge:
       type: object
-      required: [debtorUserId, creditorUserId, amount, currency]
+      required: [debtorUserId, creditorUserId, amount, currency, obligationCount]
       properties:
         debtorUserId: { type: string, format: uuid }
         creditorUserId: { type: string, format: uuid }
         amount: { $ref: "#/components/schemas/DecimalString" }
         currency: { $ref: "#/components/schemas/CurrencyCode" }
+        obligationCount: { type: integer, minimum: 1 }
+    LedgerObligationAllocation:
+      type: object
+      required: [id, settlementId, amountApplied]
+      properties:
+        id: { type: string, format: uuid }
+        settlementId: { type: string, format: uuid }
+        amountApplied: { $ref: "#/components/schemas/DecimalString" }
+    LedgerObligationSourceTransaction:
+      type: object
+      required: [id, type, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/LedgerTransactionType" }
+        description: { type: string, nullable: true }
+        sourceType: { type: string, nullable: true }
+        sourceId: { type: string, format: uuid, nullable: true }
+        occurredAt: { type: string, format: date-time }
+    LedgerObligation:
+      type: object
+      required:
+        [
+          id,
+          householdId,
+          ledgerTransactionId,
+          debtorUserId,
+          creditorUserId,
+          originalAmount,
+          originalCurrency,
+          settlementAmount,
+          settlementCurrency,
+          remainingAmount,
+          status,
+          createdAt,
+          sourceTransaction,
+          allocations,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        ledgerTransactionId: { type: string, format: uuid }
+        sourceShareId: { type: string, format: uuid, nullable: true }
+        debtorUserId: { type: string, format: uuid }
+        creditorUserId: { type: string, format: uuid }
+        originalAmount: { $ref: "#/components/schemas/DecimalString" }
+        originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        settlementAmount: { $ref: "#/components/schemas/DecimalString" }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        remainingAmount: { $ref: "#/components/schemas/DecimalString" }
+        status: { $ref: "#/components/schemas/DebtStatus" }
+        dueDate: { type: string, format: date, nullable: true }
+        createdAt: { type: string, format: date-time }
+        settledAt: { type: string, format: date-time, nullable: true }
+        sourceTransaction: { $ref: "#/components/schemas/LedgerObligationSourceTransaction" }
+        allocations:
+          type: array
+          items: { $ref: "#/components/schemas/LedgerObligationAllocation" }
+    LedgerTransactionObligation:
+      type: object
+      required:
+        [
+          id,
+          debtorUserId,
+          creditorUserId,
+          originalAmount,
+          originalCurrency,
+          settlementAmount,
+          settlementCurrency,
+          remainingAmount,
+          status,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        sourceShareId: { type: string, format: uuid, nullable: true }
+        debtorUserId: { type: string, format: uuid }
+        creditorUserId: { type: string, format: uuid }
+        originalAmount: { $ref: "#/components/schemas/DecimalString" }
+        originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        settlementAmount: { $ref: "#/components/schemas/DecimalString" }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        remainingAmount: { $ref: "#/components/schemas/DecimalString" }
+        status: { $ref: "#/components/schemas/DebtStatus" }
+    LedgerTransactionSettlement:
+      type: object
+      required: [id, payerUserId, payeeUserId, amount, currency, status]
+      properties:
+        id: { type: string, format: uuid }
+        payerUserId: { type: string, format: uuid }
+        payeeUserId: { type: string, format: uuid }
+        amount: { $ref: "#/components/schemas/DecimalString" }
+        currency: { $ref: "#/components/schemas/CurrencyCode" }
+        status: { $ref: "#/components/schemas/SettlementStatus" }
+    LedgerTransaction:
+      type: object
+      required: [id, householdId, type, occurredAt, createdAt, obligations, settlements]
+      properties:
+        id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/LedgerTransactionType" }
+        description: { type: string, nullable: true }
+        sourceType: { type: string, nullable: true }
+        sourceId: { type: string, format: uuid, nullable: true }
+        createdByUserId: { type: string, format: uuid, nullable: true }
+        occurredAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        reversesTransactionId: { type: string, format: uuid, nullable: true }
+        obligations:
+          type: array
+          items: { $ref: "#/components/schemas/LedgerTransactionObligation" }
+        settlements:
+          type: array
+          items: { $ref: "#/components/schemas/LedgerTransactionSettlement" }
+    BalanceListResponse:
+      type: object
+      required: [balances]
+      properties:
+        balances:
+          type: array
+          items: { $ref: "#/components/schemas/BalanceEdge" }
+    LedgerObligationListResponse:
+      type: object
+      required: [obligations]
+      properties:
+        obligations:
+          type: array
+          items: { $ref: "#/components/schemas/LedgerObligation" }
+    LedgerTransactionListResponse:
+      type: object
+      required: [transactions]
+      properties:
+        transactions:
+          type: array
+          items: { $ref: "#/components/schemas/LedgerTransaction" }
 paths:
   /session:
     get:
@@ -742,6 +884,7 @@ paths:
   /households/{householdId}/balances:
     get:
       summary: Get formal ledger balances only
+      description: Derived from open debt obligations and settlement allocations; pending or rejected proposals are excluded.
       parameters:
         - in: path
           name: householdId
@@ -752,12 +895,52 @@ paths:
           description: OK
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items: { $ref: "#/components/schemas/BalanceEdge" }
+              schema: { $ref: "#/components/schemas/BalanceListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/ledger/obligations:
+    get:
+      summary: List formal ledger obligations
+      description: Returns append-only debt obligations created from approved shares, ordered newest first.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LedgerObligationListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/ledger/transactions:
+    get:
+      summary: List formal ledger transactions
+      description: Returns append-only ledger effects with nested obligations and settlements, ordered newest first.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LedgerTransactionListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/calendar/events:
     get:
       summary: List calendar events

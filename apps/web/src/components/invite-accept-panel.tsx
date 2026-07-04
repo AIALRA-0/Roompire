@@ -34,6 +34,7 @@ export function InviteAcceptPanel({ token, locale, labels }: InviteAcceptPanelPr
     try {
       const response = await fetch("/api/v1/invites/accept", {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
         },
