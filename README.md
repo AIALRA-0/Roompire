@@ -38,7 +38,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Owners, admins, and members can create submitted expense proposals from the dashboard.
 - Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
 - Debtors can approve or reject only their own pending shares from the proposal detail page.
-- Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once.
+- Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once, with repayment due events created when the proposal has a due date.
 - Proposal creation and share approve/reject persist `Idempotency-Key` records, replay matching duplicate requests, and reject key reuse with changed request bodies.
 - Rejected shares and pending proposals do not affect formal balances.
 - Dashboard formal balances render from open `DebtObligation` rows, not proposal totals.

@@ -883,6 +883,40 @@ test.describe("Roompire real browser smoke", () => {
     const primaryObligationId = obligationsPayload.obligations[0]?.id;
     expect(primaryObligationId).toBeTruthy();
 
+    const repaymentEventsResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/calendar/events`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(repaymentEventsResponse.ok()).toBeTruthy();
+    const repaymentEventsPayload = (await repaymentEventsResponse.json()) as {
+      events: Array<{
+        title: string;
+        type: string;
+        startAt: string;
+        allDay: boolean;
+        links: Array<{ linkedType: string; linkedId: string }>;
+      }>;
+    };
+    const repaymentEvent = repaymentEventsPayload.events.find(
+      (event) => event.title === `Repayment due: ${proposalTitle}`,
+    );
+    expect(repaymentEvent).toMatchObject({
+      title: `Repayment due: ${proposalTitle}`,
+      type: "REPAYMENT_DUE",
+      allDay: true,
+    });
+    expect(repaymentEvent!.startAt.slice(0, 10)).toBe("2026-07-10");
+    expect(repaymentEvent!.links).toContainEqual(
+      expect.objectContaining({
+        linkedType: "debt_obligation",
+        linkedId: primaryObligationId,
+      }),
+    );
+
     const transactionsResponse = await page.request.get(
       `/api/v1/households/${detailIds.householdId}/ledger/transactions`,
       {

@@ -1,6 +1,7 @@
 import Decimal from "decimal.js";
 import {
   ApprovalDecision,
+  CalendarEventType,
   ExpenseProposalStatus,
   LedgerTransactionType,
   Role,
@@ -539,6 +540,31 @@ export async function approveExpenseShareForHousehold(
           dueDate: share.proposal.dueDate,
         },
       });
+      let repaymentEventId: string | null = null;
+
+      if (share.proposal.dueDate) {
+        const repaymentEvent = await tx.calendarEvent.create({
+          data: {
+            householdId,
+            type: CalendarEventType.REPAYMENT_DUE,
+            title: `Repayment due: ${share.proposal.title}`,
+            description: `${obligation.settlementCurrency} ${obligation.remainingAmount.toString()} due for approved share.`,
+            startAt: share.proposal.dueDate,
+            allDay: true,
+            timezone: membership.household.timezone,
+            createdByUserId: userId,
+          },
+        });
+
+        await tx.eventLink.create({
+          data: {
+            eventId: repaymentEvent.id,
+            linkedType: "debt_obligation",
+            linkedId: obligation.id,
+          },
+        });
+        repaymentEventId = repaymentEvent.id;
+      }
 
       await tx.expenseShare.update({
         where: { id: share.id },
@@ -563,6 +589,7 @@ export async function approveExpenseShareForHousehold(
             creditorUserId: share.creditorUserId,
             settlementAmount: obligation.settlementAmount.toString(),
             settlementCurrency: obligation.settlementCurrency,
+            repaymentEventId,
           },
         },
       });

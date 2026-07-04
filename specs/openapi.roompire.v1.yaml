@@ -1120,6 +1120,7 @@ paths:
   /households/{householdId}/expenses/shares/{shareId}/approve:
     post:
       summary: Approve own assigned expense share and mature it to the ledger
+      description: The assigned debtor approves their share. When maturity creates a DebtObligation with a due date, the service also creates a linked REPAYMENT_DUE calendar event.
       parameters:
         - in: header
           name: Idempotency-Key

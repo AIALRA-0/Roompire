@@ -164,6 +164,8 @@ Current implementation supports list/create calendar event, list/create task, as
 }
 ```
 
+If the proposal has `dueDate`, current implementation creates a `REPAYMENT_DUE` calendar event when the approved share matures into a `DebtObligation`, then links the event to that obligation with an `EventLink`.
+
 ### Reject share
 
 ```json
