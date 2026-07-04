@@ -1,0 +1,13 @@
+[Unit]
+Description=Roompire backup and restore drill
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/roompire/current
+Environment=ENV_FILE=.env.production
+Environment=COMPOSE_FILE=docker-compose.prod.yml
+Environment=BACKUP_ROOT=/srv/aialra/backups/roompire
+Environment=RETENTION_DAYS=14
+ExecStart=/usr/bin/env bash ./scripts/backup_all.sh

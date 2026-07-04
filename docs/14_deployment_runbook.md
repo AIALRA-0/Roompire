@@ -95,6 +95,12 @@ If TLS is being bootstrapped and the certificate is not valid yet, `CURL_INSECUR
 
 ## Backups
 
+Run the combined backup plus non-destructive restore drill:
+
+```bash
+BACKUP_ROOT=/srv/aialra/backups/roompire ./scripts/backup_all.sh
+```
+
 Create a PostgreSQL backup:
 
 ```bash
@@ -108,6 +114,16 @@ Create an upload-volume backup:
 ```
 
 Backups are written under `backups/` and are ignored by git. For S3-compatible production storage, enable bucket versioning or provider snapshots and export an object inventory/manifest alongside the PostgreSQL backup; file metadata in PostgreSQL stores the provider, bucket, object key, MIME type, size, and SHA-256 hash.
+
+`scripts/verify_postgres_backup.sh <backup.dump>` restores a custom-format dump into a temporary database, verifies Prisma migration metadata, checks the audit hash chain, and drops the temporary database. This is the preferred daily restore drill because it does not touch the live database.
+
+To schedule daily backups on a systemd host, copy `ops/systemd/roompire-backup.service` and `ops/systemd/roompire-backup.timer` to `/etc/systemd/system/`, adjust `WorkingDirectory` to the live checkout path, then run:
+
+```bash
+systemctl daemon-reload
+systemctl enable --now roompire-backup.timer
+systemctl list-timers roompire-backup.timer
+```
 
 ## Restore Drill
 

@@ -111,6 +111,7 @@ Current implementation hash-chains audit events with `prev_hash` and `event_hash
 - Daily object storage manifest/export.
 - Retention policy: at least 14 daily backups for early MVP.
 - Encrypted backup storage.
+- Daily non-destructive restore drill with `scripts/verify_postgres_backup.sh` to validate dump readability, migration metadata, and audit hash-chain integrity.
 - Restore instructions in repo docs.
 
 ### Production recommended
