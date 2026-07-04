@@ -494,6 +494,7 @@
     "warningStatusFileMissing": "Host status file is missing; runtime fallback is in use.",
     "warningStatusStale": "Host status snapshot is stale.",
     "warningDiskLow": "Disk headroom is below the warning threshold.",
+    "warningDiskHighUsage": "Root filesystem usage is above the warning threshold.",
     "warningDiskUnknown": "Disk usage could not be read.",
     "warningBackupTimer": "Backup timer needs attention.",
     "warningBackupService": "Latest backup service run needs attention.",

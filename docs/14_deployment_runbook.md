@@ -101,6 +101,26 @@ It also writes `ops/status/latest-smoke.json` without credentials. Run `./script
 
 If TLS is being bootstrapped and the certificate is not valid yet, `CURL_INSECURE=true ./scripts/smoke_production.sh` can be used for diagnosis only.
 
+## Disk Housekeeping
+
+Check disk headroom before every production image build:
+
+```bash
+df -h /
+docker system df
+./scripts/server_housekeeping.sh
+```
+
+`scripts/server_housekeeping.sh` defaults to a dry run. To remove low-risk generated artifacts, old targeted `/tmp` leftovers, dangling Docker image/build layers, and excess systemd journal archives, run:
+
+```bash
+ROOMPIRE_HOUSEKEEPING_CONFIRM=cleanup ./scripts/server_housekeeping.sh
+```
+
+To also clear Python `uv` package caches, add `ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE=true`. The housekeeping script intentionally avoids Docker volumes, running-container data, production backups, and non-dangling images used by currently running services.
+
+When the server root disk pressure comes from old Codex browser workspaces, add `ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=true` to remove generated dependency/build/test-output directories outside the current checkout while preserving source files and git history.
+
 ## Backups
 
 Run the combined backup plus non-destructive restore drill:

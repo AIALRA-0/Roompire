@@ -216,8 +216,15 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("status_stale");
   }
 
-  if (status.disk.status === "warning") {
+  if (
+    status.disk.availableBytes !== null &&
+    status.disk.availableBytes < diskWarningAvailableBytes
+  ) {
     warnings.push("disk_low");
+  }
+
+  if (status.disk.usedPercent !== null && status.disk.usedPercent >= 90) {
+    warnings.push("disk_high_usage");
   }
 
   if (status.disk.status === "unknown") {

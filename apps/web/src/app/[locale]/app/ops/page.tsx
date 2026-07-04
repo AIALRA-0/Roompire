@@ -112,6 +112,7 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     status_file_missing: ops("warningStatusFileMissing"),
     status_stale: ops("warningStatusStale"),
     disk_low: ops("warningDiskLow"),
+    disk_high_usage: ops("warningDiskHighUsage"),
     disk_unknown: ops("warningDiskUnknown"),
     backup_timer_attention: ops("warningBackupTimer"),
     backup_service_attention: ops("warningBackupService"),

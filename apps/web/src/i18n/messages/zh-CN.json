@@ -494,6 +494,7 @@
     "warningStatusFileMissing": "主机状态文件缺失，正在使用运行时兜底。",
     "warningStatusStale": "主机状态快照已过期。",
     "warningDiskLow": "磁盘余量低于告警阈值。",
+    "warningDiskHighUsage": "根文件系统使用率高于告警阈值。",
     "warningDiskUnknown": "无法读取磁盘使用情况。",
     "warningBackupTimer": "备份 timer 需要关注。",
     "warningBackupService": "最近一次备份服务运行需要关注。",

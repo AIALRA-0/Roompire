@@ -67,6 +67,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Settlement suggestion actionability slice implemented on branch `feat/netted-settlement-policy`: settlement suggestions now include direct obligation count/remaining amount plus `DIRECTLY_SETTLEABLE` or `GUIDANCE_ONLY`; ledger UI labels both states, direct suggestions remain debtor-submit-able, and fully netted suggestions without direct obligations stay read-only guidance until a household clearing policy exists.
 - Owner transfer governance slice implemented on branch `feat/owner-transfer-policy`: owners can explicitly transfer ownership to another active member through a dedicated API/UI action, the previous owner is demoted to admin, self-removal/self-role changes remain forbidden, transfer attempts by admins are rejected, and the ownership transfer emits an audit event.
 - Ops health dashboard slice implemented on branch `feat/ops-health-dashboard`: host-generated `ops/status` JSON exposes disk headroom, `roompire-backup.timer`/service state, and the latest real-domain smoke result through owner/admin-gated `/api/v1/ops/status` and localized `/[locale]/app/ops`; the web container reads the status directory through a read-only bind mount and never executes host system commands during web requests.
+- Server disk housekeeping slice implemented on branch `ops/disk-headroom-housekeeping`: `scripts/server_housekeeping.sh` provides dry-run-by-default cleanup for Roompire build artifacts, targeted `/tmp` leftovers, dangling Docker/build cache, journal vacuuming, optional `uv` caches, and optional generated artifacts from old Codex browser workspaces; root headroom recovered from about 2GB/100% usage to about 6.5GB free/97% usage after cleaning old generated workspaces and Docker build cache.
 
 ## Current phase
 
@@ -119,6 +120,7 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 | 2026-07-04 | Reset the E2E database before browser runs                  | Browser tests mutate many household records; resetting only approved dev/test/e2e databases keeps local and CI runs deterministic while refusing production database names.                         |
 | 2026-07-05 | Transfer ownership explicitly, not through role edit        | Owner handoff changes two memberships atomically, keeps a clear audit event, and avoids hidden self-demotion/removal edge cases.                                                                    |
 | 2026-07-05 | Read ops health from host-generated JSON                    | The web container should not need systemd or host command privileges; a local script can collect disk, backup, and smoke status, then mount a read-only snapshot into production.                   |
+| 2026-07-05 | Keep server housekeeping dry-run by default                 | Disk cleanup may touch shared server areas, so generated artifacts can be reported safely first and only removed after explicit confirmation/env switches.                                          |
 
 ## Open questions for later human review
 
@@ -130,12 +132,26 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 ## Next recommended tasks
 
 1. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
-2. Increase root disk headroom or move heavy non-Roompire Docker workloads; production currently still reports roughly 2.3GB free and 99% usage after cleanup.
+2. Continue root-disk capacity planning; production now has roughly 6.5GB free after cleanup, but `/` is still about 97% used and ops health intentionally warns with `disk_high_usage`.
 3. Review backup encryption/off-host copy requirements once private production data grows beyond the initial household.
 4. Design an explicit household clearing policy only if guidance-only netted suggestions should become executable later.
 
 ## Last session verification
 
+- 2026-07-05 Server disk housekeeping:
+  - Root disk was audited on the local production server; `docker system df` showed most image size belonged to active running workloads, while old Codex browser workspaces contained reclaimable generated artifacts.
+  - Conservative cleanup removed old `/tmp` readlayer/playwright/codex-pack leftovers, `uv` package caches, excess journal archives, and generated artifacts from old non-Roompire browser workspaces (`node_modules`, `.next`, `.turbo`, Playwright output, and one old readlayer tmp sqlite copy); source directories, git history, Docker volumes, production backups, and running service data were preserved.
+  - Root filesystem headroom improved from about 2GB free / 100% usage to about 6.5GB free / 97% usage after Docker build-cache pruning.
+  - Added `scripts/server_housekeeping.sh`; `bash -n` passed and dry-run output showed the cleanup categories without deleting.
+  - `pnpm format:check` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm test` passed: 6 test files, 23 tests.
+  - `pnpm lint` passed.
+  - `pnpm build` passed with `/[locale]/app/ops` and `/api/v1/ops/status` in the Next route manifest.
+  - Targeted Playwright passed on Chromium desktop and mobile for owner ops-health review plus viewer denial.
+  - Production web image was rebuilt and `roompire-web-1` was recreated on the local server with the nginx override preserving `127.0.0.1:18300->3000`; Postgres and Redis stayed healthy and no database migration was needed.
+  - Real-domain smoke passed for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`; authenticated `/api/v1/ops/status` returned `warnings=["disk_high_usage"]`, `availableBytes` around 6.9GB before final rounding, `usedPercent=97`, and `latestSmoke.status=passed`.
+  - Authenticated Playwright browser smoke opened `https://roompire.aialra.online/en-US/app/ops`, verified the high-usage warning text, summary `Attention`, disk card around 6.4GB available, and smoke `Passed`.
 - 2026-07-05 Ops health dashboard:
   - `bash -n scripts/collect_ops_status.sh scripts/smoke_production.sh` passed.
   - `./scripts/collect_ops_status.sh` passed on the local production server and generated ignored `ops/status/ops-status.json`; it reported root disk pressure at 99% usage.
