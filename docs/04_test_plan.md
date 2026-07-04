@@ -128,12 +128,19 @@ E2E must interact with the real webpage using accessible selectors and stable `d
 
 ### Calendar/task path
 
+Current implemented subset:
+
+1. Create calendar event.
+2. Create task with member assignment and due date.
+3. Calendar shows the linked `TASK` event.
+4. Assigned member completes task.
+5. API confirms linked task/event records and completed statuses.
+
+Backlog coverage:
+
 1. Create recurring chore.
-2. Assign member.
-3. Calendar shows event.
-4. Complete task.
-5. Create reimbursement proposal from task.
-6. Linked records show both task and expense relationship.
+2. Create reimbursement proposal from task.
+3. Linked records show task, event, and expense relationship.
 
 ### Recurring bill path
 

@@ -5,6 +5,7 @@ import { prisma } from "@/server/db/prisma";
 const memberRoles = new Set<Role>(["OWNER", "ADMIN", "MEMBER", "VIEWER"]);
 const memberManagerRoles = new Set<Role>(["OWNER", "ADMIN"]);
 const expenseCreatorRoles = new Set<Role>(["OWNER", "ADMIN", "MEMBER"]);
+const householdWorkItemCreatorRoles = new Set<Role>(["OWNER", "ADMIN", "MEMBER"]);
 const ledgerCorrectorRoles = new Set<Role>(["OWNER", "ADMIN"]);
 
 export function canViewHousehold(role: Role) {
@@ -21,6 +22,10 @@ export function canUpdateHouseholdSettings(role: Role) {
 
 export function canCreateExpenseProposal(role: Role) {
   return expenseCreatorRoles.has(role);
+}
+
+export function canCreateHouseholdWorkItem(role: Role) {
+  return householdWorkItemCreatorRoles.has(role);
 }
 
 export function canCorrectLedger(role: Role) {
@@ -83,6 +88,23 @@ export async function requireExpenseProposalCreator(userId: string, householdId:
       403,
       "FORBIDDEN",
       "Only household owners, admins, and members can create expense proposals.",
+      {
+        role: membership.role,
+      },
+    );
+  }
+
+  return membership;
+}
+
+export async function requireHouseholdWorkItemCreator(userId: string, householdId: string) {
+  const membership = await requireActiveMembership(userId, householdId);
+
+  if (!canCreateHouseholdWorkItem(membership.role)) {
+    throw new ApiError(
+      403,
+      "FORBIDDEN",
+      "Only household owners, admins, and members can manage calendar work.",
       {
         role: membership.role,
       },

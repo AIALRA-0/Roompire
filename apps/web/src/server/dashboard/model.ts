@@ -9,6 +9,7 @@ import { listHouseholdsForUser } from "@/server/households/service";
 import {
   canCorrectLedger,
   canCreateExpenseProposal,
+  canCreateHouseholdWorkItem,
   canManageMembers,
 } from "@/server/permissions/rbac";
 
@@ -35,6 +36,7 @@ export async function getDashboardModel() {
       canInviteMembers: false,
       canManageMembers: false,
       canCreateExpenseProposals: false,
+      canCreateWorkItems: false,
       canCorrectLedger: false,
     };
   }
@@ -119,6 +121,7 @@ export async function getDashboardModel() {
     canInviteMembers: canManageMembers(activeMembership.role),
     canManageMembers: canManageMembers(activeMembership.role),
     canCreateExpenseProposals: canCreateExpenseProposal(activeMembership.role),
+    canCreateWorkItems: canCreateHouseholdWorkItem(activeMembership.role),
     canCorrectLedger: canCorrectLedger(activeMembership.role),
   };
 }

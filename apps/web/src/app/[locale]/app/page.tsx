@@ -42,8 +42,8 @@ export default async function AppPage({ params }: PageProps) {
     { label: nav("dashboard"), icon: Home, href: `/${locale}/app`, active: true },
     { label: nav("expenses"), icon: ReceiptText, href: `/${locale}/app` },
     { label: nav("ledger"), icon: WalletCards, href: `/${locale}/app/ledger` },
-    { label: nav("calendar"), icon: CalendarDays, href: `/${locale}/app` },
-    { label: nav("tasks"), icon: ListChecks, href: `/${locale}/app` },
+    { label: nav("calendar"), icon: CalendarDays, href: `/${locale}/app/calendar` },
+    { label: nav("tasks"), icon: ListChecks, href: `/${locale}/app/calendar` },
     { label: nav("audit"), icon: Activity, href: `/${locale}/app` },
     { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];

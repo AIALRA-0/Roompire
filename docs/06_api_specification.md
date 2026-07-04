@@ -43,6 +43,7 @@ Mutation headers:
 
 - `Idempotency-Key`: required for proposal submit, approval, maturity, settlement, file finalize.
 - Implemented financial mutations persist the key per user. Repeating the same key with the same endpoint and body replays the stored response; reusing the key with a changed request returns `409`.
+- Implemented calendar/task mutations also require `Idempotency-Key` for event creation, task creation, and task completion.
 
 ## Endpoint groups
 
@@ -116,6 +117,8 @@ Mutation headers:
 - `PATCH /households/{householdId}/tasks/{taskId}`
 - `POST /households/{householdId}/tasks/{taskId}/complete`
 - `POST /households/{householdId}/tasks/{taskId}/create-expense-proposal`
+
+Current implementation supports list/create calendar event, list/create task, assign task at creation, and complete task. Creating a task with `dueAt` automatically creates a linked `TASK` calendar event. Recurrence, event editing/deletion, task editing, and task-to-expense proposal creation remain backlog items.
 
 ### Files
 
@@ -215,6 +218,43 @@ Only the debtor for that obligation can submit it. The creditor must confirm it 
 
 `GET /households/{householdId}/settlement-suggestions` returns a read-only list of optimized transfers. Current implementation nets all open obligations per currency, then emits the minimal debtor-to-creditor transfer set for each currency. Pending/rejected proposals and settled/reversed obligations are excluded.
 
+### Create calendar event
+
+```json
+{
+  "title": "Rent review",
+  "type": "BILL_DUE",
+  "startAt": "2026-07-09T09:00:00.000Z",
+  "endAt": "2026-07-09T09:30:00.000Z",
+  "allDay": false,
+  "description": "Check rent transfer status."
+}
+```
+
+### Create task
+
+```json
+{
+  "title": "Kitchen reset",
+  "priority": "HIGH",
+  "dueAt": "2026-07-09T10:00:00.000Z",
+  "assignedUserIds": ["user_bob"],
+  "description": "Clean counters and take out recycling."
+}
+```
+
+If `dueAt` is present, the current implementation creates a `TASK` calendar event and an `EventLink` from the event to the task.
+
+### Complete task
+
+```json
+{
+  "completedAt": "2026-07-09T11:00:00.000Z"
+}
+```
+
+The current implementation marks the task and assignments completed, updates linked `TASK` calendar events to completed, and records an audit event.
+
 ## Authorization matrix
 
 | Action                           | Owner | Admin |         Member |     Viewer |
@@ -226,6 +266,9 @@ Only the debtor for that obligation can submit it. The creditor must confirm it 
 | Approve others' share            |    ❌ |    ❌ |             ❌ |         ❌ |
 | Record settlement involving self |    ✅ |    ✅ |             ✅ |         ❌ |
 | Reverse ledger entry             |    ✅ |    ✅ |             ❌ |         ❌ |
+| View calendar/tasks              |    ✅ |    ✅ |             ✅ |         ✅ |
+| Create calendar event/task       |    ✅ |    ✅ |             ✅ |         ❌ |
+| Complete task                    |    ✅ |    ✅ |             ✅ |         ❌ |
 | View full audit                  |    ✅ |    ✅ | ⚠️ own-related | ❌/limited |
 | Edit household settings          |    ✅ |    ✅ |             ❌ |         ❌ |
 

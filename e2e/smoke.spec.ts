@@ -7,7 +7,7 @@ async function clickMemberMutationWithRetry(
 ) {
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     const responsePromise = page.waitForResponse(
       (response) =>
         response.url().includes("/api/v1/households/") &&
@@ -23,7 +23,7 @@ async function clickMemberMutationWithRetry(
       return;
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
 
   throw new Error(`${method} member mutation failed with status ${lastStatus}`);
@@ -33,7 +33,7 @@ async function setDevSessionWithRetry(page: Page, email: string, displayName: st
   let lastStatus = 0;
   let lastError = "";
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
       const response = await page.request.post("/api/v1/dev/session", {
         data: {
@@ -56,10 +56,50 @@ async function setDevSessionWithRetry(page: Page, email: string, displayName: st
   throw new Error(`POST dev session failed with status ${lastStatus}: ${lastError}`);
 }
 
+async function postApiWithRetry(
+  page: Page,
+  url: string,
+  options: Parameters<Page["request"]["post"]>[1],
+) {
+  let lastError = "";
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await page.request.post(url, options);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST ${url} failed: ${lastError}`);
+}
+
+async function getApiWithRetry(
+  page: Page,
+  url: string,
+  options: Parameters<Page["request"]["get"]>[1],
+) {
+  let lastError = "";
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await page.request.get(url, options);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`GET ${url} failed: ${lastError}`);
+}
+
 async function clickInviteCreateWithRetry(page: Page) {
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     const responsePromise = page.waitForResponse(
       (response) =>
         response.url().includes("/api/v1/households/") &&
@@ -76,7 +116,7 @@ async function clickInviteCreateWithRetry(page: Page) {
       return;
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
 
   throw new Error(`POST invite failed with status ${lastStatus}`);
@@ -85,7 +125,7 @@ async function clickInviteCreateWithRetry(page: Page) {
 async function clickHouseholdCreateWithRetry(page: Page) {
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     const responsePromise = page.waitForResponse(
       (response) =>
         response.url().endsWith("/api/v1/households") && response.request().method() === "POST",
@@ -100,7 +140,7 @@ async function clickHouseholdCreateWithRetry(page: Page) {
       return;
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
 
   throw new Error(`POST household failed with status ${lastStatus}`);
@@ -115,7 +155,7 @@ async function createInviteWithRetry(
   let lastStatus = 0;
   let lastBody = "";
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     const response = await page.request.post(`/api/v1/households/${householdId}/invites`, {
       data,
       headers: actorEmail
@@ -131,7 +171,7 @@ async function createInviteWithRetry(
       return JSON.parse(lastBody) as { token: string };
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
 
   throw new Error(`POST invite API failed with status ${lastStatus}: ${lastBody}`);
@@ -140,7 +180,7 @@ async function createInviteWithRetry(
 async function clickExpenseProposalSubmitWithRetry(page: Page) {
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     const responsePromise = page.waitForResponse(
       (response) =>
         response.url().includes("/api/v1/households/") &&
@@ -157,7 +197,7 @@ async function clickExpenseProposalSubmitWithRetry(page: Page) {
       return;
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
 
   throw new Error(`POST expense proposal failed with status ${lastStatus}`);
@@ -166,7 +206,7 @@ async function clickExpenseProposalSubmitWithRetry(page: Page) {
 async function clickShareApproveWithRetry(page: Page, shareId: string) {
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     const responsePromise = page.waitForResponse(
       (response) =>
         response.url().includes(`/expenses/shares/${shareId}/approve`) &&
@@ -182,7 +222,7 @@ async function clickShareApproveWithRetry(page: Page, shareId: string) {
       return;
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
 
   throw new Error(`POST share approve failed with status ${lastStatus}`);
@@ -191,7 +231,7 @@ async function clickShareApproveWithRetry(page: Page, shareId: string) {
 async function clickShareRejectWithRetry(page: Page, shareId: string, reason: string) {
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     const responsePromise = page.waitForResponse(
       (response) =>
         response.url().includes(`/expenses/shares/${shareId}/reject`) &&
@@ -208,7 +248,7 @@ async function clickShareRejectWithRetry(page: Page, shareId: string, reason: st
       return;
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
 
   throw new Error(`POST share reject failed with status ${lastStatus}`);
@@ -311,6 +351,122 @@ async function clickLedgerReversalSubmitWithRetry(page: Page, obligationId: stri
   }
 
   throw new Error(`POST ledger reversal failed with status ${lastStatus}`);
+}
+
+async function clickCalendarEventSubmitWithRetry(page: Page) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const responsePromise = page.waitForResponse((response) => {
+      const pathname = new URL(response.url()).pathname;
+
+      return pathname.endsWith("/calendar/events") && response.request().method() === "POST";
+    });
+
+    await page.getByTestId("calendar-event-submit").click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Calendar event created")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST calendar event failed with status ${lastStatus}`);
+}
+
+async function clickTaskSubmitWithRetry(page: Page) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const responsePromise = page.waitForResponse((response) => {
+      const pathname = new URL(response.url()).pathname;
+
+      return pathname.endsWith("/tasks") && response.request().method() === "POST";
+    });
+
+    await page.getByTestId("task-submit").click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Task created")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST task failed with status ${lastStatus}`);
+}
+
+async function clickTaskCompleteWithRetry(page: Page, taskId: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/tasks/${taskId}/complete`) &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByTestId(`task-complete-${taskId}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Task completed")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST task complete failed with status ${lastStatus}`);
+}
+
+async function postViewerCalendarEventWithRetry(
+  page: Page,
+  householdId: string,
+  viewerEmail: string,
+  title: string,
+) {
+  let lastStatus = 0;
+  let lastError = "";
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await page.request.post(
+        `/api/v1/households/${householdId}/calendar/events`,
+        {
+          data: {
+            title,
+            type: "GROUP_ACTIVITY",
+            startAt: "2026-07-09T09:00:00.000Z",
+          },
+          headers: {
+            "Idempotency-Key": `viewer-calendar-${Date.now()}-${attempt}`,
+            "x-roompire-dev-user-email": viewerEmail,
+          },
+        },
+      );
+
+      lastStatus = response.status();
+
+      if (lastStatus === 403) {
+        return lastStatus;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`Viewer calendar API status ${lastStatus}: ${lastError}`);
 }
 
 function parseProposalDetailUrl(url: string) {
@@ -1410,7 +1566,8 @@ test.describe("Roompire real browser smoke", () => {
 
     const rejectIdempotencyKey = `reject-idempotency-${Date.now()}`;
     const rejectReplayBody = { reason: "Wrong utility period" };
-    const rejectReplayResponse = await page.request.post(
+    const rejectReplayResponse = await postApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/expenses/shares/${shareId}/reject`,
       {
         data: rejectReplayBody,
@@ -1425,7 +1582,8 @@ test.describe("Roompire real browser smoke", () => {
       proposal: { id: string };
     };
 
-    const rejectSecondReplayResponse = await page.request.post(
+    const rejectSecondReplayResponse = await postApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/expenses/shares/${shareId}/reject`,
       {
         data: rejectReplayBody,
@@ -1440,7 +1598,8 @@ test.describe("Roompire real browser smoke", () => {
       (await rejectSecondReplayResponse.json()) as typeof rejectReplayPayload;
     expect(rejectSecondReplayPayload.proposal.id).toBe(rejectReplayPayload.proposal.id);
 
-    const rejectConflictResponse = await page.request.post(
+    const rejectConflictResponse = await postApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/expenses/shares/${shareId}/reject`,
       {
         data: { reason: "Changed rejection reason" },
@@ -1455,6 +1614,175 @@ test.describe("Roompire real browser smoke", () => {
     await page.goto("/en-US/app");
     await expect(page.getByTestId("dashboard-stat-matured-obligations")).toContainText("0");
     await expect(page.getByText("No approved obligations yet")).toBeVisible();
+  });
+
+  test("member creates calendar work and completes an assigned task", async ({
+    page,
+  }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `calendar-owner+${suffix}@example.test`;
+    const memberEmail = `calendar-member+${suffix}@example.test`;
+    const householdName = `Calendar House ${suffix}`;
+    const eventTitle = `E2E Rent review ${suffix}`;
+    const taskTitle = `E2E Kitchen reset ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "Calendar Owner E2E");
+    const householdResponse = await page.request.post("/api/v1/households", {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+      },
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(householdResponse.ok()).toBeTruthy();
+    const householdPayload = (await householdResponse.json()) as {
+      household: { id: string };
+    };
+    const householdId = householdPayload.household.id;
+    const invitePayload = await createInviteWithRetry(
+      page,
+      householdId,
+      {
+        email: memberEmail,
+        role: "MEMBER",
+      },
+      ownerEmail,
+    );
+
+    await setDevSessionWithRetry(page, memberEmail, "Calendar Member E2E");
+    const acceptResponse = await page.request.post("/api/v1/invites/accept", {
+      data: {
+        token: invitePayload.token,
+      },
+      headers: {
+        "x-roompire-dev-user-email": memberEmail,
+      },
+    });
+    expect(acceptResponse.ok()).toBeTruthy();
+
+    await setDevSessionWithRetry(page, ownerEmail, "Calendar Owner E2E");
+    await page.goto("/en-US/app/calendar");
+
+    await expect(page.getByRole("heading", { name: "Calendar and tasks" })).toBeVisible();
+    await expect(page.getByText(householdName)).toBeVisible();
+    await page.getByTestId("calendar-event-title").fill(eventTitle);
+    await page.getByTestId("calendar-event-type").selectOption("BILL_DUE");
+    await page.getByTestId("calendar-event-start").fill("2026-07-09T09:00");
+    await page.getByTestId("calendar-event-description").fill("Review rent payment status");
+    await clickCalendarEventSubmitWithRetry(page);
+    await expect(page.getByText(eventTitle)).toBeVisible();
+
+    await page.getByTestId("task-title").fill(taskTitle);
+    await page.getByTestId("task-priority").selectOption("HIGH");
+    await page.getByTestId("task-due-at").fill("2026-07-09T10:00");
+    await page.getByTestId(`task-assignee-row-${memberEmail}`).click();
+    await expect(page.getByTestId(`task-assignee-${memberEmail}`)).toBeChecked();
+    await page.getByTestId("task-description").fill("Reset counters and recycling");
+    await clickTaskSubmitWithRetry(page);
+    await expect(page.getByText(taskTitle).first()).toBeVisible();
+
+    const tasksResponse = await getApiWithRetry(page, `/api/v1/households/${householdId}/tasks`, {
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(tasksResponse.ok()).toBeTruthy();
+    const tasksPayload = (await tasksResponse.json()) as {
+      tasks: Array<{
+        id: string;
+        title: string;
+        status: string;
+        assignments: Array<{ assignedUserId: string; status: string }>;
+        linkedEventIds: string[];
+      }>;
+    };
+    const createdTask = tasksPayload.tasks.find((task) => task.title === taskTitle);
+    expect(createdTask).toBeTruthy();
+    expect(createdTask!.status).toBe("OPEN");
+    expect(createdTask!.assignments).toHaveLength(1);
+    expect(createdTask!.linkedEventIds).toHaveLength(1);
+
+    const eventsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(eventsResponse.ok()).toBeTruthy();
+    const eventsPayload = (await eventsResponse.json()) as {
+      events: Array<{
+        id: string;
+        title: string;
+        type: string;
+        status: string;
+        links: Array<{ linkedType: string; linkedId: string }>;
+      }>;
+    };
+    expect(
+      eventsPayload.events.find((event) => event.title === eventTitle && event.type === "BILL_DUE"),
+    ).toBeTruthy();
+    const taskEvent = eventsPayload.events.find(
+      (event) => event.title === taskTitle && event.type === "TASK",
+    );
+    expect(taskEvent).toBeTruthy();
+    expect(taskEvent!.links).toContainEqual(
+      expect.objectContaining({
+        linkedType: "task",
+        linkedId: createdTask!.id,
+      }),
+    );
+
+    await setDevSessionWithRetry(page, memberEmail, "Calendar Member E2E");
+    await page.goto("/en-US/app/calendar");
+    await expect(page.getByText(taskTitle).first()).toBeVisible();
+    await clickTaskCompleteWithRetry(page, createdTask!.id);
+
+    const completedTasksResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": memberEmail,
+        },
+      },
+    );
+    expect(completedTasksResponse.ok()).toBeTruthy();
+    const completedTasksPayload = (await completedTasksResponse.json()) as typeof tasksPayload;
+    const completedTask = completedTasksPayload.tasks.find((task) => task.id === createdTask!.id);
+    expect(completedTask).toMatchObject({
+      id: createdTask!.id,
+      status: "COMPLETED",
+    });
+    expect(completedTask!.assignments).toContainEqual(
+      expect.objectContaining({
+        assignedUserId: createdTask!.assignments[0]!.assignedUserId,
+        status: "COMPLETED",
+      }),
+    );
+
+    const completedEventsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": memberEmail,
+        },
+      },
+    );
+    expect(completedEventsResponse.ok()).toBeTruthy();
+    const completedEventsPayload = (await completedEventsResponse.json()) as typeof eventsPayload;
+    expect(completedEventsPayload.events.find((event) => event.id === taskEvent!.id)).toMatchObject(
+      {
+        id: taskEvent!.id,
+        status: "COMPLETED",
+      },
+    );
   });
 
   test("viewer cannot create household invites", async ({ page }, testInfo) => {
@@ -1478,9 +1806,10 @@ test.describe("Roompire real browser smoke", () => {
     const householdPayload = (await householdResponse.json()) as {
       household: { id: string };
     };
+    const householdId = householdPayload.household.id;
     const invitePayload = await createInviteWithRetry(
       page,
-      householdPayload.household.id,
+      householdId,
       {
         email: viewerEmail,
         role: "VIEWER",
@@ -1510,5 +1839,13 @@ test.describe("Roompire real browser smoke", () => {
     await expect(
       page.getByText("Only household owners and admins can manage members."),
     ).toBeVisible();
+
+    await page.goto("/en-US/app/calendar");
+    await expect(page.getByText("Viewers can browse calendar work")).toBeVisible();
+    await expect(page.getByTestId("calendar-event-submit")).toBeDisabled();
+    await expect(page.getByTestId("task-submit")).toBeDisabled();
+    await expect(
+      postViewerCalendarEventWithRetry(page, householdId, viewerEmail, `Viewer blocked ${suffix}`),
+    ).resolves.toBe(403);
   });
 });

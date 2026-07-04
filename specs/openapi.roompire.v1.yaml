@@ -84,6 +84,24 @@ components:
     SettlementStatus:
       type: string
       enum: [SUBMITTED, CONFIRMED, REJECTED, CANCELLED]
+    CalendarEventType:
+      type: string
+      enum:
+        [
+          TASK,
+          CHORE,
+          GROUP_ACTIVITY,
+          BILL_DUE,
+          REPAYMENT_DUE,
+          SETTLEMENT_REMINDER,
+          RECURRING_EXPENSE_GENERATION,
+        ]
+    WorkItemStatus:
+      type: string
+      enum: [OPEN, COMPLETED]
+    TaskPriority:
+      type: string
+      enum: [LOW, NORMAL, HIGH]
     User:
       type: object
       required: [id, email, displayName]
@@ -570,6 +588,150 @@ components:
         suggestions:
           type: array
           items: { $ref: "#/components/schemas/SettlementSuggestion" }
+    CalendarEventLink:
+      type: object
+      required: [id, eventId, linkedType, linkedId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        linkedType:
+          type: string
+          examples: [task, expense_proposal]
+        linkedId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+    CalendarEvent:
+      type: object
+      required:
+        [
+          id,
+          householdId,
+          type,
+          title,
+          startAt,
+          allDay,
+          timezone,
+          status,
+          createdAt,
+          updatedAt,
+          links,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/CalendarEventType" }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time, nullable: true }
+        allDay: { type: boolean }
+        timezone: { type: string, example: America/Los_Angeles }
+        status: { $ref: "#/components/schemas/WorkItemStatus" }
+        createdByUserId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        links:
+          type: array
+          items: { $ref: "#/components/schemas/CalendarEventLink" }
+    CreateCalendarEventRequest:
+      type: object
+      required: [title, startAt]
+      properties:
+        title: { type: string, minLength: 2, maxLength: 120 }
+        description: { type: string, maxLength: 1000 }
+        type:
+          allOf:
+            - { $ref: "#/components/schemas/CalendarEventType" }
+          default: GROUP_ACTIVITY
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        allDay: { type: boolean, default: false }
+    CalendarEventResponse:
+      type: object
+      required: [event]
+      properties:
+        event: { $ref: "#/components/schemas/CalendarEvent" }
+    CalendarEventListResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/CalendarEvent" }
+    TaskAssignment:
+      type: object
+      required: [id, taskId, assignedUserId, role, status]
+      properties:
+        id: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        assignedUserId: { type: string, format: uuid }
+        role: { type: string, default: OWNER }
+        status: { type: string, examples: [ASSIGNED, COMPLETED] }
+    Task:
+      type: object
+      required:
+        [
+          id,
+          householdId,
+          title,
+          status,
+          priority,
+          createdByUserId,
+          createdAt,
+          updatedAt,
+          assignments,
+          linkedEventIds,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { $ref: "#/components/schemas/WorkItemStatus" }
+        priority: { $ref: "#/components/schemas/TaskPriority" }
+        categoryId: { type: string, format: uuid, nullable: true }
+        dueAt: { type: string, format: date-time, nullable: true }
+        createdByUserId: { type: string, format: uuid }
+        completedByUserId: { type: string, format: uuid, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        assignments:
+          type: array
+          items: { $ref: "#/components/schemas/TaskAssignment" }
+        linkedEventIds:
+          type: array
+          items: { type: string, format: uuid }
+    CreateTaskRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 2, maxLength: 120 }
+        description: { type: string, maxLength: 1000 }
+        priority:
+          allOf:
+            - { $ref: "#/components/schemas/TaskPriority" }
+          default: NORMAL
+        dueAt: { type: string, format: date-time }
+        assignedUserIds:
+          type: array
+          maxItems: 20
+          items: { type: string, format: uuid }
+    CompleteTaskRequest:
+      type: object
+      properties:
+        completedAt: { type: string, format: date-time }
+    TaskResponse:
+      type: object
+      required: [task]
+      properties:
+        task: { $ref: "#/components/schemas/Task" }
+    TaskListResponse:
+      type: object
+      required: [tasks]
+      properties:
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
 paths:
   /session:
     get:
@@ -1349,6 +1511,7 @@ paths:
   /households/{householdId}/calendar/events:
     get:
       summary: List calendar events
+      description: Returns household events ordered by start time. Active household members, including viewers, can read.
       parameters:
         - in: path
           name: householdId
@@ -1361,20 +1524,186 @@ paths:
           name: end
           schema: { type: string, format: date-time }
       responses:
-        "200": { description: OK }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CalendarEventListResponse" }
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
     post:
       summary: Create calendar event
+      description: Owners, admins, and members can create household calendar events. Viewers are read-only.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCalendarEventRequest" }
       responses:
-        "201": { description: Created }
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CalendarEventResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Idempotent request is in progress or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/tasks:
     get:
       summary: List tasks
+      description: Returns household tasks with assignments and linked event IDs. Active household members, including viewers, can read.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/WorkItemStatus" }
       responses:
-        "200": { description: OK }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskListResponse" }
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
     post:
       summary: Create task
+      description: Owners, admins, and members can create household tasks. If dueAt is present, the API also creates a linked TASK calendar event.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTaskRequest" }
       responses:
-        "201": { description: Created }
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "400":
+          description: Validation error, invalid assignee, or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Idempotent request is in progress or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/tasks/{taskId}/complete:
+    post:
+      summary: Complete task
+      description: Owners, admins, and members can complete a household task. Linked calendar TASK events are marked completed.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: taskId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompleteTaskRequest" }
+      responses:
+        "200":
+          description: Completed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Task not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Idempotent request is in progress or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/audit-events:
     get:
       summary: List audit events

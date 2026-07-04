@@ -39,31 +39,33 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Phase 2 settlements slice implemented on branch `feat/settlements`: debtor settlement submission, creditor confirmation/rejection, allocation rows that reduce `DebtObligation.remainingAmount`, localized ledger-page settlement workbench, settlement APIs with persisted idempotency, OpenAPI/docs updates, and real-browser E2E/API coverage.
 - Phase 2 ledger corrections slice implemented on branch `feat/ledger-corrections`: owner/admin manual adjustment API/UI, reversal API/UI for unallocated open obligations, append-only `ADJUSTMENT`/`REVERSAL` ledger transactions, persisted idempotency for correction mutations, OpenAPI/docs updates, and real-browser E2E/API coverage.
 - Phase 2 settlement suggestions slice implemented on branch `feat/settlement-suggestions`: read-only settlement optimizer that nets open obligations by currency, `/settlement-suggestions` API, ledger-page suggestion section, OpenAPI/docs updates, unit tests for chained/multi-currency netting, and real-browser E2E/API coverage.
+- Phase 2 calendar/task shell slice implemented on branch `feat/calendar-tasks`: localized `/[locale]/app/calendar` workspace, calendar event list/create API/UI, task list/create/assignment API/UI, due-task auto-linking to `TASK` calendar events through `EventLink`, task completion that also completes linked events, viewer read-only guard, OpenAPI/docs updates, and real-browser desktop/mobile E2E coverage.
 
 ## Current phase
 
-Phase 2: expense proposals and formal ledger. Proposal creation plus debtor approval/rejection are implemented and verified locally. Current scope creates submitted proposals, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against open obligations, lets creditors confirm or reject those settlements, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, and keeps rejected/pending proposals out of formal balances. Remaining Phase 2 work should add broader split methods, calendar/task workflows, and production auth/session semantics.
+Phase 2: expense proposals, formal ledger, and first calendar/task shell. Current scope creates submitted proposals, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against open obligations, lets creditors confirm or reject those settlements, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides calendar event/task creation plus task completion with task-event links, and keeps rejected/pending proposals out of formal balances. Remaining Phase 2 work should add broader split methods, recurring/task-to-expense workflows, and production auth/session semantics.
 
 ## Decisions log
 
-| Date       | Decision                                                   | Rationale                                                                                                                               |
-| ---------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-07-03 | Choose custom PWA-first system                             | Existing tools do not satisfy approval-gated ledger + locked FX + calendar-linked tasks + bilingual self-hosting.                       |
-| 2026-07-03 | Use proposal/ledger split                                  | Pending expenses must be auditable but must not affect debt balances.                                                                   |
-| 2026-07-03 | Use expense-date FX lock by default                        | More predictable for RMB repayment and avoids repayment-date FX disputes.                                                               |
-| 2026-07-03 | Use Playwright as primary E2E gate                         | User explicitly requires real webpage interaction testing.                                                                              |
-| 2026-07-04 | Pin Prisma to 6.x                                          | The supplied schema uses the stable Prisma datasource URL style; Prisma 7 requires a config migration that is not needed for Phase 0.   |
-| 2026-07-04 | Pin TypeScript to 5.x and ESLint to 9.x                    | Current Next.js ecosystem is stable on these major versions; TS 6 and ESLint 10 introduced avoidable bootstrap friction.                |
-| 2026-07-04 | Use Postgres 18 volume mount at `/var/lib/postgresql`      | Postgres 18 Docker image expects the newer major-version-specific data layout.                                                          |
-| 2026-07-04 | Use dev-session cookie for MVP auth foundation             | Keeps Phase 1 browser-testable while leaving production auth provider selection open.                                                   |
-| 2026-07-04 | Obscure inaccessible household APIs with 404               | Avoids leaking household existence to non-members.                                                                                      |
-| 2026-07-04 | Ship submitted proposal creation before approvals          | Gives users a real expense intake loop while preserving the proposal/ledger split until approval logic is implemented.                  |
-| 2026-07-04 | Enable partial share maturity by default                   | Current MVP has no household partial-maturity flag, so each debtor-approved share can create its own formal obligation immediately.     |
-| 2026-07-04 | Treat payer submission as payer confirmation               | Proposal creation creates the primary payer record; debtor approval then satisfies the current maturity gate for that share.            |
-| 2026-07-04 | Persist idempotency per user and key                       | Duplicate-prone financial mutations must replay identical requests and reject key reuse with changed endpoint/body.                     |
-| 2026-07-04 | Require creditor confirmation before settlement allocation | A debtor-submitted payment should be auditable immediately but should not reduce formal balances until the creditor confirms receipt.   |
-| 2026-07-04 | Restrict ledger corrections to owner/admin                 | Manual adjustments and reversals are high-trust audit actions and should not be available to ordinary members or viewers.               |
-| 2026-07-04 | Keep settlement suggestions read-only                      | Suggestions should guide repayment without mutating balances; actual balance changes still require submitted and confirmed settlements. |
+| Date       | Decision                                                   | Rationale                                                                                                                                                 |
+| ---------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-03 | Choose custom PWA-first system                             | Existing tools do not satisfy approval-gated ledger + locked FX + calendar-linked tasks + bilingual self-hosting.                                         |
+| 2026-07-03 | Use proposal/ledger split                                  | Pending expenses must be auditable but must not affect debt balances.                                                                                     |
+| 2026-07-03 | Use expense-date FX lock by default                        | More predictable for RMB repayment and avoids repayment-date FX disputes.                                                                                 |
+| 2026-07-03 | Use Playwright as primary E2E gate                         | User explicitly requires real webpage interaction testing.                                                                                                |
+| 2026-07-04 | Pin Prisma to 6.x                                          | The supplied schema uses the stable Prisma datasource URL style; Prisma 7 requires a config migration that is not needed for Phase 0.                     |
+| 2026-07-04 | Pin TypeScript to 5.x and ESLint to 9.x                    | Current Next.js ecosystem is stable on these major versions; TS 6 and ESLint 10 introduced avoidable bootstrap friction.                                  |
+| 2026-07-04 | Use Postgres 18 volume mount at `/var/lib/postgresql`      | Postgres 18 Docker image expects the newer major-version-specific data layout.                                                                            |
+| 2026-07-04 | Use dev-session cookie for MVP auth foundation             | Keeps Phase 1 browser-testable while leaving production auth provider selection open.                                                                     |
+| 2026-07-04 | Obscure inaccessible household APIs with 404               | Avoids leaking household existence to non-members.                                                                                                        |
+| 2026-07-04 | Ship submitted proposal creation before approvals          | Gives users a real expense intake loop while preserving the proposal/ledger split until approval logic is implemented.                                    |
+| 2026-07-04 | Enable partial share maturity by default                   | Current MVP has no household partial-maturity flag, so each debtor-approved share can create its own formal obligation immediately.                       |
+| 2026-07-04 | Treat payer submission as payer confirmation               | Proposal creation creates the primary payer record; debtor approval then satisfies the current maturity gate for that share.                              |
+| 2026-07-04 | Persist idempotency per user and key                       | Duplicate-prone financial mutations must replay identical requests and reject key reuse with changed endpoint/body.                                       |
+| 2026-07-04 | Require creditor confirmation before settlement allocation | A debtor-submitted payment should be auditable immediately but should not reduce formal balances until the creditor confirms receipt.                     |
+| 2026-07-04 | Restrict ledger corrections to owner/admin                 | Manual adjustments and reversals are high-trust audit actions and should not be available to ordinary members or viewers.                                 |
+| 2026-07-04 | Keep settlement suggestions read-only                      | Suggestions should guide repayment without mutating balances; actual balance changes still require submitted and confirmed settlements.                   |
+| 2026-07-04 | Auto-link due tasks to calendar events                     | The first calendar/task shell should give users one operational surface immediately; task recurrence and task-to-expense proposal links can follow later. |
 
 ## Open questions for later human review
 
@@ -75,7 +77,7 @@ Phase 2: expense proposals and formal ledger. Proposal creation plus debtor appr
 ## Next recommended tasks
 
 1. Add optional multi-obligation settlement allocation policy so one confirmed settlement can apply across suggested transfers.
-2. Add calendar/task shell and link expenses, repayment deadlines, and household tasks.
+2. Add recurring calendar/task rules, month/week views, repayment deadline auto-events, and task-to-expense proposal links.
 3. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
 4. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
 5. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
@@ -83,6 +85,17 @@ Phase 2: expense proposals and formal ledger. Proposal creation plus debtor appr
 
 ## Last session verification
 
+- 2026-07-04 Phase 2 calendar/task shell:
+  - `pnpm format:check` passed.
+  - `pnpm lint` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm test` passed: 3 test files, 7 tests.
+  - `pnpm build` passed with `/[locale]/app/calendar`, `/api/v1/households/[householdId]/calendar/events`, `/api/v1/households/[householdId]/tasks`, and `/tasks/[taskId]/complete` in the Next route manifest.
+  - `pnpm db:validate` passed.
+  - `pnpm db:migrate` passed with no pending migrations.
+  - `pnpm db:seed` passed.
+  - Targeted Playwright passed for calendar/task desktop and mobile flows.
+  - `pnpm e2e` passed from a clean `.next` cache: 18 Playwright tests across Chromium desktop and mobile, including calendar event creation, task assignment, linked `TASK` calendar event creation, assigned-member task completion, linked event completion, and viewer read-only calendar/task guards.
 - 2026-07-04 Phase 2 settlement suggestions:
   - `pnpm format:check` passed.
   - `pnpm lint` passed.
