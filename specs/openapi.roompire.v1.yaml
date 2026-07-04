@@ -524,6 +524,54 @@ components:
           allOf:
             - { $ref: "#/components/schemas/CreateExpenseSplitMethod" }
           default: EQUAL
+    CreateEventExpenseProposalRequest:
+      type: object
+      required: [originalAmount, originalCurrency]
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 120
+          description: Defaults to the calendar event title when omitted.
+        description:
+          type: string
+          description: Defaults to the calendar event description when omitted.
+        merchant: { type: string }
+        categoryId: { type: string, format: uuid }
+        expenseDate:
+          type: string
+          format: date
+          description: Defaults to the calendar event start date.
+        dueDate:
+          type: string
+          format: date
+          description: Defaults to the calendar event start date.
+        originalAmount: { $ref: "#/components/schemas/DecimalString" }
+        originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        fxRate:
+          description: Optional manual FX override. When omitted for cross-currency event expenses, Roompire locks the expense-date rate from the FX cache or configured provider.
+          $ref: "#/components/schemas/FxRateString"
+        participantUserIds:
+          type: array
+          description: Equal-split debtor user IDs. For EQUAL, provide participantUserIds or participantShares.
+          minItems: 1
+          maxItems: 20
+          items: { type: string, format: uuid }
+        participantShares:
+          type: array
+          description: Debtor rows for EQUAL or weighted split methods. Required for EXACT, PERCENTAGE, and SHARES.
+          minItems: 1
+          maxItems: 20
+          items: { $ref: "#/components/schemas/ExpenseParticipantInput" }
+        fileIds:
+          type: array
+          description: Uploaded receipt/evidence files to attach as receipts at proposal creation.
+          maxItems: 10
+          items: { type: string, format: uuid }
+        splitMethod:
+          allOf:
+            - { $ref: "#/components/schemas/CreateExpenseSplitMethod" }
+          default: EQUAL
     CreateExpenseProposalRevisionRequest:
       allOf:
         - { $ref: "#/components/schemas/CreateExpenseProposalRequest" }
@@ -2360,6 +2408,55 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
           description: Idempotent request is in progress or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/calendar/events/{eventId}/create-expense-proposal:
+    post:
+      summary: Create an expense proposal from a calendar event
+      description: Owners, admins, and members can create one linked submitted proposal from bill, chore, group activity, or recurring expense generation events. Viewers are read-only. The generated proposal remains pending and does not affect formal ledger balances until debtor approval.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateEventExpenseProposalRequest" }
+      responses:
+        "201":
+          description: Linked expense proposal created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseProposalResponse" }
+        "400":
+          description: Validation error, unsupported event type, invalid participant, FX rate required, or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer or otherwise cannot create proposals
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Event not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Event already has a linked expense proposal, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

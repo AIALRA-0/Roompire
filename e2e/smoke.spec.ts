@@ -504,6 +504,31 @@ async function clickTaskExpenseProposalSubmitWithRetry(page: Page, taskId: strin
   throw new Error(`POST task expense proposal failed with status ${lastStatus}`);
 }
 
+async function clickEventExpenseProposalSubmitWithRetry(page: Page, eventId: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/calendar/events/${eventId}/create-expense-proposal`) &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByTestId(`event-expense-submit-${eventId}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Expense proposal created")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST event expense proposal failed with status ${lastStatus}`);
+}
+
 async function postViewerCalendarEventWithRetry(
   page: Page,
   householdId: string,
@@ -2707,6 +2732,7 @@ test.describe("Roompire real browser smoke", () => {
     const householdName = `Calendar House ${suffix}`;
     const eventTitle = `E2E Rent review ${suffix}`;
     const taskTitle = `E2E Kitchen reset ${suffix}`;
+    const eventProposalTitle = `E2E Event reimbursement ${suffix}`;
     const taskProposalTitle = `E2E Task reimbursement ${suffix}`;
 
     await setDevSessionWithRetry(page, ownerEmail, "Calendar Owner E2E");
@@ -2765,6 +2791,13 @@ test.describe("Roompire real browser smoke", () => {
     expect(ownerUserId).toBeTruthy();
     if (!ownerUserId) {
       throw new Error("Expected owner user id in calendar members payload");
+    }
+    const memberUserId = membersPayload.members.find(
+      (member) => member.email === memberEmail,
+    )?.userId;
+    expect(memberUserId).toBeTruthy();
+    if (!memberUserId) {
+      throw new Error("Expected member user id in calendar members payload");
     }
 
     await setDevSessionWithRetry(page, ownerEmail, "Calendar Owner E2E");
@@ -2861,6 +2894,164 @@ test.describe("Roompire real browser smoke", () => {
         event.links.some((link) => link.linkedType === "recurrence_rule"),
       ),
     ).toBe(true);
+
+    const eventExpenseSource = recurringEvents[0]!;
+    await page.getByTestId(`event-expense-toggle-${eventExpenseSource.id}`).click();
+    await expect(page.getByTestId(`event-expense-form-${eventExpenseSource.id}`)).toBeVisible();
+    await page.getByTestId(`event-expense-title-${eventExpenseSource.id}`).fill(eventProposalTitle);
+    await page.getByTestId(`event-expense-merchant-${eventExpenseSource.id}`).fill("Event vendor");
+    await page.getByTestId(`event-expense-amount-${eventExpenseSource.id}`).fill("150");
+    await page.getByTestId(`event-expense-original-currency-${eventExpenseSource.id}`).fill("CNY");
+    await page.getByTestId(`event-expense-fx-rate-${eventExpenseSource.id}`).fill("1");
+    await page.getByTestId(`event-expense-debtor-${eventExpenseSource.id}-${memberEmail}`).check();
+    await clickEventExpenseProposalSubmitWithRetry(page, eventExpenseSource.id);
+
+    const eventLinkedProposalResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(eventLinkedProposalResponse.ok()).toBeTruthy();
+    const eventLinkedProposalPayload =
+      (await eventLinkedProposalResponse.json()) as typeof eventsPayload;
+    const eventWithProposal = eventLinkedProposalPayload.events.find(
+      (event) => event.id === eventExpenseSource.id,
+    );
+    const eventProposalId = eventWithProposal?.links.find(
+      (link) => link.linkedType === "expense_proposal",
+    )?.linkedId;
+    expect(eventProposalId).toBeTruthy();
+    if (!eventProposalId) {
+      throw new Error("Expected event-generated expense proposal link");
+    }
+
+    await expect(
+      page.getByTestId(`event-proposal-link-${eventExpenseSource.id}-${eventProposalId}`),
+    ).toBeVisible();
+
+    const eventProposalResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals/${eventProposalId}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(eventProposalResponse.ok()).toBeTruthy();
+    const eventProposalPayload = (await eventProposalResponse.json()) as {
+      proposal: {
+        id: string;
+        title: string;
+        status: string;
+        originalAmount: string;
+        originalCurrency: string;
+        settlementAmount: string;
+        settlementCurrency: string;
+        shares: Array<{
+          debtorUserId: string;
+          creditorUserId: string;
+          status: string;
+          ledgerObligationId: string | null;
+        }>;
+      };
+    };
+    expect(eventProposalPayload.proposal).toMatchObject({
+      id: eventProposalId,
+      title: eventProposalTitle,
+      status: "SUBMITTED",
+      originalAmount: "150",
+      originalCurrency: "CNY",
+      settlementAmount: "150",
+      settlementCurrency: "CNY",
+    });
+    expect(eventProposalPayload.proposal.shares).toHaveLength(1);
+    expect(eventProposalPayload.proposal.shares[0]).toMatchObject({
+      debtorUserId: memberUserId,
+      creditorUserId: ownerUserId,
+      status: "PENDING",
+      ledgerObligationId: null,
+    });
+
+    const balancesAfterEventProposalResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/balances`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(balancesAfterEventProposalResponse.ok()).toBeTruthy();
+    const balancesAfterEventProposalPayload = (await balancesAfterEventProposalResponse.json()) as {
+      balances: unknown[];
+    };
+    expect(balancesAfterEventProposalPayload.balances).toHaveLength(0);
+
+    const eventProposalIdempotencyKey = `event-proposal-idempotency-${Date.now()}`;
+    const eventProposalReplayBody = {
+      title: `E2E API event reimbursement ${suffix}`,
+      originalAmount: "27.00",
+      originalCurrency: "CNY",
+      fxRate: "1",
+      participantUserIds: [memberUserId],
+      splitMethod: "EQUAL",
+    };
+    const eventProposalReplayResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events/${recurringEvents[1]!.id}/create-expense-proposal`,
+      {
+        data: eventProposalReplayBody,
+        headers: {
+          "Idempotency-Key": eventProposalIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(eventProposalReplayResponse.ok()).toBeTruthy();
+    const eventProposalReplayPayload = (await eventProposalReplayResponse.json()) as {
+      proposal: { id: string; status: string };
+    };
+    expect(eventProposalReplayPayload.proposal.status).toBe("SUBMITTED");
+
+    const eventProposalSecondReplayResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events/${recurringEvents[1]!.id}/create-expense-proposal`,
+      {
+        data: eventProposalReplayBody,
+        headers: {
+          "Idempotency-Key": eventProposalIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(eventProposalSecondReplayResponse.ok()).toBeTruthy();
+    const eventProposalSecondReplayPayload =
+      (await eventProposalSecondReplayResponse.json()) as typeof eventProposalReplayPayload;
+    expect(eventProposalSecondReplayPayload.proposal.id).toBe(
+      eventProposalReplayPayload.proposal.id,
+    );
+
+    const eventProposalConflictResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events/${recurringEvents[1]!.id}/create-expense-proposal`,
+      {
+        data: {
+          ...eventProposalReplayBody,
+          originalAmount: "28.00",
+        },
+        headers: {
+          "Idempotency-Key": eventProposalIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(eventProposalConflictResponse.status()).toBe(409);
+
     await page.getByTestId("calendar-view-month").click();
     await expect(page.getByTestId("calendar-month-view")).toBeVisible();
     await expect(page.getByTestId(`calendar-month-event-${recurringEvents[0]!.id}`)).toContainText(

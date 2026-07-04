@@ -36,6 +36,12 @@ const fxRateStringSchema = z
   .refine((value) => new Decimal(value).isPositive(), "FX rate must be greater than zero.");
 
 const supportedSplitMethods = ["EQUAL", "EXACT", "PERCENTAGE", "SHARES"] as const;
+const expenseProposalEventTypes = new Set<CalendarEventType>([
+  CalendarEventType.CHORE,
+  CalendarEventType.GROUP_ACTIVITY,
+  CalendarEventType.BILL_DUE,
+  CalendarEventType.RECURRING_EXPENSE_GENERATION,
+]);
 
 const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -139,6 +145,21 @@ export const createTaskExpenseProposalSchema = createExpenseProposalBaseSchema
   })
   .superRefine(validateSplitInputs);
 
+export const createEventExpenseProposalSchema = createExpenseProposalBaseSchema
+  .omit({
+    description: true,
+    dueDate: true,
+    expenseDate: true,
+    title: true,
+  })
+  .extend({
+    title: z.string().trim().min(2).max(120).optional(),
+    description: z.string().trim().max(1000).optional(),
+    expenseDate: dateOnlySchema.optional(),
+    dueDate: dateOnlySchema.optional(),
+  })
+  .superRefine(validateSplitInputs);
+
 export const listExpenseProposalQuerySchema = z.object({
   status: z.nativeEnum(ExpenseProposalStatus).optional(),
 });
@@ -200,6 +221,7 @@ type PreparedExpenseProposalCreate = {
     shareUnits?: string;
   }>;
   sourceTaskId?: string;
+  sourceCalendarEventId?: string;
 };
 
 const expenseProposalDetailInclude = {
@@ -482,6 +504,7 @@ async function prepareExpenseProposalCreate(
     supersedesProposalId: string;
     revisionNumber: number;
   },
+  sourceCalendarEventId?: string,
 ) {
   const household = creatorMembership.household;
   const participantShares = participantSharesForInput(data);
@@ -659,6 +682,7 @@ async function prepareExpenseProposalCreate(
     supersedesProposalId: revision?.supersedesProposalId,
     shareRows,
     sourceTaskId,
+    sourceCalendarEventId,
   };
 }
 
@@ -745,6 +769,7 @@ async function createExpenseProposalRecord(
         revisionNumber: prepared.revisionNumber ?? 1,
         supersedesProposalId: prepared.supersedesProposalId ?? null,
         sourceTaskId: prepared.sourceTaskId ?? null,
+        sourceCalendarEventId: prepared.sourceCalendarEventId ?? null,
       },
     },
   });
@@ -995,6 +1020,124 @@ export async function createExpenseProposalFromTaskForHousehold(
 
     throw error;
   }
+}
+
+export async function createExpenseProposalFromCalendarEventForHousehold(
+  userId: string,
+  householdId: string,
+  eventId: string,
+  input: unknown,
+) {
+  const creatorMembership = await requireExpenseProposalCreator(userId, householdId);
+  const parsed = createEventExpenseProposalSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError(
+      "Calendar event expense proposal input is invalid.",
+      parsed.error.flatten(),
+    );
+  }
+
+  const calendarEvent = await prisma.calendarEvent.findFirst({
+    where: {
+      id: eventId,
+      householdId,
+    },
+  });
+
+  if (!calendarEvent) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  if (!expenseProposalEventTypes.has(calendarEvent.type)) {
+    throw new ApiError(
+      400,
+      "EVENT_EXPENSE_PROPOSAL_NOT_SUPPORTED",
+      "Only bill, chore, group activity, or recurring expense events can create expense proposals.",
+      { eventType: calendarEvent.type },
+    );
+  }
+
+  const existingProposalLink = await prisma.eventLink.findFirst({
+    where: {
+      eventId,
+      linkedType: "expense_proposal",
+    },
+  });
+
+  if (existingProposalLink) {
+    throw new ApiError(
+      409,
+      "EVENT_EXPENSE_PROPOSAL_EXISTS",
+      "This calendar event already has a linked expense proposal.",
+      {
+        proposalId: existingProposalLink.linkedId,
+      },
+    );
+  }
+
+  const eventDate = calendarEvent.startAt.toISOString().slice(0, 10);
+  const data: CreateExpenseProposalData = {
+    ...parsed.data,
+    description: parsed.data.description ?? calendarEvent.description ?? undefined,
+    dueDate: parsed.data.dueDate ?? eventDate,
+    expenseDate: parsed.data.expenseDate ?? eventDate,
+    title: parsed.data.title ?? calendarEvent.title,
+  };
+  const prepared = await prepareExpenseProposalCreate(
+    userId,
+    householdId,
+    creatorMembership,
+    data,
+    undefined,
+    undefined,
+    calendarEvent.id,
+  );
+
+  return prisma.$transaction(async (tx) => {
+    const existingLink = await tx.eventLink.findFirst({
+      where: {
+        eventId,
+        linkedType: "expense_proposal",
+      },
+    });
+
+    if (existingLink) {
+      throw new ApiError(
+        409,
+        "EVENT_EXPENSE_PROPOSAL_EXISTS",
+        "This calendar event already has a linked expense proposal.",
+        {
+          proposalId: existingLink.linkedId,
+        },
+      );
+    }
+
+    const proposal = await createExpenseProposalRecord(tx, prepared);
+    const link = await tx.eventLink.create({
+      data: {
+        eventId,
+        linkedType: "expense_proposal",
+        linkedId: proposal.id,
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "calendar_event.expense_proposal_created",
+        entityType: "EventLink",
+        entityId: link.id,
+        after: {
+          eventId,
+          proposalId: proposal.id,
+        },
+      },
+    });
+
+    return proposal;
+  });
 }
 
 export async function approveExpenseShareForHousehold(

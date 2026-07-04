@@ -61,7 +61,7 @@
 - Revision flow.
 - Dispute state.
 
-Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, receipt upload/attachment with private signed download URLs on local disk or S3-compatible storage, proposal submission, debtor-only approve/reject/request-changes actions, disputed/rejected proposal revision/resubmit with supersedes links, proposal comments, proposal detail pages with split basis and a submitted/approval/change-request/comment timeline, ledger maturity for approved shares, and task-generated pending proposals. Richer audit/file timeline events remain backlog items.
+Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, receipt upload/attachment with private signed download URLs on local disk or S3-compatible storage, proposal submission, debtor-only approve/reject/request-changes actions, disputed/rejected proposal revision/resubmit with supersedes links, proposal comments, proposal detail pages with split basis and a submitted/approval/change-request/comment timeline, ledger maturity for approved shares, task-generated pending proposals, and event-generated pending proposals. Richer audit/file timeline events remain backlog items.
 
 ## Epic 3 — FX
 
@@ -125,7 +125,7 @@ Current implemented subset for FX: proposal/revision/task-expense creation locks
 - Complete task.
 - Link proposal/task/event.
 
-Current implemented subset across calendar branches: calendar/task page shell, event list/create, event list/week/month views, task list/create, assignment at creation, task completion, task-to-calendar-event linking, repayment due events, finite recurrence, and task-generated pending expense proposals linked back to the task and any linked task event. Event-to-expense creation beyond task links remains a backlog item.
+Current implemented subset across calendar branches: calendar/task page shell, event list/create, event list/week/month views, task list/create, assignment at creation, task completion, task-to-calendar-event linking, repayment due events, finite recurrence, task-generated pending expense proposals linked back to the task and any linked task event, and event-generated pending expense proposals from bill/chore/group/recurring-expense events.
 
 ### P1
 

@@ -20,6 +20,12 @@ const eventTypeKeys = [
 
 const priorityKeys = ["LOW", "NORMAL", "HIGH"] as const;
 const recurrenceKeys = ["NONE", "DAILY", "WEEKLY", "MONTHLY"] as const;
+const expenseProposalEventTypes = new Set<EventTypeKey>([
+  "CHORE",
+  "GROUP_ACTIVITY",
+  "BILL_DUE",
+  "RECURRING_EXPENSE_GENERATION",
+]);
 
 type EventTypeKey = (typeof eventTypeKeys)[number];
 type PriorityKey = (typeof priorityKeys)[number];
@@ -251,6 +257,7 @@ export function CalendarWorkspace({
   const [message, setMessage] = useState<string | null>(null);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const [eventViewMode, setEventViewMode] = useState<EventViewMode>("LIST");
+  const [expandedExpenseEventId, setExpandedExpenseEventId] = useState<string | null>(null);
   const [expandedExpenseTaskId, setExpandedExpenseTaskId] = useState<string | null>(null);
   const writableMembers = members.filter((member) => member.role !== "VIEWER");
   const expenseDebtorOptions = members.filter(
@@ -420,6 +427,42 @@ export function CalendarWorkspace({
       );
       form.reset();
       setExpandedExpenseTaskId(null);
+      setMessage(labels.expenseProposalCreated);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : labels.errorFallback);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
+
+  async function createEventExpenseProposal(eventId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    setBusyActionId(`event-expense-${eventId}`);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      await postCalendarMutation(
+        `/api/v1/households/${activeHouseholdId}/calendar/events/${eventId}/create-expense-proposal`,
+        {
+          title: String(formData.get("title") ?? ""),
+          merchant: String(formData.get("merchant") ?? ""),
+          categoryId: String(formData.get("categoryId") ?? ""),
+          expenseDate: String(formData.get("expenseDate") ?? ""),
+          dueDate: String(formData.get("dueDate") ?? ""),
+          originalAmount: String(formData.get("originalAmount") ?? ""),
+          originalCurrency: String(formData.get("originalCurrency") ?? "").toUpperCase(),
+          fxRate: String(formData.get("fxRate") ?? ""),
+          participantUserIds: formData.getAll("participantUserIds").map(String),
+          splitMethod: "EQUAL",
+        },
+        labels.errorFallback,
+      );
+      form.reset();
+      setExpandedExpenseEventId(null);
       setMessage(labels.expenseProposalCreated);
       startTransition(() => router.refresh());
     } catch (error) {
@@ -719,39 +762,221 @@ export function CalendarWorkspace({
             <>
               {eventViewMode === "LIST" ? (
                 <div className="divide-y divide-border">
-                  {sortedEvents.map((event) => (
-                    <div
-                      className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                      data-testid={`calendar-event-row-${event.id}`}
-                      key={event.id}
-                    >
-                      <div className="min-w-0">
-                        <p className="break-words text-sm font-medium">{event.title}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {formatDateTime(event.startAt, locale)}
-                        </p>
-                        {event.description ? (
-                          <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                            {event.description}
-                          </p>
+                  {sortedEvents.map((event) => {
+                    const eventType = event.type as EventTypeKey;
+                    const linkedProposalIds = event.links
+                      .filter((link) => link.linkedType === "expense_proposal")
+                      .map((link) => link.linkedId);
+                    const hasLinkedProposal = linkedProposalIds.length > 0;
+                    const isExpenseFormOpen = expandedExpenseEventId === event.id;
+                    const canCreateEventExpenseProposal =
+                      canCreateExpenseProposals &&
+                      expenseProposalEventTypes.has(eventType) &&
+                      !hasLinkedProposal &&
+                      expenseDebtorOptions.length > 0;
+                    const isEventExpenseBusy = busyActionId === `event-expense-${event.id}`;
+
+                    return (
+                      <div
+                        className="grid gap-3 p-4"
+                        data-testid={`calendar-event-row-${event.id}`}
+                        key={event.id}
+                      >
+                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                          <div className="min-w-0">
+                            <p className="break-words text-sm font-medium">{event.title}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {formatDateTime(event.startAt, locale)}
+                            </p>
+                            {event.description ? (
+                              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                                {event.description}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                            <Badge variant="neutral">{labels.eventTypes[eventType]}</Badge>
+                            <Badge variant={statusVariant(event.status)}>
+                              {labels.statuses[(event.status as StatusKey) ?? "OPEN"] ??
+                                event.status}
+                            </Badge>
+                            {event.links.some((link) => link.linkedType === "task") ? (
+                              <Badge>{labels.linkedTask}</Badge>
+                            ) : null}
+                            {hasLinkedProposal ? (
+                              <Badge>{labels.linkedExpenseProposal}</Badge>
+                            ) : null}
+                            {linkedProposalIds.map((proposalId) => (
+                              <Button asChild key={proposalId} size="sm" variant="outline">
+                                <Link
+                                  data-testid={`event-proposal-link-${event.id}-${proposalId}`}
+                                  href={`/${locale}/app/households/${activeHouseholdId}/expenses/proposals/${proposalId}`}
+                                >
+                                  {labels.openProposal}
+                                </Link>
+                              </Button>
+                            ))}
+                            <Button
+                              data-testid={`event-expense-toggle-${event.id}`}
+                              disabled={
+                                !canCreateEventExpenseProposal || isEventExpenseBusy || isPending
+                              }
+                              onClick={() =>
+                                setExpandedExpenseEventId(isExpenseFormOpen ? null : event.id)
+                              }
+                              type="button"
+                              variant="outline"
+                            >
+                              <ReceiptText aria-hidden="true" className="h-4 w-4" />
+                              {labels.createExpenseProposal}
+                            </Button>
+                          </div>
+                        </div>
+                        {isExpenseFormOpen ? (
+                          <form
+                            className="grid gap-3 border-t border-border pt-3"
+                            data-testid={`event-expense-form-${event.id}`}
+                            onSubmit={(formEvent) =>
+                              void createEventExpenseProposal(event.id, formEvent)
+                            }
+                          >
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Field label={labels.proposalTitle}>
+                                <input
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                  data-testid={`event-expense-title-${event.id}`}
+                                  defaultValue={event.title}
+                                  maxLength={120}
+                                  name="title"
+                                  required
+                                />
+                              </Field>
+                              <Field label={labels.merchant}>
+                                <input
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                  data-testid={`event-expense-merchant-${event.id}`}
+                                  name="merchant"
+                                />
+                              </Field>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Field label={labels.category}>
+                                <select
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                  data-testid={`event-expense-category-${event.id}`}
+                                  name="categoryId"
+                                >
+                                  <option value="">{labels.uncategorized}</option>
+                                  {categories.map((category) => (
+                                    <option key={category.id} value={category.id}>
+                                      {category.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              <Field label={labels.expenseDate}>
+                                <input
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                  data-testid={`event-expense-date-${event.id}`}
+                                  defaultValue={dateOnly(event.startAt)}
+                                  name="expenseDate"
+                                  required
+                                  type="date"
+                                />
+                              </Field>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Field label={labels.dueDate}>
+                                <input
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                  data-testid={`event-expense-due-date-${event.id}`}
+                                  defaultValue={dateOnly(event.startAt)}
+                                  name="dueDate"
+                                  type="date"
+                                />
+                              </Field>
+                              <Field label={labels.originalAmount}>
+                                <input
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                  data-testid={`event-expense-amount-${event.id}`}
+                                  min="0.01"
+                                  name="originalAmount"
+                                  required
+                                  step="0.01"
+                                  type="number"
+                                />
+                              </Field>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <Field label={labels.originalCurrency}>
+                                <input
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
+                                  data-testid={`event-expense-original-currency-${event.id}`}
+                                  defaultValue={settlementCurrency ?? "USD"}
+                                  maxLength={3}
+                                  minLength={3}
+                                  name="originalCurrency"
+                                  required
+                                />
+                              </Field>
+                              <Field label={labels.settlementCurrency}>
+                                <input
+                                  className="h-10 rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground"
+                                  data-testid={`event-expense-settlement-currency-${event.id}`}
+                                  disabled
+                                  value={settlementCurrency ?? ""}
+                                />
+                              </Field>
+                              <Field label={labels.fxRate}>
+                                <input
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                  data-testid={`event-expense-fx-rate-${event.id}`}
+                                  defaultValue="1"
+                                  min="0.000001"
+                                  name="fxRate"
+                                  step="0.000001"
+                                  type="number"
+                                />
+                              </Field>
+                            </div>
+                            <fieldset className="grid gap-2">
+                              <legend className="text-sm font-medium">{labels.debtors}</legend>
+                              <p className="text-xs text-muted-foreground">
+                                {labels.payerShareIncluded}
+                              </p>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {expenseDebtorOptions.map((member) => (
+                                  <label
+                                    className="flex items-center gap-2 text-sm"
+                                    key={member.userId}
+                                  >
+                                    <input
+                                      className="h-4 w-4 rounded border-input"
+                                      data-testid={`event-expense-debtor-${event.id}-${member.email}`}
+                                      name="participantUserIds"
+                                      type="checkbox"
+                                      value={member.userId}
+                                    />
+                                    <span className="min-w-0 truncate">
+                                      {member.displayName} · {member.email}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </fieldset>
+                            <Button
+                              data-testid={`event-expense-submit-${event.id}`}
+                              disabled={isEventExpenseBusy || isPending}
+                              type="submit"
+                            >
+                              <Plus aria-hidden="true" className="h-4 w-4" />
+                              {isEventExpenseBusy ? labels.working : labels.submitProposal}
+                            </Button>
+                          </form>
                         ) : null}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                        <Badge variant="neutral">
-                          {labels.eventTypes[event.type as EventTypeKey]}
-                        </Badge>
-                        <Badge variant={statusVariant(event.status)}>
-                          {labels.statuses[(event.status as StatusKey) ?? "OPEN"] ?? event.status}
-                        </Badge>
-                        {event.links.some((link) => link.linkedType === "task") ? (
-                          <Badge>{labels.linkedTask}</Badge>
-                        ) : null}
-                        {event.links.some((link) => link.linkedType === "expense_proposal") ? (
-                          <Badge>{labels.linkedExpenseProposal}</Badge>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : null}
               {eventViewMode === "WEEK" ? (

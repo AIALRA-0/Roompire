@@ -114,13 +114,14 @@ Current private-deployment MVP: when site-level Basic Auth is configured, verifi
 - `POST /households/{householdId}/calendar/events`
 - `PATCH /households/{householdId}/calendar/events/{eventId}`
 - `DELETE /households/{householdId}/calendar/events/{eventId}` soft cancel
+- `POST /households/{householdId}/calendar/events/{eventId}/create-expense-proposal`
 - `GET /households/{householdId}/tasks`
 - `POST /households/{householdId}/tasks`
 - `PATCH /households/{householdId}/tasks/{taskId}`
 - `POST /households/{householdId}/tasks/{taskId}/complete`
 - `POST /households/{householdId}/tasks/{taskId}/create-expense-proposal`
 
-Current implementation supports list/create calendar event, list/create task, assign task at creation, complete task, finite daily/weekly/monthly recurrence, list/week/month calendar UI views, and creating one linked submitted expense proposal from a task. Creating a task with `dueAt` automatically creates a linked `TASK` calendar event, and a task-generated expense proposal remains pending until the normal debtor approval flow. Event editing/deletion and task editing remain backlog items.
+Current implementation supports list/create calendar event, list/create task, assign task at creation, complete task, finite daily/weekly/monthly recurrence, list/week/month calendar UI views, creating one linked submitted expense proposal from a task, and creating one linked submitted expense proposal from bill/chore/group/recurring-expense calendar events. Creating a task with `dueAt` automatically creates a linked `TASK` calendar event, and task/event-generated expense proposals remain pending until the normal debtor approval flow. Event editing/deletion and task editing remain backlog items.
 
 ### Files
 
