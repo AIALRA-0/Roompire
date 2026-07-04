@@ -769,7 +769,13 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("expense-amount").fill("90");
     await page.getByTestId("expense-original-currency").fill("USD");
     await page.getByTestId("expense-fx-rate").fill("7.2");
+    await page.getByTestId("expense-split-method").selectOption("EXACT");
     await page.getByTestId(`expense-debtor-${debtorEmail}`).check();
+    await page.getByTestId(`expense-split-value-${debtorEmail}`).fill("45");
+    const exactPreviewRow = page.getByTestId(`expense-split-preview-${debtorEmail}`);
+    await expect(exactPreviewRow).toContainText("Expense Debtor E2E");
+    await expect(exactPreviewRow).toContainText("USD 45");
+    await expect(exactPreviewRow).toContainText("CNY 324");
     await clickExpenseProposalSubmitWithRetry(page);
 
     await expect(page.getByText("Proposal submitted")).toBeVisible();
@@ -783,6 +789,8 @@ test.describe("Roompire real browser smoke", () => {
     ]);
     await expect(page.getByRole("heading", { name: proposalTitle })).toBeVisible();
     await expect(page.getByText("Expense Debtor E2E")).toBeVisible();
+    await expect(page.getByText("Exact amounts")).toBeVisible();
+    await expect(page.getByText("USD 45 · CNY 324")).toBeVisible();
     await expect(
       page.getByText("No formal ledger obligation has been created for this proposal."),
     ).toBeVisible();
@@ -801,16 +809,28 @@ test.describe("Roompire real browser smoke", () => {
     expect(proposalResponse.ok()).toBeTruthy();
     const proposalPayload = (await proposalResponse.json()) as {
       proposal: {
+        splitMethod: string;
         shares: Array<{
           id: string;
           debtorUserId: string;
           creditorUserId: string;
+          shareOriginalAmount: string;
+          shareSettlementAmount: string;
+          percentage: string | null;
+          shareUnits: string | null;
         }>;
       };
     };
+    expect(proposalPayload.proposal.splitMethod).toBe("EXACT");
     const approvedShare = proposalPayload.proposal.shares[0];
     const shareId = approvedShare?.id;
     expect(shareId).toBeTruthy();
+    expect(approvedShare).toMatchObject({
+      shareOriginalAmount: "45",
+      shareSettlementAmount: "324",
+      percentage: null,
+      shareUnits: null,
+    });
 
     const ownerApproveResponse = await page.request.post(
       `/api/v1/households/${detailIds.householdId}/expenses/shares/${shareId}/approve`,
@@ -1152,6 +1172,82 @@ test.describe("Roompire real browser smoke", () => {
       },
     );
     expect(idempotentProposalConflictResponse.status()).toBe(409);
+
+    const percentageProposalResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals`,
+      {
+        data: {
+          title: `E2E Percentage ${suffix}`,
+          expenseDate: "2026-07-04",
+          originalAmount: "100",
+          originalCurrency: "CNY",
+          splitMethod: "PERCENTAGE",
+          participantShares: [{ userId: approvedShare!.debtorUserId, percentage: "25" }],
+        },
+        headers: {
+          "Idempotency-Key": `percentage-proposal-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(percentageProposalResponse.status()).toBe(201);
+    const percentageProposalPayload = (await percentageProposalResponse.json()) as {
+      proposal: {
+        splitMethod: string;
+        shares: Array<{
+          shareOriginalAmount: string;
+          shareSettlementAmount: string;
+          percentage: string | null;
+          shareUnits: string | null;
+        }>;
+      };
+    };
+    expect(percentageProposalPayload.proposal.splitMethod).toBe("PERCENTAGE");
+    expect(percentageProposalPayload.proposal.shares[0]).toMatchObject({
+      shareOriginalAmount: "25",
+      shareSettlementAmount: "25",
+      percentage: "25",
+      shareUnits: null,
+    });
+
+    const sharesProposalResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals`,
+      {
+        data: {
+          title: `E2E Shares ${suffix}`,
+          expenseDate: "2026-07-04",
+          originalAmount: "120",
+          originalCurrency: "CNY",
+          splitMethod: "SHARES",
+          participantShares: [{ userId: approvedShare!.debtorUserId, shareUnits: "2" }],
+        },
+        headers: {
+          "Idempotency-Key": `shares-proposal-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(sharesProposalResponse.status()).toBe(201);
+    const sharesProposalPayload = (await sharesProposalResponse.json()) as {
+      proposal: {
+        splitMethod: string;
+        shares: Array<{
+          shareOriginalAmount: string;
+          shareSettlementAmount: string;
+          percentage: string | null;
+          shareUnits: string | null;
+        }>;
+      };
+    };
+    expect(sharesProposalPayload.proposal.splitMethod).toBe("SHARES");
+    expect(sharesProposalPayload.proposal.shares[0]).toMatchObject({
+      shareOriginalAmount: "80",
+      shareSettlementAmount: "80",
+      percentage: null,
+      shareUnits: "2",
+    });
 
     const approvalIdempotencyKey = `approval-idempotency-${Date.now()}`;
     const idempotentApprovalBody = { comment: "Idempotent approval" };

@@ -58,6 +58,9 @@ components:
     SplitMethod:
       type: string
       enum: [EQUAL, EXACT, PERCENTAGE, SHARES, ADJUSTMENT]
+    CreateExpenseSplitMethod:
+      type: string
+      enum: [EQUAL, EXACT, PERCENTAGE, SHARES]
     ExpenseProposalStatus:
       type: string
       enum:
@@ -205,12 +208,18 @@ components:
       required: [userId]
       properties:
         userId: { type: string, format: uuid }
-        exactAmountOriginal: { $ref: "#/components/schemas/DecimalString" }
-        percentage: { $ref: "#/components/schemas/DecimalString" }
-        shareUnits: { $ref: "#/components/schemas/DecimalString" }
+        exactAmountOriginal:
+          description: Required for each debtor when splitMethod is EXACT. Debtor exact amounts must not exceed the original amount; the payer's remainder is implicit.
+          $ref: "#/components/schemas/DecimalString"
+        percentage:
+          description: Required for each debtor when splitMethod is PERCENTAGE. Debtor percentages must not exceed 100; the payer's remainder is implicit.
+          $ref: "#/components/schemas/DecimalString"
+        shareUnits:
+          description: Required for each debtor when splitMethod is SHARES. The payer contributes one implicit share unit.
+          $ref: "#/components/schemas/DecimalString"
     CreateExpenseProposalRequest:
       type: object
-      required: [title, expenseDate, originalAmount, originalCurrency, participantUserIds]
+      required: [title, expenseDate, originalAmount, originalCurrency]
       properties:
         title: { type: string, minLength: 2, maxLength: 120 }
         description: { type: string }
@@ -225,12 +234,23 @@ components:
           $ref: "#/components/schemas/DecimalString"
         participantUserIds:
           type: array
+          description: Equal-split debtor user IDs. For EQUAL, provide participantUserIds or participantShares.
           minItems: 1
+          maxItems: 20
           items: { type: string, format: uuid }
-        splitMethod: { type: string, enum: [EQUAL] }
+        participantShares:
+          type: array
+          description: Debtor rows for EQUAL or weighted split methods. Required for EXACT, PERCENTAGE, and SHARES.
+          minItems: 1
+          maxItems: 20
+          items: { $ref: "#/components/schemas/ExpenseParticipantInput" }
+        splitMethod:
+          allOf:
+            - { $ref: "#/components/schemas/CreateExpenseSplitMethod" }
+          default: EQUAL
     CreateTaskExpenseProposalRequest:
       type: object
-      required: [expenseDate, originalAmount, originalCurrency, participantUserIds]
+      required: [expenseDate, originalAmount, originalCurrency]
       properties:
         title:
           type: string
@@ -254,9 +274,20 @@ components:
           $ref: "#/components/schemas/DecimalString"
         participantUserIds:
           type: array
+          description: Equal-split debtor user IDs. For EQUAL, provide participantUserIds or participantShares.
           minItems: 1
+          maxItems: 20
           items: { type: string, format: uuid }
-        splitMethod: { type: string, enum: [EQUAL] }
+        participantShares:
+          type: array
+          description: Debtor rows for EQUAL or weighted split methods. Required for EXACT, PERCENTAGE, and SHARES.
+          minItems: 1
+          maxItems: 20
+          items: { $ref: "#/components/schemas/ExpenseParticipantInput" }
+        splitMethod:
+          allOf:
+            - { $ref: "#/components/schemas/CreateExpenseSplitMethod" }
+          default: EQUAL
     ExpensePayer:
       type: object
       required: [id, userId, amountOriginal, amountSettlement, isPrimary]
@@ -277,6 +308,8 @@ components:
           shareSettlementAmount,
           shareCurrency,
           settlementCurrency,
+          percentage,
+          shareUnits,
           status,
         ]
       properties:
@@ -287,6 +320,14 @@ components:
         shareSettlementAmount: { $ref: "#/components/schemas/DecimalString" }
         shareCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        percentage:
+          allOf:
+            - { $ref: "#/components/schemas/DecimalString" }
+          nullable: true
+        shareUnits:
+          allOf:
+            - { $ref: "#/components/schemas/DecimalString" }
+          nullable: true
         status: { $ref: "#/components/schemas/ShareStatus" }
         ledgerObligationId: { type: string, format: uuid, nullable: true }
     ExpenseProposal:

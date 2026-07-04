@@ -148,11 +148,26 @@ Current implementation supports list/create calendar event, list/create task, as
   "originalAmount": "120.00",
   "originalCurrency": "USD",
   "settlementCurrency": "CNY",
+  "fxRate": "7.200000",
   "splitMethod": "EQUAL",
-  "payers": [{ "userId": "alice", "amountOriginal": "120.00" }],
-  "participants": [{ "userId": "alice" }, { "userId": "bob" }, { "userId": "chen" }],
-  "tagIds": ["tag_household"],
-  "fileIds": ["file_receipt_1"]
+  "participantUserIds": ["bob", "chen"]
+}
+```
+
+Current implementation also accepts advanced split inputs through `participantShares`:
+
+- `EXACT`: each debtor row includes `exactAmountOriginal`; debtor exact amounts may not exceed `originalAmount`, and the payer's own remainder is implicit.
+- `PERCENTAGE`: each debtor row includes `percentage`; debtor percentages may not exceed `100`, and the payer's remaining percentage is implicit.
+- `SHARES`: each debtor row includes `shareUnits`; the payer contributes one implicit share unit.
+
+```json
+{
+  "title": "Utilities",
+  "expenseDate": "2026-07-02",
+  "originalAmount": "100.00",
+  "originalCurrency": "CNY",
+  "splitMethod": "PERCENTAGE",
+  "participantShares": [{ "userId": "bob", "percentage": "25" }]
 }
 ```
 

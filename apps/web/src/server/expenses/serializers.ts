@@ -70,6 +70,8 @@ export function serializeExpenseProposal(proposal: ExpenseProposal & ProposalRel
         shareSettlementAmount: share.shareSettlementAmount.toString(),
         shareCurrency: share.shareCurrency,
         settlementCurrency: share.settlementCurrency,
+        percentage: share.percentage?.toString() ?? null,
+        shareUnits: share.shareUnits?.toString() ?? null,
         status: share.status,
         ledgerObligationId: share.ledgerObligationId,
       })) ?? [],

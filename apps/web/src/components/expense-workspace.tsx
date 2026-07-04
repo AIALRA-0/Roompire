@@ -1,12 +1,15 @@
 "use client";
 
+import Decimal from "decimal.js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { splitByWeights, splitEqual } from "@/lib/money/split";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
+type SplitMethod = "EQUAL" | "EXACT" | "PERCENTAGE" | "SHARES";
 type ProposalStatus =
   | "DRAFT"
   | "SUBMITTED"
@@ -62,6 +65,17 @@ type ExpenseLabels = {
   fxRate: string;
   debtors: string;
   payerShareIncluded: string;
+  splitMethod: string;
+  splitMethodEqual: string;
+  splitMethodExact: string;
+  splitMethodPercentage: string;
+  splitMethodShares: string;
+  splitValueExact: string;
+  splitValuePercentage: string;
+  splitValueShares: string;
+  splitPreview: string;
+  splitPreviewEmpty: string;
+  splitPreviewInvalid: string;
   submitProposal: string;
   proposalSubmitted: string;
   noProposals: string;
@@ -142,6 +156,22 @@ function statusVariant(status: ProposalStatus) {
   return "warning" as const;
 }
 
+function decimalOrNull(value: string) {
+  try {
+    const decimal = new Decimal(value);
+
+    return decimal.isFinite() && decimal.isPositive() ? decimal : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatPreviewAmount(value: Decimal.Value) {
+  const fixed = new Decimal(value).toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toFixed(6);
+
+  return fixed.replace(/\.?0+$/, "") || "0";
+}
+
 export function ExpenseWorkspace({
   locale,
   currentUserEmail,
@@ -156,11 +186,204 @@ export function ExpenseWorkspace({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [splitMethod, setSplitMethod] = useState<SplitMethod>("EQUAL");
+  const [selectedDebtorIds, setSelectedDebtorIds] = useState<string[]>([]);
+  const [splitValues, setSplitValues] = useState<Record<string, string>>({});
+  const [originalAmountInput, setOriginalAmountInput] = useState("");
+  const [originalCurrencyInput, setOriginalCurrencyInput] = useState("USD");
+  const [fxRateInput, setFxRateInput] = useState(settlementCurrency === "USD" ? "1" : "");
   const debtorOptions = useMemo(
     () => members.filter((member) => member.role !== "VIEWER" && member.email !== currentUserEmail),
     [currentUserEmail, members],
   );
   const isDisabled = !activeHouseholdId || !canCreateExpenseProposals || debtorOptions.length === 0;
+  const splitPreview = useMemo(() => {
+    const selectedDebtors = debtorOptions.filter((member) =>
+      selectedDebtorIds.includes(member.userId),
+    );
+
+    if (selectedDebtors.length === 0) {
+      return {
+        rows: [],
+        error: null,
+      };
+    }
+
+    const originalAmount = decimalOrNull(originalAmountInput);
+    const originalCurrency = originalCurrencyInput.trim().toUpperCase();
+    const fxRate =
+      settlementCurrency && originalCurrency === settlementCurrency
+        ? new Decimal(1)
+        : decimalOrNull(fxRateInput);
+
+    if (!originalAmount || !settlementCurrency || !fxRate) {
+      return {
+        rows: [],
+        error: labels.splitPreviewInvalid,
+      };
+    }
+
+    try {
+      if (splitMethod === "EQUAL") {
+        const originalSplit = splitEqual({
+          amount: formatPreviewAmount(originalAmount),
+          participants: selectedDebtors.length + 1,
+          scale: 6,
+        });
+        const settlementSplit = splitEqual({
+          amount: formatPreviewAmount(originalAmount.mul(fxRate)),
+          participants: selectedDebtors.length + 1,
+          scale: 6,
+        });
+
+        return {
+          rows: selectedDebtors.map((member, index) => ({
+            member,
+            originalAmount: originalSplit.shares[index]!,
+            settlementAmount: settlementSplit.shares[index]!,
+          })),
+          error: null,
+        };
+      }
+
+      if (splitMethod === "EXACT") {
+        const exactShares = selectedDebtors.map((member) =>
+          decimalOrNull(splitValues[member.userId] ?? ""),
+        );
+        const parsedExactShares = exactShares.filter((share): share is Decimal => share !== null);
+
+        if (parsedExactShares.length !== selectedDebtors.length) {
+          return {
+            rows: [],
+            error: labels.splitPreviewInvalid,
+          };
+        }
+
+        const exactTotal = parsedExactShares.reduce(
+          (sum, share) => sum.plus(share),
+          new Decimal(0),
+        );
+
+        if (exactTotal.gt(originalAmount)) {
+          return {
+            rows: [],
+            error: labels.splitPreviewInvalid,
+          };
+        }
+
+        return {
+          rows: selectedDebtors.map((member, index) => ({
+            member,
+            originalAmount: formatPreviewAmount(parsedExactShares[index]!),
+            settlementAmount: formatPreviewAmount(parsedExactShares[index]!.mul(fxRate)),
+          })),
+          error: null,
+        };
+      }
+
+      const weights = selectedDebtors.map((member) =>
+        decimalOrNull(splitValues[member.userId] ?? ""),
+      );
+      const parsedWeights = weights.filter((weight): weight is Decimal => weight !== null);
+
+      if (parsedWeights.length !== selectedDebtors.length) {
+        return {
+          rows: [],
+          error: labels.splitPreviewInvalid,
+        };
+      }
+
+      const debtorWeightTotal = parsedWeights.reduce(
+        (sum, weight) => sum.plus(weight),
+        new Decimal(0),
+      );
+      const allWeights =
+        splitMethod === "PERCENTAGE"
+          ? (() => {
+              if (debtorWeightTotal.gt(100)) {
+                return null;
+              }
+
+              return [
+                ...parsedWeights.map((weight) => formatPreviewAmount(weight)),
+                new Decimal(100).minus(debtorWeightTotal).toFixed(6),
+              ];
+            })()
+          : [...parsedWeights.map((weight) => formatPreviewAmount(weight)), "1.000000"];
+
+      if (!allWeights) {
+        return {
+          rows: [],
+          error: labels.splitPreviewInvalid,
+        };
+      }
+
+      const originalSplit = splitByWeights({
+        amount: formatPreviewAmount(originalAmount),
+        weights: allWeights,
+        scale: 6,
+      });
+      const settlementSplit = splitByWeights({
+        amount: formatPreviewAmount(originalAmount.mul(fxRate)),
+        weights: allWeights,
+        scale: 6,
+      });
+
+      return {
+        rows: selectedDebtors.map((member, index) => ({
+          member,
+          originalAmount: originalSplit.shares[index]!,
+          settlementAmount: settlementSplit.shares[index]!,
+        })),
+        error: null,
+      };
+    } catch {
+      return {
+        rows: [],
+        error: labels.splitPreviewInvalid,
+      };
+    }
+  }, [
+    debtorOptions,
+    fxRateInput,
+    labels.splitPreviewInvalid,
+    originalAmountInput,
+    originalCurrencyInput,
+    selectedDebtorIds,
+    settlementCurrency,
+    splitMethod,
+    splitValues,
+  ]);
+
+  function toggleDebtor(userId: string, checked: boolean) {
+    setSelectedDebtorIds((current) =>
+      checked
+        ? [...current, userId]
+        : current.filter((selectedUserId) => selectedUserId !== userId),
+    );
+
+    if (!checked) {
+      setSplitValues((current) => {
+        const next = { ...current };
+
+        delete next[userId];
+
+        return next;
+      });
+    }
+  }
+
+  function splitValueLabel() {
+    if (splitMethod === "EXACT") {
+      return labels.splitValueExact;
+    }
+
+    if (splitMethod === "PERCENTAGE") {
+      return labels.splitValuePercentage;
+    }
+
+    return labels.splitValueShares;
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -173,7 +396,13 @@ export function ExpenseWorkspace({
 
     const form = event.currentTarget;
     const formData = new FormData(form);
-    const participantUserIds = formData.getAll("participantUserIds").map(String);
+    const participantUserIds = selectedDebtorIds;
+    const participantShares = selectedDebtorIds.map((userId) => ({
+      userId,
+      exactAmountOriginal: splitMethod === "EXACT" ? (splitValues[userId] ?? "") : undefined,
+      percentage: splitMethod === "PERCENTAGE" ? (splitValues[userId] ?? "") : undefined,
+      shareUnits: splitMethod === "SHARES" ? (splitValues[userId] ?? "") : undefined,
+    }));
 
     try {
       await postProposal(
@@ -184,15 +413,22 @@ export function ExpenseWorkspace({
           categoryId: String(formData.get("categoryId") ?? ""),
           expenseDate: String(formData.get("expenseDate") ?? ""),
           dueDate: String(formData.get("dueDate") ?? ""),
-          originalAmount: String(formData.get("originalAmount") ?? ""),
-          originalCurrency: String(formData.get("originalCurrency") ?? "").toUpperCase(),
-          fxRate: String(formData.get("fxRate") ?? ""),
+          originalAmount: originalAmountInput,
+          originalCurrency: originalCurrencyInput.toUpperCase(),
+          fxRate: fxRateInput,
           participantUserIds,
-          splitMethod: "EQUAL",
+          participantShares: splitMethod === "EQUAL" ? undefined : participantShares,
+          splitMethod,
         },
         labels.errorFallback,
       );
       form.reset();
+      setSplitMethod("EQUAL");
+      setSelectedDebtorIds([]);
+      setSplitValues({});
+      setOriginalAmountInput("");
+      setOriginalCurrencyInput("USD");
+      setFxRateInput(settlementCurrency === "USD" ? "1" : "");
       setMessage(labels.proposalSubmitted);
       startTransition(() => router.refresh());
     } catch (error) {
@@ -275,21 +511,24 @@ export function ExpenseWorkspace({
                 disabled={isDisabled}
                 min="0.01"
                 name="originalAmount"
+                onChange={(event) => setOriginalAmountInput(event.target.value)}
                 required
                 step="0.01"
                 type="number"
+                value={originalAmountInput}
               />
             </Field>
             <Field label={labels.originalCurrency}>
               <input
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
                 data-testid="expense-original-currency"
-                defaultValue="USD"
                 disabled={isDisabled}
                 maxLength={3}
                 minLength={3}
                 name="originalCurrency"
+                onChange={(event) => setOriginalCurrencyInput(event.target.value)}
                 required
+                value={originalCurrencyInput}
               />
             </Field>
           </div>
@@ -306,35 +545,112 @@ export function ExpenseWorkspace({
               <input
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="expense-fx-rate"
-                defaultValue={settlementCurrency === "USD" ? "1" : ""}
                 disabled={isDisabled}
                 min="0.000001"
                 name="fxRate"
+                onChange={(event) => setFxRateInput(event.target.value)}
                 step="0.000001"
                 type="number"
+                value={fxRateInput}
               />
             </Field>
           </div>
+
+          <Field label={labels.splitMethod}>
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+              data-testid="expense-split-method"
+              disabled={isDisabled}
+              name="splitMethod"
+              onChange={(event) => {
+                setSplitMethod(event.target.value as SplitMethod);
+                setSplitValues({});
+              }}
+              value={splitMethod}
+            >
+              <option value="EQUAL">{labels.splitMethodEqual}</option>
+              <option value="EXACT">{labels.splitMethodExact}</option>
+              <option value="PERCENTAGE">{labels.splitMethodPercentage}</option>
+              <option value="SHARES">{labels.splitMethodShares}</option>
+            </select>
+          </Field>
 
           <fieldset className="rounded-lg border border-border bg-background p-3">
             <legend className="px-1 text-sm font-medium">{labels.debtors}</legend>
             <p className="mt-1 text-xs text-muted-foreground">{labels.payerShareIncluded}</p>
             <div className="mt-3 grid gap-2">
               {debtorOptions.map((member) => (
-                <label className="flex items-center gap-2 text-sm" key={member.userId}>
-                  <input
-                    className="h-4 w-4 rounded border-input"
-                    data-testid={`expense-debtor-${member.email}`}
-                    disabled={isDisabled}
-                    name="participantUserIds"
-                    type="checkbox"
-                    value={member.userId}
-                  />
-                  <span className="min-w-0 truncate">
-                    {member.displayName} · {member.email}
-                  </span>
-                </label>
+                <div
+                  className="grid gap-2 rounded-md border border-border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-center"
+                  key={member.userId}
+                >
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      checked={selectedDebtorIds.includes(member.userId)}
+                      className="h-4 w-4 rounded border-input"
+                      data-testid={`expense-debtor-${member.email}`}
+                      disabled={isDisabled}
+                      name="participantUserIds"
+                      onChange={(event) => toggleDebtor(member.userId, event.target.checked)}
+                      type="checkbox"
+                      value={member.userId}
+                    />
+                    <span className="min-w-0 truncate">
+                      {member.displayName} · {member.email}
+                    </span>
+                  </label>
+                  {splitMethod !== "EQUAL" ? (
+                    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                      <span>{splitValueLabel()}</span>
+                      <input
+                        className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-ring"
+                        data-testid={`expense-split-value-${member.email}`}
+                        disabled={isDisabled || !selectedDebtorIds.includes(member.userId)}
+                        min="0.000001"
+                        onChange={(event) =>
+                          setSplitValues((current) => ({
+                            ...current,
+                            [member.userId]: event.target.value,
+                          }))
+                        }
+                        step="0.000001"
+                        type="number"
+                        value={splitValues[member.userId] ?? ""}
+                      />
+                    </label>
+                  ) : null}
+                </div>
               ))}
+            </div>
+            <div
+              className="mt-3 rounded-md border border-border bg-card px-3 py-2"
+              data-testid="expense-split-preview"
+            >
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
+                {labels.splitPreview}
+              </p>
+              {splitPreview.error ? (
+                <p className="mt-2 text-xs text-muted-foreground">{splitPreview.error}</p>
+              ) : splitPreview.rows.length > 0 ? (
+                <div className="mt-2 grid gap-1.5 text-xs text-muted-foreground">
+                  {splitPreview.rows.map((row) => (
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-2"
+                      data-testid={`expense-split-preview-${row.member.email}`}
+                      key={row.member.userId}
+                    >
+                      <span className="font-medium text-foreground">{row.member.displayName}</span>
+                      <span>
+                        {originalCurrencyInput.toUpperCase()}{" "}
+                        {formatPreviewAmount(row.originalAmount)} · {settlementCurrency}{" "}
+                        {formatPreviewAmount(row.settlementAmount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">{labels.splitPreviewEmpty}</p>
+              )}
             </div>
           </fieldset>
 

@@ -10,7 +10,7 @@ import {
   SplitMethod,
 } from "@prisma/client";
 import { z } from "zod";
-import { splitEqual } from "@/lib/money/split";
+import { splitByWeights, splitEqual } from "@/lib/money/split";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
 import { requireActiveMembership, requireExpenseProposalCreator } from "@/server/permissions/rbac";
@@ -27,6 +27,8 @@ const decimalStringSchema = z
   .regex(/^\d+(\.\d{1,6})?$/)
   .refine((value) => new Decimal(value).isPositive(), "Amount must be greater than zero.");
 
+const supportedSplitMethods = ["EQUAL", "EXACT", "PERCENTAGE", "SHARES"] as const;
+
 const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const nullableUuidSchema = z.preprocess(
@@ -34,7 +36,19 @@ const nullableUuidSchema = z.preprocess(
   z.string().uuid().optional(),
 );
 
-export const createExpenseProposalSchema = z.object({
+const optionalDecimalStringSchema = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  decimalStringSchema.optional(),
+);
+
+const participantShareSchema = z.object({
+  userId: z.string().uuid(),
+  exactAmountOriginal: optionalDecimalStringSchema,
+  percentage: optionalDecimalStringSchema,
+  shareUnits: optionalDecimalStringSchema,
+});
+
+const createExpenseProposalBaseSchema = z.object({
   title: z.string().trim().min(2).max(120),
   description: z.string().trim().max(1000).optional(),
   merchant: z.string().trim().max(120).optional(),
@@ -50,11 +64,62 @@ export const createExpenseProposalSchema = z.object({
     (value) => (value === "" || value === null ? undefined : value),
     decimalStringSchema.optional(),
   ),
-  participantUserIds: z.array(z.string().uuid()).min(1).max(20),
-  splitMethod: z.literal("EQUAL").default("EQUAL"),
+  participantUserIds: z.array(z.string().uuid()).min(1).max(20).optional(),
+  participantShares: z.array(participantShareSchema).min(1).max(20).optional(),
+  splitMethod: z.enum(supportedSplitMethods).default("EQUAL"),
 });
 
-export const createTaskExpenseProposalSchema = createExpenseProposalSchema
+type SplitInputData = {
+  participantUserIds?: string[];
+  participantShares?: Array<z.infer<typeof participantShareSchema>>;
+  splitMethod: (typeof supportedSplitMethods)[number];
+};
+
+function validateSplitInputs(data: SplitInputData, context: z.RefinementCtx) {
+  const participantShares = data.participantShares ?? [];
+
+  if (data.splitMethod === "EQUAL") {
+    if ((data.participantUserIds?.length ?? 0) === 0 && participantShares.length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "At least one debtor is required.",
+        path: ["participantUserIds"],
+      });
+    }
+
+    return;
+  }
+
+  if (participantShares.length === 0) {
+    context.addIssue({
+      code: "custom",
+      message: "participantShares are required for this split method.",
+      path: ["participantShares"],
+    });
+
+    return;
+  }
+
+  for (const [index, share] of participantShares.entries()) {
+    const hasRequiredValue =
+      (data.splitMethod === "EXACT" && share.exactAmountOriginal) ||
+      (data.splitMethod === "PERCENTAGE" && share.percentage) ||
+      (data.splitMethod === "SHARES" && share.shareUnits);
+
+    if (!hasRequiredValue) {
+      context.addIssue({
+        code: "custom",
+        message: `${data.splitMethod} split values are required for every debtor.`,
+        path: ["participantShares", index],
+      });
+    }
+  }
+}
+
+export const createExpenseProposalSchema =
+  createExpenseProposalBaseSchema.superRefine(validateSplitInputs);
+
+export const createTaskExpenseProposalSchema = createExpenseProposalBaseSchema
   .omit({
     description: true,
     title: true,
@@ -62,7 +127,8 @@ export const createTaskExpenseProposalSchema = createExpenseProposalSchema
   .extend({
     title: z.string().trim().min(2).max(120).optional(),
     description: z.string().trim().max(1000).optional(),
-  });
+  })
+  .superRefine(validateSplitInputs);
 
 export const listExpenseProposalQuerySchema = z.object({
   status: z.nativeEnum(ExpenseProposalStatus).optional(),
@@ -100,6 +166,8 @@ type PreparedExpenseProposalCreate = {
     shareSettlementAmount: string;
     shareCurrency: string;
     settlementCurrency: string;
+    percentage?: string;
+    shareUnits?: string;
   }>;
   sourceTaskId?: string;
 };
@@ -122,6 +190,46 @@ function assertCanParticipate(role: Role) {
 
 function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+function assertUniqueDebtors(userIds: string[]) {
+  if (uniqueValues(userIds).length !== userIds.length) {
+    throw new ApiError(400, "DUPLICATE_PARTICIPANT", "Each debtor can appear only once.");
+  }
+}
+
+function participantSharesForInput(data: CreateExpenseProposalData) {
+  if (data.splitMethod === "EQUAL") {
+    return (data.participantShares?.length ? data.participantShares : data.participantUserIds)!.map(
+      (participant) =>
+        typeof participant === "string"
+          ? {
+              userId: participant,
+            }
+          : participant,
+    );
+  }
+
+  return data.participantShares!;
+}
+
+function assertAmountDoesNotExceedTotal({
+  amount,
+  total,
+  code,
+  message,
+}: {
+  amount: Decimal;
+  total: Decimal;
+  code: string;
+  message: string;
+}) {
+  if (amount.gt(total)) {
+    throw new ApiError(400, code, message, {
+      total: total.toFixed(6),
+      actual: amount.toFixed(6),
+    });
+  }
 }
 
 function proposalStatusFromShares(shares: Array<{ status: ShareStatus }>) {
@@ -310,7 +418,10 @@ async function prepareExpenseProposalCreate(
   sourceTaskId?: string,
 ) {
   const household = creatorMembership.household;
-  const debtorUserIds = uniqueValues(data.participantUserIds);
+  const participantShares = participantSharesForInput(data);
+  const debtorUserIds = participantShares.map((participant) => participant.userId);
+
+  assertUniqueDebtors(debtorUserIds);
 
   if (debtorUserIds.includes(userId)) {
     throw new ApiError(
@@ -340,25 +451,121 @@ async function prepareExpenseProposalCreate(
 
   const fxRate = sameCurrency ? new Decimal(1) : new Decimal(data.fxRate!);
   const settlementAmount = originalAmount.mul(fxRate);
-  const splitParticipants = debtorMemberships.length + 1;
-  const originalSplit = splitEqual({
-    amount: decimalToFixed6(originalAmount),
-    participants: splitParticipants,
-    scale: 6,
-  });
-  const settlementSplit = splitEqual({
-    amount: decimalToFixed6(settlementAmount),
-    participants: splitParticipants,
-    scale: 6,
-  });
-  const shareRows = debtorMemberships.map((membership, index) => ({
-    debtorUserId: membership.userId,
-    creditorUserId: userId,
-    shareOriginalAmount: originalSplit.shares[index]!,
-    shareSettlementAmount: settlementSplit.shares[index]!,
-    shareCurrency: originalCurrency,
-    settlementCurrency,
-  }));
+  let shareRows: PreparedExpenseProposalCreate["shareRows"];
+
+  if (data.splitMethod === "EQUAL") {
+    const splitParticipants = debtorMemberships.length + 1;
+    const originalSplit = splitEqual({
+      amount: decimalToFixed6(originalAmount),
+      participants: splitParticipants,
+      scale: 6,
+    });
+    const settlementSplit = splitEqual({
+      amount: decimalToFixed6(settlementAmount),
+      participants: splitParticipants,
+      scale: 6,
+    });
+
+    shareRows = debtorMemberships.map((membership, index) => ({
+      debtorUserId: membership.userId,
+      creditorUserId: userId,
+      shareOriginalAmount: originalSplit.shares[index]!,
+      shareSettlementAmount: settlementSplit.shares[index]!,
+      shareCurrency: originalCurrency,
+      settlementCurrency,
+    }));
+  } else if (data.splitMethod === "EXACT") {
+    const originalShares = participantShares.map(
+      (participant) => new Decimal(participant.exactAmountOriginal!),
+    );
+    const originalShareTotal = originalShares.reduce(
+      (sum, amount) => sum.plus(amount),
+      new Decimal(0),
+    );
+
+    assertAmountDoesNotExceedTotal({
+      amount: originalShareTotal,
+      total: originalAmount,
+      code: "SPLIT_TOTAL_EXCEEDS_AMOUNT",
+      message: "Exact debtor shares cannot exceed the original amount.",
+    });
+
+    shareRows = debtorMemberships.map((membership, index) => {
+      const shareOriginalAmount = originalShares[index]!;
+
+      return {
+        debtorUserId: membership.userId,
+        creditorUserId: userId,
+        shareOriginalAmount: decimalToFixed6(shareOriginalAmount),
+        shareSettlementAmount: decimalToFixed6(shareOriginalAmount.mul(fxRate)),
+        shareCurrency: originalCurrency,
+        settlementCurrency,
+      };
+    });
+  } else if (data.splitMethod === "PERCENTAGE") {
+    const percentages = participantShares.map(
+      (participant) => new Decimal(participant.percentage!),
+    );
+    const percentageTotal = percentages.reduce((sum, amount) => sum.plus(amount), new Decimal(0));
+
+    assertAmountDoesNotExceedTotal({
+      amount: percentageTotal,
+      total: new Decimal(100),
+      code: "PERCENTAGE_TOTAL_EXCEEDS_100",
+      message: "Debtor percentages cannot exceed 100.",
+    });
+
+    const payerPercentage = new Decimal(100).minus(percentageTotal);
+    const weights = [
+      ...percentages.map((percentage) => decimalToFixed6(percentage)),
+      payerPercentage.toFixed(6),
+    ];
+    const originalSplit = splitByWeights({
+      amount: decimalToFixed6(originalAmount),
+      weights,
+      scale: 6,
+    });
+    const settlementSplit = splitByWeights({
+      amount: decimalToFixed6(settlementAmount),
+      weights,
+      scale: 6,
+    });
+
+    shareRows = debtorMemberships.map((membership, index) => ({
+      debtorUserId: membership.userId,
+      creditorUserId: userId,
+      shareOriginalAmount: originalSplit.shares[index]!,
+      shareSettlementAmount: settlementSplit.shares[index]!,
+      shareCurrency: originalCurrency,
+      settlementCurrency,
+      percentage: decimalToFixed6(percentages[index]!),
+    }));
+  } else {
+    const debtorUnits = participantShares.map(
+      (participant) => new Decimal(participant.shareUnits!),
+    );
+    const weights = [...debtorUnits.map((unit) => decimalToFixed6(unit)), "1.000000"];
+    const originalSplit = splitByWeights({
+      amount: decimalToFixed6(originalAmount),
+      weights,
+      scale: 6,
+    });
+    const settlementSplit = splitByWeights({
+      amount: decimalToFixed6(settlementAmount),
+      weights,
+      scale: 6,
+    });
+
+    shareRows = debtorMemberships.map((membership, index) => ({
+      debtorUserId: membership.userId,
+      creditorUserId: userId,
+      shareOriginalAmount: originalSplit.shares[index]!,
+      shareSettlementAmount: settlementSplit.shares[index]!,
+      shareCurrency: originalCurrency,
+      settlementCurrency,
+      shareUnits: decimalToFixed6(debtorUnits[index]!),
+    }));
+  }
   const expenseDate = dateOnlyToUtc(data.expenseDate);
   const dueDate = data.dueDate ? dateOnlyToUtc(data.dueDate) : undefined;
 
@@ -399,7 +606,7 @@ async function createExpenseProposalRecord(
       originalCurrency: prepared.originalCurrency,
       settlementCurrency: prepared.settlementCurrency,
       settlementAmount: decimalToFixed6(prepared.settlementAmount),
-      splitMethod: SplitMethod.EQUAL,
+      splitMethod: prepared.data.splitMethod as SplitMethod,
       fxPolicy: prepared.household.fxPolicy,
       fxRate: decimalToFixed6(prepared.fxRate),
       fxRateDate: prepared.expenseDate,

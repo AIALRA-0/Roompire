@@ -95,6 +95,44 @@ function shareStatusLabel(
   return expense("statusDisputed");
 }
 
+function splitMethodLabel(
+  splitMethod: SerializedProposal["splitMethod"],
+  expense: Awaited<ReturnType<typeof getTranslations>>,
+) {
+  if (splitMethod === "EQUAL") {
+    return expense("splitMethodEqual");
+  }
+
+  if (splitMethod === "EXACT") {
+    return expense("splitMethodExact");
+  }
+
+  if (splitMethod === "PERCENTAGE") {
+    return expense("splitMethodPercentage");
+  }
+
+  if (splitMethod === "SHARES") {
+    return expense("splitMethodShares");
+  }
+
+  return splitMethod;
+}
+
+function shareBasisLabel(
+  share: SerializedProposal["shares"][number],
+  expense: Awaited<ReturnType<typeof getTranslations>>,
+) {
+  if (share.percentage) {
+    return `${expense("splitValuePercentage")}: ${share.percentage}%`;
+  }
+
+  if (share.shareUnits) {
+    return `${expense("splitValueShares")}: ${share.shareUnits}`;
+  }
+
+  return null;
+}
+
 function ForbiddenState({
   locale,
   title,
@@ -225,38 +263,51 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
                     {proposal.settlementCurrency} {proposal.settlementAmount}
                   </p>
                 </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">{expense("splitMethod")}</p>
+                  <p className="mt-1 text-sm font-medium">
+                    {splitMethodLabel(proposal.splitMethod, expense)}
+                  </p>
+                </div>
               </div>
 
               <div className="rounded-lg border border-border bg-background p-4">
                 <h2 className="text-sm font-semibold">{expense("debtors")}</h2>
                 <div className="mt-3 divide-y divide-border">
-                  {proposal.shares.map((share) => (
-                    <div className="grid gap-3 py-3" key={share.id}>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">
-                              {memberNames.get(share.debtorUserId) ?? share.debtorUserId}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {share.shareCurrency} {share.shareOriginalAmount} ·{" "}
-                              {share.settlementCurrency} {share.shareSettlementAmount}
-                            </p>
+                  {proposal.shares.map((share) => {
+                    const basisLabel = shareBasisLabel(share, expense);
+
+                    return (
+                      <div className="grid gap-3 py-3" key={share.id}>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">
+                                {memberNames.get(share.debtorUserId) ?? share.debtorUserId}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {share.shareCurrency} {share.shareOriginalAmount} ·{" "}
+                                {share.settlementCurrency} {share.shareSettlementAmount}
+                              </p>
+                              {basisLabel ? (
+                                <p className="mt-1 text-xs text-muted-foreground">{basisLabel}</p>
+                              ) : null}
+                            </div>
+                            <Badge variant={shareStatusVariant(share.status)}>
+                              {shareStatusLabel(share.status, expense, common)}
+                            </Badge>
                           </div>
-                          <Badge variant={shareStatusVariant(share.status)}>
-                            {shareStatusLabel(share.status, expense, common)}
-                          </Badge>
                         </div>
+                        {share.debtorUserId === user.id && share.status === "PENDING" ? (
+                          <ExpenseShareActions
+                            householdId={householdId}
+                            labels={shareActionLabels}
+                            shareId={share.id}
+                          />
+                        ) : null}
                       </div>
-                      {share.debtorUserId === user.id && share.status === "PENDING" ? (
-                        <ExpenseShareActions
-                          householdId={householdId}
-                          labels={shareActionLabels}
-                          shareId={share.id}
-                        />
-                      ) : null}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
