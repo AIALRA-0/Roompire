@@ -242,6 +242,9 @@ export default async function LedgerPage({ params }: PageProps) {
                   settlementRejected: ledger("settlementRejected"),
                   noSettlementActions: ledger("noSettlementActions"),
                   noPendingSettlements: ledger("noPendingSettlements"),
+                  suggestedTransfer: ledger("suggestedTransfer"),
+                  suggestedTransfersHint: ledger("suggestedTransfersHint"),
+                  directObligations: ledger("directObligations"),
                   manualMethod: ledger("manualMethod"),
                   payer: ledger("payer"),
                   payee: ledger("payee"),
@@ -251,6 +254,7 @@ export default async function LedgerPage({ params }: PageProps) {
                 }}
                 memberNamesByUserId={memberNamesByUserIdRecord}
                 obligations={serializedObligations}
+                suggestions={serializedSettlementSuggestions}
                 settlements={serializedSettlements}
               />
             ) : null}

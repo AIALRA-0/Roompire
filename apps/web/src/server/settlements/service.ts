@@ -1,5 +1,11 @@
 import Decimal from "decimal.js";
-import { DebtStatus, LedgerTransactionType, Role, SettlementStatus } from "@prisma/client";
+import {
+  DebtStatus,
+  LedgerTransactionType,
+  Role,
+  SettlementStatus,
+  type Prisma,
+} from "@prisma/client";
 import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
@@ -13,13 +19,59 @@ const decimalStringSchema = z
 
 const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-export const createSettlementSchema = z.object({
-  debtObligationId: z.string().uuid(),
-  amount: decimalStringSchema,
-  settlementDate: dateOnlySchema,
-  method: z.string().trim().min(1).max(60).default("manual"),
-  note: z.string().trim().max(500).optional(),
-});
+const currencySchema = z
+  .string()
+  .trim()
+  .transform((value) => value.toUpperCase())
+  .pipe(z.string().regex(/^[A-Z]{3}$/));
+
+export const createSettlementSchema = z
+  .object({
+    debtObligationId: z.string().uuid().optional(),
+    payeeUserId: z.string().uuid().optional(),
+    currency: currencySchema.optional(),
+    amount: decimalStringSchema,
+    settlementDate: dateOnlySchema,
+    method: z.string().trim().min(1).max(60).default("manual"),
+    note: z.string().trim().max(500).optional(),
+  })
+  .superRefine((value, context) => {
+    const recordsSingleObligation = Boolean(value.debtObligationId);
+    const recordsSuggestedTransfer = Boolean(value.payeeUserId || value.currency);
+
+    if (recordsSingleObligation === recordsSuggestedTransfer) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide either debtObligationId or payeeUserId with currency, but not both.",
+        path: ["debtObligationId"],
+      });
+    }
+
+    if (recordsSuggestedTransfer && !value.payeeUserId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "payeeUserId is required for suggested transfer settlements.",
+        path: ["payeeUserId"],
+      });
+    }
+
+    if (recordsSuggestedTransfer && !value.currency) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "currency is required for suggested transfer settlements.",
+        path: ["currency"],
+      });
+    }
+  });
+
+type AllocationCandidate = {
+  id: string;
+  debtorUserId: string;
+  creditorUserId: string;
+  settlementCurrency: string;
+  remainingAmount: Decimal.Value;
+  status: DebtStatus;
+};
 
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
@@ -31,6 +83,96 @@ function decimalToFixed6(value: Decimal.Value) {
 
 function assertCanSettle(role: Role) {
   return role === Role.OWNER || role === Role.ADMIN || role === Role.MEMBER;
+}
+
+async function requireSettleablePayee(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  payeeUserId: string,
+) {
+  const membership = await tx.householdMembership.findFirst({
+    where: {
+      householdId,
+      userId: payeeUserId,
+      status: "ACTIVE",
+    },
+  });
+
+  if (!membership) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  if (!assertCanSettle(membership.role)) {
+    throw new ApiError(403, "FORBIDDEN", "Viewers cannot receive settlements.");
+  }
+
+  return membership;
+}
+
+function remainingDecimal(obligation: AllocationCandidate) {
+  return new Decimal(obligation.remainingAmount.toString());
+}
+
+function totalRemaining(obligations: AllocationCandidate[]) {
+  return obligations.reduce(
+    (total, obligation) => total.plus(remainingDecimal(obligation)),
+    new Decimal(0),
+  );
+}
+
+async function listOpenTransferObligations(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  payerUserId: string,
+  payeeUserId: string,
+  currency: string,
+) {
+  return tx.debtObligation.findMany({
+    where: {
+      householdId,
+      debtorUserId: payerUserId,
+      creditorUserId: payeeUserId,
+      settlementCurrency: currency,
+      status: DebtStatus.OPEN,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+}
+
+function buildAllocationPlan(amount: Decimal, obligations: AllocationCandidate[]) {
+  let unappliedAmount = amount;
+  const allocations: Array<{
+    obligation: AllocationCandidate;
+    amountApplied: Decimal;
+    nextRemaining: Decimal;
+  }> = [];
+
+  for (const obligation of obligations) {
+    if (unappliedAmount.lte(0)) {
+      break;
+    }
+
+    const remaining = remainingDecimal(obligation);
+
+    if (remaining.lte(0)) {
+      continue;
+    }
+
+    const amountApplied = Decimal.min(unappliedAmount, remaining);
+
+    allocations.push({
+      obligation,
+      amountApplied,
+      nextRemaining: remaining.minus(amountApplied),
+    });
+    unappliedAmount = unappliedAmount.minus(amountApplied);
+  }
+
+  if (unappliedAmount.gt(0)) {
+    throw new ApiError(409, "SETTLEMENT_OVERPAYS", "Settlement exceeds remaining obligation.");
+  }
+
+  return allocations;
 }
 
 export async function listSettlementsForHousehold(userId: string, householdId: string) {
@@ -71,26 +213,113 @@ export async function createSettlementForHousehold(
   const settlementDate = dateOnlyToUtc(data.settlementDate);
 
   return prisma.$transaction(async (tx) => {
-    const obligation = await tx.debtObligation.findFirst({
-      where: {
-        id: data.debtObligationId,
-        householdId,
-      },
-    });
+    if (data.debtObligationId) {
+      const obligation = await tx.debtObligation.findFirst({
+        where: {
+          id: data.debtObligationId,
+          householdId,
+        },
+      });
 
-    if (!obligation) {
-      throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+      if (!obligation) {
+        throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+      }
+
+      if (obligation.debtorUserId !== userId) {
+        throw new ApiError(403, "FORBIDDEN", "Only the debtor can submit this settlement.");
+      }
+
+      if (obligation.status !== DebtStatus.OPEN) {
+        throw new ApiError(409, "OBLIGATION_NOT_OPEN", "Only open obligations can be settled.");
+      }
+
+      if (amount.gt(new Decimal(obligation.remainingAmount.toString()))) {
+        throw new ApiError(409, "SETTLEMENT_OVERPAYS", "Settlement exceeds remaining obligation.");
+      }
+
+      const ledgerTransaction = await tx.ledgerTransaction.create({
+        data: {
+          householdId,
+          type: LedgerTransactionType.SETTLEMENT_RECORDED,
+          description: `Settlement submitted for ${obligation.settlementCurrency} ${decimalToFixed6(
+            amount,
+          )}`,
+          sourceType: "DebtObligation",
+          sourceId: obligation.id,
+          createdByUserId: userId,
+          occurredAt: settlementDate,
+        },
+      });
+
+      const settlement = await tx.settlement.create({
+        data: {
+          householdId,
+          ledgerTransactionId: ledgerTransaction.id,
+          payerUserId: obligation.debtorUserId,
+          payeeUserId: obligation.creditorUserId,
+          amount: decimalToFixed6(amount),
+          currency: obligation.settlementCurrency,
+          settlementDate,
+          method: data.method,
+          status: SettlementStatus.SUBMITTED,
+          note: data.note,
+          createdByUserId: userId,
+        },
+        include: {
+          transaction: true,
+          allocations: true,
+        },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          householdId,
+          actorUserId: userId,
+          action: "settlement.submitted",
+          entityType: "Settlement",
+          entityId: settlement.id,
+          after: {
+            debtObligationId: obligation.id,
+            allocationPolicy: "SOURCE_OBLIGATION",
+            payerUserId: obligation.debtorUserId,
+            payeeUserId: obligation.creditorUserId,
+            amount: settlement.amount.toString(),
+            currency: settlement.currency,
+            status: settlement.status,
+          },
+        },
+      });
+
+      return settlement;
     }
 
-    if (obligation.debtorUserId !== userId) {
-      throw new ApiError(403, "FORBIDDEN", "Only the debtor can submit this settlement.");
+    if (!data.payeeUserId || !data.currency) {
+      throw validationError("Settlement input is invalid.");
     }
 
-    if (obligation.status !== DebtStatus.OPEN) {
-      throw new ApiError(409, "OBLIGATION_NOT_OPEN", "Only open obligations can be settled.");
+    if (data.payeeUserId === userId) {
+      throw new ApiError(400, "VALIDATION_ERROR", "Payer and payee must be different.");
     }
 
-    if (amount.gt(new Decimal(obligation.remainingAmount.toString()))) {
+    await requireSettleablePayee(tx, householdId, data.payeeUserId);
+
+    const obligations = await listOpenTransferObligations(
+      tx,
+      householdId,
+      userId,
+      data.payeeUserId,
+      data.currency,
+    );
+
+    if (obligations.length === 0 || totalRemaining(obligations).isZero()) {
+      throw new ApiError(
+        409,
+        "NO_SETTLEABLE_OBLIGATIONS",
+        "No open obligations match this settlement transfer.",
+      );
+    }
+
+    if (amount.gt(totalRemaining(obligations))) {
       throw new ApiError(409, "SETTLEMENT_OVERPAYS", "Settlement exceeds remaining obligation.");
     }
 
@@ -98,11 +327,8 @@ export async function createSettlementForHousehold(
       data: {
         householdId,
         type: LedgerTransactionType.SETTLEMENT_RECORDED,
-        description: `Settlement submitted for ${obligation.settlementCurrency} ${decimalToFixed6(
-          amount,
-        )}`,
-        sourceType: "DebtObligation",
-        sourceId: obligation.id,
+        description: `Settlement submitted for ${data.currency} ${decimalToFixed6(amount)}`,
+        sourceType: "SettlementSuggestion",
         createdByUserId: userId,
         occurredAt: settlementDate,
       },
@@ -112,10 +338,10 @@ export async function createSettlementForHousehold(
       data: {
         householdId,
         ledgerTransactionId: ledgerTransaction.id,
-        payerUserId: obligation.debtorUserId,
-        payeeUserId: obligation.creditorUserId,
+        payerUserId: userId,
+        payeeUserId: data.payeeUserId,
         amount: decimalToFixed6(amount),
-        currency: obligation.settlementCurrency,
+        currency: data.currency,
         settlementDate,
         method: data.method,
         status: SettlementStatus.SUBMITTED,
@@ -136,9 +362,10 @@ export async function createSettlementForHousehold(
         entityType: "Settlement",
         entityId: settlement.id,
         after: {
-          debtObligationId: obligation.id,
-          payerUserId: obligation.debtorUserId,
-          payeeUserId: obligation.creditorUserId,
+          allocationPolicy: "OLDEST_OPEN_OBLIGATIONS",
+          candidateDebtObligationIds: obligations.map((obligation) => obligation.id),
+          payerUserId: settlement.payerUserId,
+          payeeUserId: settlement.payeeUserId,
           amount: settlement.amount.toString(),
           currency: settlement.currency,
           status: settlement.status,
@@ -189,51 +416,72 @@ export async function confirmSettlementForHousehold(
       throw new ApiError(409, "SETTLEMENT_NOT_CONFIRMABLE", "Settlement cannot be confirmed.");
     }
 
-    if (
-      settlement.transaction.sourceType !== "DebtObligation" ||
-      !settlement.transaction.sourceId
-    ) {
+    const amount = new Decimal(settlement.amount.toString());
+    let allocationPolicy = "OLDEST_OPEN_OBLIGATIONS";
+    let obligations: AllocationCandidate[];
+
+    if (settlement.transaction.sourceType === "DebtObligation" && settlement.transaction.sourceId) {
+      const obligation = await tx.debtObligation.findFirst({
+        where: {
+          id: settlement.transaction.sourceId,
+          householdId,
+        },
+      });
+
+      if (
+        !obligation ||
+        obligation.status !== DebtStatus.OPEN ||
+        obligation.debtorUserId !== settlement.payerUserId ||
+        obligation.creditorUserId !== settlement.payeeUserId ||
+        obligation.settlementCurrency !== settlement.currency
+      ) {
+        throw new ApiError(409, "OBLIGATION_NOT_OPEN", "Only open obligations can be settled.");
+      }
+
+      allocationPolicy = "SOURCE_OBLIGATION";
+      obligations = [obligation];
+    } else if (settlement.transaction.sourceType === "SettlementSuggestion") {
+      obligations = await listOpenTransferObligations(
+        tx,
+        householdId,
+        settlement.payerUserId,
+        settlement.payeeUserId,
+        settlement.currency,
+      );
+
+      if (obligations.length === 0 || totalRemaining(obligations).isZero()) {
+        throw new ApiError(
+          409,
+          "NO_SETTLEABLE_OBLIGATIONS",
+          "No open obligations match this settlement transfer.",
+        );
+      }
+    } else {
       throw new ApiError(409, "SETTLEMENT_SOURCE_MISSING", "Settlement source is missing.");
     }
 
-    const obligation = await tx.debtObligation.findFirst({
-      where: {
-        id: settlement.transaction.sourceId,
-        householdId,
-      },
-    });
+    const allocationPlan = buildAllocationPlan(amount, obligations);
 
-    if (!obligation || obligation.status !== DebtStatus.OPEN) {
-      throw new ApiError(409, "OBLIGATION_NOT_OPEN", "Only open obligations can be settled.");
+    for (const allocation of allocationPlan) {
+      await tx.settlementAllocation.create({
+        data: {
+          settlementId: settlement.id,
+          debtObligationId: allocation.obligation.id,
+          amountApplied: decimalToFixed6(allocation.amountApplied),
+        },
+      });
+
+      await tx.debtObligation.update({
+        where: {
+          id: allocation.obligation.id,
+        },
+        data: {
+          remainingAmount: decimalToFixed6(allocation.nextRemaining),
+          status: allocation.nextRemaining.isZero() ? DebtStatus.SETTLED : DebtStatus.OPEN,
+          settledAt: allocation.nextRemaining.isZero() ? new Date() : null,
+        },
+      });
     }
-
-    const amount = new Decimal(settlement.amount.toString());
-    const remaining = new Decimal(obligation.remainingAmount.toString());
-
-    if (amount.gt(remaining)) {
-      throw new ApiError(409, "SETTLEMENT_OVERPAYS", "Settlement exceeds remaining obligation.");
-    }
-
-    const nextRemaining = remaining.minus(amount);
-
-    await tx.settlementAllocation.create({
-      data: {
-        settlementId: settlement.id,
-        debtObligationId: obligation.id,
-        amountApplied: decimalToFixed6(amount),
-      },
-    });
-
-    await tx.debtObligation.update({
-      where: {
-        id: obligation.id,
-      },
-      data: {
-        remainingAmount: decimalToFixed6(nextRemaining),
-        status: nextRemaining.isZero() ? DebtStatus.SETTLED : DebtStatus.OPEN,
-        settledAt: nextRemaining.isZero() ? new Date() : null,
-      },
-    });
 
     const confirmedSettlement = await tx.settlement.update({
       where: {
@@ -256,9 +504,14 @@ export async function confirmSettlementForHousehold(
         entityType: "Settlement",
         entityId: settlement.id,
         after: {
-          debtObligationId: obligation.id,
+          allocationPolicy,
+          allocationCount: allocationPlan.length,
+          allocations: allocationPlan.map((allocation) => ({
+            debtObligationId: allocation.obligation.id,
+            amountApplied: decimalToFixed6(allocation.amountApplied),
+            remainingAmount: decimalToFixed6(allocation.nextRemaining),
+          })),
           amountApplied: decimalToFixed6(amount),
-          remainingAmount: decimalToFixed6(nextRemaining),
           status: confirmedSettlement.status,
         },
       },

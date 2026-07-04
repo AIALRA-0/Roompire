@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { SerializedLedgerObligation } from "@/server/ledger/serializers";
+import type {
+  SerializedLedgerObligation,
+  SerializedSettlementSuggestion,
+} from "@/server/ledger/serializers";
 import type { SerializedSettlement } from "@/server/settlements/serializers";
 
 type SettlementLabels = {
@@ -26,6 +29,9 @@ type SettlementLabels = {
   settlementRejected: string;
   noSettlementActions: string;
   noPendingSettlements: string;
+  suggestedTransfer: string;
+  suggestedTransfersHint: string;
+  directObligations: string;
   manualMethod: string;
   payer: string;
   payee: string;
@@ -39,6 +45,7 @@ type SettlementActionsProps = {
   currentUserId: string;
   memberNamesByUserId: Record<string, string>;
   obligations: SerializedLedgerObligation[];
+  suggestions: SerializedSettlementSuggestion[];
   settlements: SerializedSettlement[];
   labels: SettlementLabels;
 };
@@ -79,11 +86,22 @@ function memberName(memberNamesByUserId: Record<string, string>, userId: string)
   return memberNamesByUserId[userId] ?? userId;
 }
 
+function transferKey(suggestion: SerializedSettlementSuggestion) {
+  return `${suggestion.debtorUserId}-${suggestion.creditorUserId}-${suggestion.currency}`;
+}
+
+function decimalInputValue(value: number) {
+  const formatted = value.toFixed(6).replace(/\.?0+$/, "");
+
+  return formatted || "0";
+}
+
 export function SettlementActions({
   householdId,
   currentUserId,
   memberNamesByUserId,
   obligations,
+  suggestions,
   settlements,
   labels,
 }: SettlementActionsProps) {
@@ -95,10 +113,71 @@ export function SettlementActions({
   const recordableObligations = obligations.filter(
     (obligation) => obligation.status === "OPEN" && obligation.debtorUserId === currentUserId,
   );
+  const recordableSuggestions = suggestions
+    .filter((suggestion) => suggestion.debtorUserId === currentUserId)
+    .map((suggestion) => {
+      const directObligations = obligations.filter(
+        (obligation) =>
+          obligation.status === "OPEN" &&
+          obligation.debtorUserId === suggestion.debtorUserId &&
+          obligation.creditorUserId === suggestion.creditorUserId &&
+          obligation.settlementCurrency === suggestion.currency,
+      );
+      const directRemainingAmount = directObligations.reduce(
+        (total, obligation) => total + Number(obligation.remainingAmount),
+        0,
+      );
+
+      return {
+        ...suggestion,
+        directObligationCount: directObligations.length,
+        directRemainingAmount,
+      };
+    })
+    .filter(
+      (suggestion) =>
+        suggestion.directObligationCount > 0 &&
+        suggestion.directRemainingAmount + Number.EPSILON >= Number(suggestion.amount),
+    );
   const pendingSettlements = settlements.filter(
     (settlement) => settlement.status === "SUBMITTED" && settlement.payeeUserId === currentUserId,
   );
   const obligationsById = new Map(obligations.map((obligation) => [obligation.id, obligation]));
+
+  async function submitSuggestedSettlement(
+    event: FormEvent<HTMLFormElement>,
+    suggestion: (typeof recordableSuggestions)[number],
+  ) {
+    event.preventDefault();
+    setMessage(null);
+    const key = transferKey(suggestion);
+    setBusyActionId(`submit-suggestion-${key}`);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      await postSettlementMutation(
+        `/api/v1/households/${householdId}/settlements`,
+        {
+          payeeUserId: suggestion.creditorUserId,
+          amount: String(formData.get("amount") ?? ""),
+          currency: suggestion.currency,
+          settlementDate: String(formData.get("settlementDate") ?? ""),
+          method: String(formData.get("method") ?? ""),
+          note: String(formData.get("note") ?? ""),
+        },
+        labels.errorFallback,
+      );
+      form.reset();
+      setMessage(labels.settlementSubmitted);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : labels.errorFallback);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
 
   async function submitSettlement(event: FormEvent<HTMLFormElement>, obligationId: string) {
     event.preventDefault();
@@ -156,8 +235,97 @@ export function SettlementActions({
           <h2 className="text-lg font-semibold">{labels.settlementActions}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{labels.settlementActionsHint}</p>
         </div>
-        {recordableObligations.length > 0 ? (
+        {recordableSuggestions.length > 0 || recordableObligations.length > 0 ? (
           <div className="divide-y divide-border">
+            {recordableSuggestions.map((suggestion) => {
+              const key = transferKey(suggestion);
+              const busyId = `submit-suggestion-${key}`;
+
+              return (
+                <form
+                  className="grid gap-3 bg-muted/25 p-4"
+                  data-testid={`suggested-settlement-form-${key}`}
+                  key={key}
+                  onSubmit={(event) => submitSuggestedSettlement(event, suggestion)}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {memberName(memberNamesByUserId, suggestion.debtorUserId)} {labels.payer} ·{" "}
+                        {memberName(memberNamesByUserId, suggestion.creditorUserId)} {labels.payee}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {labels.suggestedTransfer}: {suggestion.currency} {suggestion.amount} ·{" "}
+                        {suggestion.directObligationCount} {labels.directObligations}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {labels.suggestedTransfersHint}
+                      </p>
+                    </div>
+                    <Badge variant="success">
+                      {suggestion.currency} {suggestion.amount}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_150px]">
+                    <label className="grid gap-1.5 text-sm font-medium">
+                      <span>{labels.amount}</span>
+                      <input
+                        className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                        data-testid={`suggested-settlement-amount-${key}`}
+                        defaultValue={suggestion.amount}
+                        max={decimalInputValue(suggestion.directRemainingAmount)}
+                        min="0.000001"
+                        name="amount"
+                        required
+                        step="0.000001"
+                        type="number"
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-sm font-medium">
+                      <span>{labels.date}</span>
+                      <input
+                        className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                        data-testid={`suggested-settlement-date-${key}`}
+                        defaultValue={today}
+                        name="settlementDate"
+                        required
+                        type="date"
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-sm font-medium">
+                      <span>{labels.method}</span>
+                      <input
+                        className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                        data-testid={`suggested-settlement-method-${key}`}
+                        defaultValue={labels.manualMethod}
+                        maxLength={60}
+                        name="method"
+                        required
+                      />
+                    </label>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <label className="grid gap-1.5 text-sm font-medium">
+                      <span>{labels.note}</span>
+                      <input
+                        className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                        data-testid={`suggested-settlement-note-${key}`}
+                        maxLength={500}
+                        name="note"
+                      />
+                    </label>
+                    <Button
+                      data-testid={`suggested-settlement-submit-${key}`}
+                      disabled={isPending || busyActionId === busyId}
+                      type="submit"
+                    >
+                      <SendHorizontal aria-hidden="true" className="h-4 w-4" />
+                      {busyActionId === busyId ? labels.working : labels.submitSettlement}
+                    </Button>
+                  </div>
+                </form>
+              );
+            })}
             {recordableObligations.map((obligation) => (
               <form
                 className="grid gap-3 p-4"
@@ -272,7 +440,9 @@ export function SettlementActions({
                         {memberName(memberNamesByUserId, settlement.payerUserId)} {labels.payer}
                         {sourceObligation
                           ? ` · ${labels.remaining}: ${sourceObligation.settlementCurrency} ${sourceObligation.remainingAmount}`
-                          : ""}
+                          : settlement.sourceTransaction.sourceType === "SettlementSuggestion"
+                            ? ` · ${labels.suggestedTransfer}`
+                            : ""}
                       </p>
                     </div>
                     <Badge variant="warning">{settlement.status}</Badge>

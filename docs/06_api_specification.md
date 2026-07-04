@@ -201,6 +201,8 @@ Current implementation allows only household owners and admins to reverse open o
 
 ### Record settlement
 
+Single obligation:
+
 ```json
 {
   "debtObligationId": "obl_123",
@@ -211,8 +213,21 @@ Current implementation allows only household owners and admins to reverse open o
 }
 ```
 
-Current implementation records one submitted settlement against one open debt obligation.
-Only the debtor for that obligation can submit it. The creditor must confirm it before the service creates a settlement allocation and reduces the obligation remaining amount. Rejection leaves obligation balances unchanged.
+Suggested transfer across matching obligations:
+
+```json
+{
+  "payeeUserId": "alice",
+  "amount": "302.20",
+  "currency": "CNY",
+  "settlementDate": "2026-07-08",
+  "method": "WECHAT",
+  "note": "Paid via WeChat."
+}
+```
+
+Current implementation records either one submitted settlement against a single open debt obligation or one suggested-transfer settlement for a debtor/payee/currency pair.
+Only the debtor can submit it. The creditor must confirm it before the service creates settlement allocations and reduces obligation remaining amounts. Suggested-transfer confirmation allocates across matching open obligations in deterministic oldest-first order. Rejection leaves obligation balances unchanged.
 
 ### Settlement suggestions
 

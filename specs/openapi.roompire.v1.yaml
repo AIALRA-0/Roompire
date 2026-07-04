@@ -539,7 +539,7 @@ components:
         allocations:
           type: array
           items: { $ref: "#/components/schemas/SettlementAllocation" }
-    CreateSettlementRequest:
+    CreateObligationSettlementRequest:
       type: object
       required: [debtObligationId, amount, settlementDate]
       properties:
@@ -551,6 +551,26 @@ components:
         settlementDate: { type: string, format: date }
         method: { type: string, minLength: 1, maxLength: 60, default: manual }
         note: { type: string, maxLength: 500 }
+    CreateSuggestedSettlementRequest:
+      type: object
+      required: [payeeUserId, amount, currency, settlementDate]
+      properties:
+        payeeUserId:
+          type: string
+          format: uuid
+          description: Creditor receiving the suggested transfer.
+        amount:
+          allOf:
+            - { $ref: "#/components/schemas/DecimalString" }
+          description: Positive amount, up to six decimal places, not exceeding matching open obligations for the payer, payee, and currency.
+        currency: { $ref: "#/components/schemas/CurrencyCode" }
+        settlementDate: { type: string, format: date }
+        method: { type: string, minLength: 1, maxLength: 60, default: manual }
+        note: { type: string, maxLength: 500 }
+    CreateSettlementRequest:
+      oneOf:
+        - { $ref: "#/components/schemas/CreateObligationSettlementRequest" }
+        - { $ref: "#/components/schemas/CreateSuggestedSettlementRequest" }
     SettlementResponse:
       type: object
       required: [settlement]
@@ -1345,8 +1365,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
     post:
-      summary: Submit a settlement against an open obligation
-      description: The debtor records a payment. Balances are reduced only after creditor confirmation.
+      summary: Submit a settlement against open obligations
+      description: The debtor records either a single-obligation payment or a suggested transfer by payee and currency. Balances are reduced only after creditor confirmation.
       parameters:
         - in: header
           name: Idempotency-Key
@@ -1374,7 +1394,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "403":
-          description: Caller is a viewer or is not the debtor for the obligation
+          description: Caller is a viewer, is not the debtor for the obligation, or uses a viewer as transfer payee
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -1384,14 +1404,14 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Obligation is not open, settlement overpays, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          description: Obligation is not open, no matching open obligations exist, settlement overpays, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/settlements/{settlementId}/confirm:
     post:
       summary: Confirm a submitted settlement
-      description: The creditor confirms payment, creates an allocation, and reduces the open obligation balance.
+      description: The creditor confirms payment, creates one or more settlement allocations, and reduces matching open obligation balances.
       parameters:
         - in: header
           name: Idempotency-Key
@@ -1434,7 +1454,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Settlement is not confirmable, obligation is not open, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          description: Settlement is not confirmable, obligation is not open, no matching open obligations exist, settlement overpays, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

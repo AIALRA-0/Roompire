@@ -279,6 +279,31 @@ async function clickSettlementSubmitWithRetry(page: Page, obligationId: string) 
   throw new Error(`POST settlement failed with status ${lastStatus}`);
 }
 
+async function clickSuggestedSettlementSubmitWithRetry(page: Page, transferKey: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const responsePromise = page.waitForResponse((response) => {
+      const pathname = new URL(response.url()).pathname;
+
+      return pathname.endsWith("/settlements") && response.request().method() === "POST";
+    });
+
+    await page.getByTestId(`suggested-settlement-submit-${transferKey}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Settlement submitted")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST suggested settlement failed with status ${lastStatus}`);
+}
+
 async function clickSettlementConfirmWithRetry(page: Page, settlementId: string) {
   let lastStatus = 0;
 
@@ -1473,6 +1498,285 @@ test.describe("Roompire real browser smoke", () => {
       status: "REVERSED",
       remainingAmount: "0",
     });
+  });
+
+  test("debtor settles a suggested transfer across multiple obligations", async ({
+    page,
+  }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `multi-settle-owner+${suffix}@example.test`;
+    const debtorEmail = `multi-settle-debtor+${suffix}@example.test`;
+    const householdName = `Multi Settlement House ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "Multi Settlement Owner E2E");
+    const householdResponse = await postApiWithRetry(page, "/api/v1/households", {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+      },
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(householdResponse.ok()).toBeTruthy();
+    const householdPayload = (await householdResponse.json()) as {
+      household: { id: string };
+    };
+    const householdId = householdPayload.household.id;
+    const invitePayload = await createInviteWithRetry(
+      page,
+      householdId,
+      {
+        email: debtorEmail,
+        role: "MEMBER",
+      },
+      ownerEmail,
+    );
+
+    await setDevSessionWithRetry(page, debtorEmail, "Multi Settlement Debtor E2E");
+    const acceptResponse = await postApiWithRetry(page, "/api/v1/invites/accept", {
+      data: {
+        token: invitePayload.token,
+      },
+      headers: {
+        "x-roompire-dev-user-email": debtorEmail,
+      },
+    });
+    expect(acceptResponse.ok()).toBeTruthy();
+
+    const membersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(membersResponse.ok()).toBeTruthy();
+    const membersPayload = (await membersResponse.json()) as {
+      members: Array<{ userId: string; email: string }>;
+    };
+    const ownerUserId = membersPayload.members.find(
+      (member) => member.email === ownerEmail,
+    )?.userId;
+    const debtorUserId = membersPayload.members.find(
+      (member) => member.email === debtorEmail,
+    )?.userId;
+    expect(ownerUserId).toBeTruthy();
+    expect(debtorUserId).toBeTruthy();
+    if (!ownerUserId || !debtorUserId) {
+      throw new Error("Expected owner and debtor users to exist.");
+    }
+
+    async function createApprovedObligation(originalAmount: string, title: string) {
+      const proposalResponse = await postApiWithRetry(
+        page,
+        `/api/v1/households/${householdId}/expenses/proposals`,
+        {
+          data: {
+            title,
+            expenseDate: "2026-07-04",
+            originalAmount,
+            originalCurrency: "CNY",
+            participantUserIds: [debtorUserId],
+          },
+          headers: {
+            "Idempotency-Key": `multi-settle-proposal-${title}-${Date.now()}`,
+            "x-roompire-dev-user-email": ownerEmail,
+          },
+        },
+      );
+      expect(proposalResponse.status()).toBe(201);
+      const proposalPayload = (await proposalResponse.json()) as {
+        proposal: {
+          shares: Array<{ id: string; debtorUserId: string; creditorUserId: string }>;
+        };
+      };
+      const shareId = proposalPayload.proposal.shares.find(
+        (share) => share.debtorUserId === debtorUserId && share.creditorUserId === ownerUserId,
+      )?.id;
+      expect(shareId).toBeTruthy();
+
+      const approvalResponse = await postApiWithRetry(
+        page,
+        `/api/v1/households/${householdId}/expenses/shares/${shareId}/approve`,
+        {
+          data: {},
+          headers: {
+            "Idempotency-Key": `multi-settle-approval-${shareId}-${Date.now()}`,
+            "x-roompire-dev-user-email": debtorEmail,
+          },
+        },
+      );
+      expect(approvalResponse.ok()).toBeTruthy();
+    }
+
+    await createApprovedObligation("20", `Multi Settlement First ${suffix}`);
+    await createApprovedObligation("40", `Multi Settlement Second ${suffix}`);
+
+    const obligationsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/ledger/obligations`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(obligationsResponse.ok()).toBeTruthy();
+    const obligationsPayload = (await obligationsResponse.json()) as {
+      obligations: Array<{
+        id: string;
+        debtorUserId: string;
+        creditorUserId: string;
+        remainingAmount: string;
+        settlementCurrency: string;
+        status: string;
+      }>;
+    };
+    const directObligations = obligationsPayload.obligations.filter(
+      (obligation) =>
+        obligation.debtorUserId === debtorUserId &&
+        obligation.creditorUserId === ownerUserId &&
+        obligation.settlementCurrency === "CNY" &&
+        obligation.status === "OPEN",
+    );
+    expect(directObligations.map((obligation) => obligation.remainingAmount).sort()).toEqual([
+      "10",
+      "20",
+    ]);
+    const directObligationIds = directObligations.map((obligation) => obligation.id);
+    const transferKey = `${debtorUserId}-${ownerUserId}-CNY`;
+
+    await setDevSessionWithRetry(page, debtorEmail, "Multi Settlement Debtor E2E");
+    await page.goto("/en-US/app/ledger");
+    const suggestionRow = page.getByTestId(`settlement-suggestion-${transferKey}`);
+    await expect(suggestionRow).toContainText(
+      "Multi Settlement Debtor E2E pays Multi Settlement Owner E2E",
+    );
+    await expect(suggestionRow).toContainText("CNY 30");
+    const suggestedForm = page.getByTestId(`suggested-settlement-form-${transferKey}`);
+    await expect(suggestedForm).toContainText("Suggested transfer: CNY 30");
+    await expect(suggestedForm).toContainText("2 direct obligations");
+    await page.getByTestId(`suggested-settlement-amount-${transferKey}`).fill("30");
+    await page.getByTestId(`suggested-settlement-date-${transferKey}`).fill("2026-07-04");
+    await clickSuggestedSettlementSubmitWithRetry(page, transferKey);
+
+    const submittedSettlementsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/settlements`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(submittedSettlementsResponse.ok()).toBeTruthy();
+    const submittedSettlementsPayload = (await submittedSettlementsResponse.json()) as {
+      settlements: Array<{
+        id: string;
+        amount: string;
+        currency: string;
+        status: string;
+        sourceTransaction: { sourceType: string | null; sourceId: string | null };
+        allocations: unknown[];
+      }>;
+    };
+    const submittedSettlement = submittedSettlementsPayload.settlements.find(
+      (settlement) =>
+        settlement.amount === "30" &&
+        settlement.currency === "CNY" &&
+        settlement.sourceTransaction.sourceType === "SettlementSuggestion",
+    );
+    expect(submittedSettlement).toMatchObject({
+      amount: "30",
+      currency: "CNY",
+      status: "SUBMITTED",
+      sourceTransaction: {
+        sourceType: "SettlementSuggestion",
+        sourceId: null,
+      },
+      allocations: [],
+    });
+
+    await setDevSessionWithRetry(page, ownerEmail, "Multi Settlement Owner E2E");
+    await page.goto("/en-US/app/ledger");
+    const pendingSettlementRow = page.getByTestId(`pending-settlement-${submittedSettlement!.id}`);
+    await expect(pendingSettlementRow).toContainText("CNY 30");
+    await expect(pendingSettlementRow).toContainText("Suggested transfer");
+    await clickSettlementConfirmWithRetry(page, submittedSettlement!.id);
+
+    const confirmedSettlementsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/settlements`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(confirmedSettlementsResponse.ok()).toBeTruthy();
+    const confirmedSettlementsPayload =
+      (await confirmedSettlementsResponse.json()) as typeof submittedSettlementsPayload;
+    const confirmedSettlement = confirmedSettlementsPayload.settlements.find(
+      (settlement) => settlement.id === submittedSettlement!.id,
+    );
+    expect(confirmedSettlement).toBeTruthy();
+    expect(confirmedSettlement!.status).toBe("CONFIRMED");
+    expect(
+      confirmedSettlement!.allocations
+        .map((allocation) => (allocation as { amountApplied: string }).amountApplied)
+        .sort(),
+    ).toEqual(["10", "20"]);
+
+    const settledObligationsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/ledger/obligations`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(settledObligationsResponse.ok()).toBeTruthy();
+    const settledObligationsPayload =
+      (await settledObligationsResponse.json()) as typeof obligationsPayload;
+    for (const obligationId of directObligationIds) {
+      expect(
+        settledObligationsPayload.obligations.find((obligation) => obligation.id === obligationId),
+      ).toMatchObject({
+        remainingAmount: "0",
+        status: "SETTLED",
+      });
+    }
+
+    const balancesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/balances`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(balancesResponse.ok()).toBeTruthy();
+    const balancesPayload = (await balancesResponse.json()) as { balances: unknown[] };
+    expect(balancesPayload.balances).toEqual([]);
+
+    const suggestionsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/settlement-suggestions`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(suggestionsResponse.ok()).toBeTruthy();
+    const suggestionsPayload = (await suggestionsResponse.json()) as { suggestions: unknown[] };
+    expect(suggestionsPayload.suggestions).toEqual([]);
   });
 
   test("debtor rejects a submitted expense share without ledger impact", async ({
