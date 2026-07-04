@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Activity,
   ArrowLeft,
+  BarChart3,
   CalendarDays,
   Home,
   ListChecks,
@@ -54,6 +55,7 @@ export default async function AuditPage({ params }: PageProps) {
     { label: nav("ledger"), icon: WalletCards, href: `/${locale}/app/ledger` },
     { label: nav("calendar"), icon: CalendarDays, href: `/${locale}/app/calendar` },
     { label: nav("tasks"), icon: ListChecks, href: `/${locale}/app/calendar` },
+    { label: nav("stats"), icon: BarChart3, href: `/${locale}/app/stats` },
     { label: nav("audit"), icon: Activity, href: `/${locale}/app/audit`, active: true },
     { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];

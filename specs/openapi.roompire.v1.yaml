@@ -144,6 +144,163 @@ components:
         events:
           type: array
           items: { $ref: "#/components/schemas/AuditEvent" }
+    AmountTotal:
+      type: object
+      required: [currency, amount]
+      properties:
+        currency: { $ref: "#/components/schemas/CurrencyCode" }
+        amount: { $ref: "#/components/schemas/DecimalString" }
+    StatsProposalCounts:
+      type: object
+      required:
+        [
+          DRAFT,
+          SUBMITTED,
+          PARTIALLY_APPROVED,
+          APPROVED,
+          PARTIALLY_MATURED,
+          MATURED_TO_LEDGER,
+          REJECTED,
+          DISPUTED,
+          CANCELLED,
+        ]
+      properties:
+        DRAFT: { type: integer, minimum: 0 }
+        SUBMITTED: { type: integer, minimum: 0 }
+        PARTIALLY_APPROVED: { type: integer, minimum: 0 }
+        APPROVED: { type: integer, minimum: 0 }
+        PARTIALLY_MATURED: { type: integer, minimum: 0 }
+        MATURED_TO_LEDGER: { type: integer, minimum: 0 }
+        REJECTED: { type: integer, minimum: 0 }
+        DISPUTED: { type: integer, minimum: 0 }
+        CANCELLED: { type: integer, minimum: 0 }
+    StatsTaskCounts:
+      type: object
+      required: [open, completed]
+      properties:
+        open: { type: integer, minimum: 0 }
+        completed: { type: integer, minimum: 0 }
+    StatsSummary:
+      type: object
+      required:
+        [
+          householdId,
+          settlementCurrency,
+          proposalCounts,
+          proposalSettlementTotals,
+          openObligationTotals,
+          confirmedSettlementTotals,
+          taskCounts,
+          auditEventCount,
+          receiptFileCount,
+        ]
+      properties:
+        householdId: { type: string, format: uuid }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        proposalCounts: { $ref: "#/components/schemas/StatsProposalCounts" }
+        proposalSettlementTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        openObligationTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        confirmedSettlementTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        taskCounts: { $ref: "#/components/schemas/StatsTaskCounts" }
+        auditEventCount: { type: integer, minimum: 0 }
+        receiptFileCount: { type: integer, minimum: 0 }
+    StatsSummaryResponse:
+      type: object
+      required: [summary]
+      properties:
+        summary: { $ref: "#/components/schemas/StatsSummary" }
+    CategoryStat:
+      type: object
+      required:
+        [
+          categoryId,
+          categoryKey,
+          nameEn,
+          nameZhCn,
+          proposalCount,
+          proposalTotals,
+          maturedShareTotals,
+        ]
+      properties:
+        categoryId: { type: string, format: uuid, nullable: true }
+        categoryKey: { type: string }
+        nameEn: { type: string }
+        nameZhCn: { type: string }
+        proposalCount: { type: integer, minimum: 0 }
+        proposalTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        maturedShareTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+    CategoryStatsListResponse:
+      type: object
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/CategoryStat" }
+    MemberStat:
+      type: object
+      required:
+        [
+          userId,
+          displayName,
+          email,
+          role,
+          createdProposalCount,
+          createdProposalTotals,
+          paidProposalTotals,
+          owedObligationTotals,
+          receivableObligationTotals,
+          remainingOwedTotals,
+          remainingReceivableTotals,
+          confirmedSettlementPaidTotals,
+          confirmedSettlementReceivedTotals,
+        ]
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: "#/components/schemas/Role" }
+        createdProposalCount: { type: integer, minimum: 0 }
+        createdProposalTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        paidProposalTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        owedObligationTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        receivableObligationTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        remainingOwedTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        remainingReceivableTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        confirmedSettlementPaidTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+        confirmedSettlementReceivedTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
+    MemberStatsListResponse:
+      type: object
+      required: [members]
+      properties:
+        members:
+          type: array
+          items: { $ref: "#/components/schemas/MemberStat" }
     User:
       type: object
       required: [id, email, displayName]
@@ -2340,6 +2497,66 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
           description: Task already has a linked expense proposal, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/stats/summary:
+    get:
+      summary: Get household statistics summary
+      description: Returns read-only proposal, ledger, task, audit, and receipt summary totals for the active household.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatsSummaryResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/stats/categories:
+    get:
+      summary: List category statistics
+      description: Returns read-only proposal totals and matured share totals grouped by expense category.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CategoryStatsListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/stats/members:
+    get:
+      summary: List member statistics
+      description: Returns read-only proposal, payer, obligation, and confirmed settlement totals for active household members.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MemberStatsListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

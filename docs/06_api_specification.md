@@ -134,11 +134,14 @@ Current MVP implements private receipt storage behind a stable API shape: presig
 
 - `GET /households/{householdId}/stats/summary`
 - `GET /households/{householdId}/stats/categories`
+- `GET /households/{householdId}/stats/members`
 - `GET /households/{householdId}/audit-events`
 - `POST /households/{householdId}/exports`
 - `GET /households/{householdId}/exports/{exportId}`
 
-Current implementation exposes `GET /households/{householdId}/audit-events` as a read-only active-member endpoint returning the latest household audit events with actor, action, entity, timestamp, and before/after/metadata JSON. The localized audit page uses the same service and keeps events scoped to the active household.
+Current implementation exposes read-only active-member statistics endpoints for household summary totals, category totals, and member totals. Summary covers proposal status counts, non-cancelled proposal totals by currency, open obligation totals, confirmed settlement totals, open/completed task counts, audit event count, and receipt file count. Category stats group proposal totals and matured share totals by expense category. Member stats group created proposals, payer totals, owed/receivable formal obligations, remaining open obligations, and confirmed settlement paid/received totals by active member. The localized statistics page uses the same service and keeps data scoped to the active household.
+
+Current implementation also exposes `GET /households/{householdId}/audit-events` as a read-only active-member endpoint returning the latest household audit events with actor, action, entity, timestamp, and before/after/metadata JSON. The localized audit page uses the same service and keeps events scoped to the active household.
 
 ## Core request examples
 

@@ -589,6 +589,61 @@ test.describe("Roompire real browser smoke", () => {
     };
     expect(sessionPayload.household?.id).toBeTruthy();
 
+    const statsSummaryResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/stats/summary`,
+    );
+    expect(statsSummaryResponse.ok()).toBeTruthy();
+    const statsSummaryPayload = (await statsSummaryResponse.json()) as {
+      summary: {
+        proposalCounts: { SUBMITTED: number };
+        proposalSettlementTotals: Array<{ currency: string; amount: string }>;
+        taskCounts: { open: number; completed: number };
+        auditEventCount: number;
+      };
+    };
+    expect(statsSummaryPayload.summary.proposalCounts.SUBMITTED).toBeGreaterThan(0);
+    expect(statsSummaryPayload.summary.proposalSettlementTotals).toContainEqual(
+      expect.objectContaining({ currency: "CNY" }),
+    );
+    expect(statsSummaryPayload.summary.auditEventCount).toBeGreaterThan(0);
+
+    const statsCategoriesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/stats/categories`,
+    );
+    expect(statsCategoriesResponse.ok()).toBeTruthy();
+    const statsCategoriesPayload = (await statsCategoriesResponse.json()) as {
+      categories: Array<{ categoryKey: string; proposalCount: number }>;
+    };
+    expect(statsCategoriesPayload.categories).toContainEqual(
+      expect.objectContaining({ categoryKey: "groceries" }),
+    );
+
+    const statsMembersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/stats/members`,
+    );
+    expect(statsMembersResponse.ok()).toBeTruthy();
+    const statsMembersPayload = (await statsMembersResponse.json()) as {
+      members: Array<{ email: string; createdProposalCount: number }>;
+    };
+    expect(statsMembersPayload.members).toContainEqual(
+      expect.objectContaining({ email: "alice@example.test" }),
+    );
+
+    await expect(page.getByTestId("dashboard-stats-link")).toHaveAttribute(
+      "href",
+      "/en-US/app/stats",
+    );
+    await page.goto("/en-US/app/stats");
+
+    await expect(page.getByRole("heading", { name: "Household statistics" })).toBeVisible();
+    await expect(page.getByTestId("stats-summary-proposals")).toBeVisible();
+    await expect(page.getByTestId("stats-summary-audit")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Category breakdown" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Member breakdown" })).toBeVisible();
+
     const auditResponse = await getApiWithRetry(
       page,
       `/api/v1/households/${sessionPayload.household!.id}/audit-events`,
@@ -605,6 +660,8 @@ test.describe("Roompire real browser smoke", () => {
       }),
     );
 
+    await page.goto("/en-US/app");
+    await expect(page.getByText("Pending proposals")).toBeVisible();
     await expect(page.getByTestId("dashboard-audit-link")).toHaveAttribute(
       "href",
       "/en-US/app/audit",

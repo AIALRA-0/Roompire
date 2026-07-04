@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   Activity,
+  BarChart3,
   CalendarDays,
   CircleDollarSign,
   Clock3,
@@ -44,6 +45,7 @@ export default async function AppPage({ params }: PageProps) {
     { label: nav("ledger"), icon: WalletCards, href: `/${locale}/app/ledger` },
     { label: nav("calendar"), icon: CalendarDays, href: `/${locale}/app/calendar` },
     { label: nav("tasks"), icon: ListChecks, href: `/${locale}/app/calendar` },
+    { label: nav("stats"), icon: BarChart3, href: `/${locale}/app/stats` },
     { label: nav("audit"), icon: Activity, href: `/${locale}/app/audit` },
     { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];
@@ -326,6 +328,15 @@ export default async function AppPage({ params }: PageProps) {
                 </div>
               ))}
             </section>
+
+            <div className="mt-3 flex justify-end">
+              <Button asChild size="sm" variant="outline">
+                <Link data-testid="dashboard-stats-link" href={`/${locale}/app/stats`}>
+                  <BarChart3 aria-hidden="true" className="h-4 w-4" />
+                  {nav("stats")}
+                </Link>
+              </Button>
+            </div>
 
             <div className="mt-6">
               <ExpenseWorkspace
