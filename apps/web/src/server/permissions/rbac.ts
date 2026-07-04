@@ -4,6 +4,7 @@ import { prisma } from "@/server/db/prisma";
 
 const memberRoles = new Set<Role>(["OWNER", "ADMIN", "MEMBER", "VIEWER"]);
 const memberManagerRoles = new Set<Role>(["OWNER", "ADMIN"]);
+const expenseCreatorRoles = new Set<Role>(["OWNER", "ADMIN", "MEMBER"]);
 
 export function canViewHousehold(role: Role) {
   return memberRoles.has(role);
@@ -15,6 +16,10 @@ export function canManageMembers(role: Role) {
 
 export function canUpdateHouseholdSettings(role: Role) {
   return memberManagerRoles.has(role);
+}
+
+export function canCreateExpenseProposal(role: Role) {
+  return expenseCreatorRoles.has(role);
 }
 
 export async function getActiveMembership(userId: string, householdId: string) {
@@ -60,6 +65,23 @@ export async function requireHouseholdSettingsManager(userId: string, householdI
     throw new ApiError(403, "FORBIDDEN", "Only household owners and admins can update settings.", {
       role: membership.role,
     });
+  }
+
+  return membership;
+}
+
+export async function requireExpenseProposalCreator(userId: string, householdId: string) {
+  const membership = await requireActiveMembership(userId, householdId);
+
+  if (!canCreateExpenseProposal(membership.role)) {
+    throw new ApiError(
+      403,
+      "FORBIDDEN",
+      "Only household owners, admins, and members can create expense proposals.",
+      {
+        role: membership.role,
+      },
+    );
   }
 
   return membership;

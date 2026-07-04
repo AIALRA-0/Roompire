@@ -1,8 +1,12 @@
 import { ExpenseProposalStatus } from "@prisma/client";
 import { requirePageUser } from "@/server/auth/session";
 import { prisma } from "@/server/db/prisma";
+import {
+  listExpenseCategoriesForHousehold,
+  listExpenseProposalsForHousehold,
+} from "@/server/expenses/service";
 import { listHouseholdsForUser } from "@/server/households/service";
-import { canManageMembers } from "@/server/permissions/rbac";
+import { canCreateExpenseProposal, canManageMembers } from "@/server/permissions/rbac";
 
 export async function getDashboardModel() {
   const user = await requirePageUser();
@@ -17,58 +21,70 @@ export async function getDashboardModel() {
       activeHousehold: null,
       activeMembership: null,
       members: [],
+      categories: [],
+      expenseProposals: [],
       pendingProposalCount: 0,
       maturedObligationCount: 0,
       upcomingTaskCount: 0,
       auditItems: [],
       canInviteMembers: false,
       canManageMembers: false,
+      canCreateExpenseProposals: false,
     };
   }
 
-  const [members, pendingProposalCount, maturedObligationCount, upcomingTaskCount, auditItems] =
-    await Promise.all([
-      prisma.householdMembership.findMany({
-        where: {
-          householdId: activeHousehold.id,
-          status: "ACTIVE",
+  const [
+    members,
+    categories,
+    expenseProposals,
+    pendingProposalCount,
+    maturedObligationCount,
+    upcomingTaskCount,
+    auditItems,
+  ] = await Promise.all([
+    prisma.householdMembership.findMany({
+      where: {
+        householdId: activeHousehold.id,
+        status: "ACTIVE",
+      },
+      include: { user: true },
+      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+    }),
+    listExpenseCategoriesForHousehold(user.id, activeHousehold.id),
+    listExpenseProposalsForHousehold(user.id, activeHousehold.id),
+    prisma.expenseProposal.count({
+      where: {
+        householdId: activeHousehold.id,
+        status: {
+          in: [
+            ExpenseProposalStatus.SUBMITTED,
+            ExpenseProposalStatus.PARTIALLY_APPROVED,
+            ExpenseProposalStatus.DISPUTED,
+          ],
         },
-        include: { user: true },
-        orderBy: [{ role: "asc" }, { createdAt: "asc" }],
-      }),
-      prisma.expenseProposal.count({
-        where: {
-          householdId: activeHousehold.id,
-          status: {
-            in: [
-              ExpenseProposalStatus.SUBMITTED,
-              ExpenseProposalStatus.PARTIALLY_APPROVED,
-              ExpenseProposalStatus.DISPUTED,
-            ],
-          },
-        },
-      }),
-      prisma.debtObligation.count({
-        where: {
-          householdId: activeHousehold.id,
-        },
-      }),
-      prisma.task.count({
-        where: {
-          householdId: activeHousehold.id,
-          status: "OPEN",
-        },
-      }),
-      prisma.auditEvent.findMany({
-        where: {
-          householdId: activeHousehold.id,
-        },
-        orderBy: {
-          occurredAt: "desc",
-        },
-        take: 4,
-      }),
-    ]);
+      },
+    }),
+    prisma.debtObligation.count({
+      where: {
+        householdId: activeHousehold.id,
+      },
+    }),
+    prisma.task.count({
+      where: {
+        householdId: activeHousehold.id,
+        status: "OPEN",
+      },
+    }),
+    prisma.auditEvent.findMany({
+      where: {
+        householdId: activeHousehold.id,
+      },
+      orderBy: {
+        occurredAt: "desc",
+      },
+      take: 4,
+    }),
+  ]);
 
   return {
     user,
@@ -76,11 +92,14 @@ export async function getDashboardModel() {
     activeHousehold,
     activeMembership,
     members,
+    categories,
+    expenseProposals,
     pendingProposalCount,
     maturedObligationCount,
     upcomingTaskCount,
     auditItems,
     canInviteMembers: canManageMembers(activeMembership.role),
     canManageMembers: canManageMembers(activeMembership.role),
+    canCreateExpenseProposals: canCreateExpenseProposal(activeMembership.role),
   };
 }

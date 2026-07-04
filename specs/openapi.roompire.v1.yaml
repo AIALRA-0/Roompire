@@ -180,20 +180,9 @@ components:
         shareUnits: { $ref: "#/components/schemas/DecimalString" }
     CreateExpenseProposalRequest:
       type: object
-      required:
-        [
-          title,
-          categoryId,
-          expenseDate,
-          originalAmount,
-          originalCurrency,
-          settlementCurrency,
-          splitMethod,
-          payers,
-          participants,
-        ]
+      required: [title, expenseDate, originalAmount, originalCurrency, participantUserIds]
       properties:
-        title: { type: string, minLength: 1 }
+        title: { type: string, minLength: 2, maxLength: 120 }
         description: { type: string }
         merchant: { type: string }
         categoryId: { type: string, format: uuid }
@@ -201,32 +190,44 @@ components:
         dueDate: { type: string, format: date }
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
-        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
-        splitMethod: { $ref: "#/components/schemas/SplitMethod" }
-        payers:
+        fxRate:
+          description: Required when original currency differs from household settlement currency.
+          $ref: "#/components/schemas/DecimalString"
+        participantUserIds:
           type: array
           minItems: 1
-          items: { $ref: "#/components/schemas/ExpensePayerInput" }
-        participants:
-          type: array
-          minItems: 1
-          items: { $ref: "#/components/schemas/ExpenseParticipantInput" }
-        tagIds:
-          type: array
           items: { type: string, format: uuid }
-        fileIds:
-          type: array
-          items: { type: string, format: uuid }
+        splitMethod: { type: string, enum: [EQUAL] }
+    ExpensePayer:
+      type: object
+      required: [id, userId, amountOriginal, amountSettlement, isPrimary]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        amountOriginal: { $ref: "#/components/schemas/DecimalString" }
+        amountSettlement: { $ref: "#/components/schemas/DecimalString" }
+        isPrimary: { type: boolean }
     ExpenseShare:
       type: object
       required:
-        [id, debtorUserId, creditorUserId, shareOriginalAmount, shareSettlementAmount, status]
+        [
+          id,
+          debtorUserId,
+          creditorUserId,
+          shareOriginalAmount,
+          shareSettlementAmount,
+          shareCurrency,
+          settlementCurrency,
+          status,
+        ]
       properties:
         id: { type: string, format: uuid }
         debtorUserId: { type: string, format: uuid }
         creditorUserId: { type: string, format: uuid }
         shareOriginalAmount: { $ref: "#/components/schemas/DecimalString" }
         shareSettlementAmount: { $ref: "#/components/schemas/DecimalString" }
+        shareCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         status: { $ref: "#/components/schemas/ShareStatus" }
     ExpenseProposal:
       type: object
@@ -239,22 +240,57 @@ components:
           originalCurrency,
           settlementAmount,
           settlementCurrency,
+          splitMethod,
+          fxPolicy,
           shares,
+          payers,
         ]
       properties:
         id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        createdByUserId: { type: string, format: uuid }
         title: { type: string }
+        description: { type: string, nullable: true }
+        merchant: { type: string, nullable: true }
+        category:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            key: { type: string }
+            nameEn: { type: string }
+            nameZhCn: { type: string }
+        expenseDate: { type: string, format: date }
+        dueDate: { type: string, format: date, nullable: true }
         status: { $ref: "#/components/schemas/ExpenseProposalStatus" }
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         settlementAmount: { $ref: "#/components/schemas/DecimalString" }
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        splitMethod: { $ref: "#/components/schemas/SplitMethod" }
+        fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
         fxRate: { $ref: "#/components/schemas/DecimalString" }
         fxRateDate: { type: string, format: date }
         fxProvider: { type: string }
+        fxLockedAt: { type: string, format: date-time, nullable: true }
+        payers:
+          type: array
+          items: { $ref: "#/components/schemas/ExpensePayer" }
         shares:
           type: array
           items: { $ref: "#/components/schemas/ExpenseShare" }
+    ExpenseProposalListResponse:
+      type: object
+      required: [proposals]
+      properties:
+        proposals:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseProposal" }
+    ExpenseProposalResponse:
+      type: object
+      required: [proposal]
+      properties:
+        proposal: { $ref: "#/components/schemas/ExpenseProposal" }
     BalanceEdge:
       type: object
       required: [debtorUserId, creditorUserId, amount, currency]
@@ -511,7 +547,16 @@ paths:
           name: status
           schema: { $ref: "#/components/schemas/ExpenseProposalStatus" }
       responses:
-        "200": { description: OK }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseProposalListResponse" }
+        "404":
+          description: Not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
     post:
       summary: Create expense proposal
       parameters:
@@ -533,9 +578,19 @@ paths:
           description: Created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ExpenseProposal" }
+              schema: { $ref: "#/components/schemas/ExpenseProposalResponse" }
         "400":
           description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer or otherwise cannot create proposals
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or inaccessible household
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -556,7 +611,12 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ExpenseProposal" }
+              schema: { $ref: "#/components/schemas/ExpenseProposalResponse" }
+        "404":
+          description: Not found or inaccessible proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/expenses/proposals/{proposalId}/submit:
     post:
       summary: Submit a draft proposal for approval

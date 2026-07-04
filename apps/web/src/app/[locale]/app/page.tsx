@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   Activity,
   CalendarDays,
-  CheckCircle2,
   CircleDollarSign,
   Clock3,
   FileClock,
@@ -16,6 +15,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import { ExpenseWorkspace } from "@/components/expense-workspace";
 import { IdentityWorkspace } from "@/components/identity-workspace";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,7 @@ export default async function AppPage({ params }: PageProps) {
   const t = await getTranslations({ locale, namespace: "Dashboard" });
   const common = await getTranslations({ locale, namespace: "Common" });
   const identity = await getTranslations({ locale, namespace: "Identity" });
+  const expense = await getTranslations({ locale, namespace: "Expense" });
   const model = await getDashboardModel();
   const activeHouseholdName = model.activeHousehold?.name ?? t("title");
 
@@ -53,24 +54,28 @@ export default async function AppPage({ params }: PageProps) {
       value: String(model.pendingProposalCount),
       icon: FileClock,
       tone: "text-amber-700",
+      testId: "dashboard-stat-pending-proposals",
     },
     {
       label: t("statMatured"),
       value: String(model.maturedObligationCount),
       icon: CircleDollarSign,
       tone: "text-emerald-700",
+      testId: "dashboard-stat-matured-obligations",
     },
     {
       label: t("statFx"),
       value: model.activeHousehold?.settlementCurrency ?? "—",
       icon: ShieldCheck,
       tone: "text-sky-700",
+      testId: "dashboard-stat-settlement-currency",
     },
     {
       label: t("statTasks"),
       value: String(model.upcomingTaskCount),
       icon: Clock3,
       tone: "text-rose-700",
+      testId: "dashboard-stat-upcoming-tasks",
     },
   ];
 
@@ -153,6 +158,46 @@ export default async function AppPage({ params }: PageProps) {
       ADMIN: common("admin"),
       MEMBER: common("roleMember"),
       VIEWER: common("viewer"),
+    },
+  };
+
+  const expenseLabels = {
+    title: expense("title"),
+    hint: expense("hint"),
+    formTitle: expense("formTitle"),
+    formHint: expense("formHint"),
+    proposalTitle: expense("proposalTitle"),
+    merchant: expense("merchant"),
+    category: expense("category"),
+    uncategorized: expense("uncategorized"),
+    expenseDate: expense("expenseDate"),
+    dueDate: expense("dueDate"),
+    originalAmount: expense("originalAmount"),
+    originalCurrency: expense("originalCurrency"),
+    settlementCurrency: expense("settlementCurrency"),
+    fxRate: expense("fxRate"),
+    debtors: expense("debtors"),
+    payerShareIncluded: expense("payerShareIncluded"),
+    submitProposal: expense("submitProposal"),
+    proposalSubmitted: expense("proposalSubmitted"),
+    noProposals: expense("noProposals"),
+    queueTitle: expense("queueTitle"),
+    queueHint: expense("queueHint"),
+    openDetail: expense("openDetail"),
+    cannotCreate: expense("cannotCreate"),
+    noHousehold: identity("noHousehold"),
+    errorFallback: identity("errorFallback"),
+    working: common("working"),
+    statuses: {
+      DRAFT: expense("statusDraft"),
+      SUBMITTED: common("submitted"),
+      PARTIALLY_APPROVED: expense("statusPartiallyApproved"),
+      APPROVED: common("approved"),
+      PARTIALLY_MATURED: expense("statusPartiallyMatured"),
+      MATURED_TO_LEDGER: expense("statusMatured"),
+      REJECTED: common("rejected"),
+      DISPUTED: expense("statusDisputed"),
+      CANCELLED: expense("statusCancelled"),
     },
   };
 
@@ -248,7 +293,11 @@ export default async function AppPage({ params }: PageProps) {
 
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {stats.map((stat) => (
-                <div className="rounded-lg border border-border bg-card p-4" key={stat.label}>
+                <div
+                  className="rounded-lg border border-border bg-card p-4"
+                  data-testid={stat.testId}
+                  key={stat.label}
+                >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm text-muted-foreground">{stat.label}</p>
                     <stat.icon aria-hidden="true" className={cn("h-4 w-4", stat.tone)} />
@@ -257,6 +306,45 @@ export default async function AppPage({ params }: PageProps) {
                 </div>
               ))}
             </section>
+
+            <div className="mt-6">
+              <ExpenseWorkspace
+                activeHouseholdId={model.activeHousehold?.id ?? null}
+                canCreateExpenseProposals={model.canCreateExpenseProposals}
+                categories={model.categories.map((category) => ({
+                  id: category.id,
+                  name: locale === "zh-CN" ? category.nameZhCn : category.nameEn,
+                }))}
+                currentUserEmail={model.user.email}
+                labels={expenseLabels}
+                locale={locale}
+                members={model.members.map((member) => ({
+                  userId: member.userId,
+                  displayName: member.displayNameOverride ?? member.user.displayName,
+                  email: member.user.email,
+                  role: member.role,
+                }))}
+                proposals={model.expenseProposals.map((proposal) => ({
+                  id: proposal.id,
+                  title: proposal.title,
+                  merchant: proposal.merchant,
+                  categoryName: proposal.category
+                    ? locale === "zh-CN"
+                      ? proposal.category.nameZhCn
+                      : proposal.category.nameEn
+                    : null,
+                  expenseDate: proposal.expenseDate.toISOString().slice(0, 10),
+                  originalAmount: proposal.originalAmount.toString(),
+                  originalCurrency: proposal.originalCurrency,
+                  settlementAmount: proposal.settlementAmount.toString(),
+                  settlementCurrency: proposal.settlementCurrency,
+                  fxRate: proposal.fxRate?.toString() ?? null,
+                  status: proposal.status,
+                  debtorCount: proposal.shares.length,
+                }))}
+                settlementCurrency={model.activeHousehold?.settlementCurrency ?? null}
+              />
+            </div>
 
             <div className="mt-6">
               <IdentityWorkspace
@@ -296,37 +384,6 @@ export default async function AppPage({ params }: PageProps) {
 
             <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
               <div className="grid gap-6">
-                <div className="rounded-lg border border-border bg-card">
-                  <div className="border-b border-border p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h2 className="text-lg font-semibold">{t("proposalQueue")}</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {t("proposalQueueHint")}
-                        </p>
-                      </div>
-                      <Badge variant="warning">{common("submitted")}</Badge>
-                    </div>
-                  </div>
-                  <div className="divide-y divide-border">
-                    <div className="grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-center">
-                      <div>
-                        <p className="font-medium">{t("pendingProposal")}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {t("pendingProposalMeta")}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="neutral">{t("approvalNeeded")}</Badge>
-                        <Button size="sm" variant="outline">
-                          <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                          {common("approved")}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 <div className="rounded-lg border border-border bg-card">
                   <div className="border-b border-border p-5">
                     <h2 className="text-lg font-semibold">{t("formalBalances")}</h2>

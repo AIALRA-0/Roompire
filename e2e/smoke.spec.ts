@@ -80,6 +80,32 @@ async function createInviteWithRetry(
   throw new Error(`POST invite API failed with status ${lastStatus}: ${lastBody}`);
 }
 
+async function clickExpenseProposalSubmitWithRetry(page: Page) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/households/") &&
+        response.url().includes("/expenses/proposals") &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByRole("button", { name: "Submit proposal" }).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Proposal submitted")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`POST expense proposal failed with status ${lastStatus}`);
+}
+
 test.describe("Roompire real browser smoke", () => {
   test.beforeEach(async ({ page }) => {
     await page.request.post("/api/v1/dev/session", {
@@ -289,6 +315,83 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByText(inviteeEmail)).toBeVisible();
   });
 
+  test("owner creates a submitted expense proposal without ledger impact", async ({
+    page,
+  }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `expense-owner+${suffix}@example.test`;
+    const debtorEmail = `expense-debtor+${suffix}@example.test`;
+    const householdName = `Expense House ${suffix}`;
+    const proposalTitle = `E2E Grocery ${suffix}`;
+
+    await page.request.post("/api/v1/dev/session", {
+      data: {
+        email: ownerEmail,
+        displayName: "Expense Owner E2E",
+      },
+    });
+    const householdResponse = await page.request.post("/api/v1/households", {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+      },
+    });
+    expect(householdResponse.ok()).toBeTruthy();
+    const householdPayload = (await householdResponse.json()) as {
+      household: { id: string };
+    };
+    const invitePayload = await createInviteWithRetry(page, householdPayload.household.id, {
+      email: debtorEmail,
+      role: "MEMBER",
+    });
+
+    await page.request.post("/api/v1/dev/session", {
+      data: {
+        email: debtorEmail,
+        displayName: "Expense Debtor E2E",
+      },
+    });
+    const acceptResponse = await page.request.post("/api/v1/invites/accept", {
+      data: {
+        token: invitePayload.token,
+      },
+    });
+    expect(acceptResponse.ok()).toBeTruthy();
+
+    await page.request.post("/api/v1/dev/session", {
+      data: {
+        email: ownerEmail,
+        displayName: "Expense Owner E2E",
+      },
+    });
+    await page.goto("/en-US/app");
+
+    await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
+    await page.getByTestId("expense-title").fill(proposalTitle);
+    await page.getByTestId("expense-merchant").fill("Trader Joe's");
+    await page.getByTestId("expense-category").selectOption({ index: 1 });
+    await page.getByTestId("expense-date").fill("2026-07-02");
+    await page.getByTestId("expense-due-date").fill("2026-07-10");
+    await page.getByTestId("expense-amount").fill("90");
+    await page.getByTestId("expense-original-currency").fill("USD");
+    await page.getByTestId("expense-fx-rate").fill("7.2");
+    await page.getByTestId(`expense-debtor-${debtorEmail}`).check();
+    await clickExpenseProposalSubmitWithRetry(page);
+
+    await expect(page.getByText("Proposal submitted")).toBeVisible();
+    await expect(page.getByText(proposalTitle)).toBeVisible();
+    await expect(page.getByText("No approved obligations yet")).toBeVisible();
+    await expect(page.getByTestId("dashboard-stat-matured-obligations")).toContainText("0");
+
+    await page.getByRole("link", { name: "Open detail" }).first().click();
+    await expect(page.getByRole("heading", { name: proposalTitle })).toBeVisible();
+    await expect(page.getByText("Expense Debtor E2E")).toBeVisible();
+    await expect(
+      page.getByText("No formal ledger obligation has been created for this pending proposal."),
+    ).toBeVisible();
+  });
+
   test("viewer cannot create household invites", async ({ page }, testInfo) => {
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
     const ownerEmail = `viewer-owner+${suffix}@example.test`;
@@ -334,6 +437,8 @@ test.describe("Roompire real browser smoke", () => {
     await page.goto("/en-US/app");
 
     await expect(page.getByText("Signed in as Viewer E2E")).toBeVisible();
+    await expect(page.getByText("Viewers cannot create expense proposals.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit proposal" })).toBeDisabled();
     await page.getByLabel("Invite email").fill(blockedEmail);
     await page.getByRole("button", { name: "Create invite" }).click();
 

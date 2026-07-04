@@ -22,7 +22,7 @@ Phase 0 bootstrap is implemented:
 - Playwright desktop and mobile real-browser smoke tests.
 - GitHub Actions CI/E2E workflow templates.
 
-Phase 1 identity/RBAC slice is in progress:
+Phase 1 identity/RBAC slice is implemented:
 
 - Dev-session auth for local MVP testing through the `roompire_session` cookie.
 - Prisma-backed current session, household list, household creation, household settings update, member list, member role update/removal, invite creation, and invite acceptance APIs.
@@ -32,6 +32,14 @@ Phase 1 identity/RBAC slice is in progress:
 - Viewer invite attempts are rejected by the API and verified in browser.
 - Non-members cannot view member directory pages before accepting an invite.
 - OpenAPI covers the current Phase 1 household, member, invite, and settings endpoints.
+
+Phase 2 expense proposal creation slice is implemented:
+
+- Owners, admins, and members can create submitted expense proposals from the dashboard.
+- Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
+- Pending proposals do not create `DebtObligation` or `LedgerTransaction` records and do not affect formal balances.
+- Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
+- OpenAPI covers the current list/create/detail expense proposal endpoints.
 
 ## Development
 

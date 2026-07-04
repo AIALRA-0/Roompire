@@ -10,9 +10,17 @@ const devSessionSchema = z.object({
   displayName: z.string().trim().min(1).max(80).optional(),
 });
 
+async function readJsonBody(request: NextRequest) {
+  try {
+    return (await request.json()) as unknown;
+  } catch {
+    throw validationError("Developer session input is invalid.");
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const body: unknown = await request.json();
+    const body = await readJsonBody(request);
     const parsed = devSessionSchema.safeParse(body);
 
     if (!parsed.success) {
