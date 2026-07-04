@@ -133,6 +133,8 @@
     "noPendingSettlements": "No settlement is waiting for your confirmation",
     "suggestedTransfer": "Suggested transfer",
     "suggestedTransfersHint": "One confirmation can allocate this payment across matching open obligations.",
+    "directlySettleable": "Direct obligations exist, so the debtor can submit this payment.",
+    "guidanceOnlySuggestion": "Guidance only until a household clearing policy is enabled.",
     "directObligations": "direct obligations",
     "manualMethod": "manual",
     "payer": "payer",

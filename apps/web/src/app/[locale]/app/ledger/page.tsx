@@ -208,8 +208,18 @@ export default async function LedgerPage({ params }: PageProps) {
                           {suggestion.debtorOpenObligationCount} {ledger("debtorOpenItems")} ·{" "}
                           {suggestion.creditorOpenObligationCount} {ledger("creditorOpenItems")}
                         </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {suggestion.actionability === "DIRECTLY_SETTLEABLE"
+                            ? ledger("directlySettleable")
+                            : ledger("guidanceOnlySuggestion")}
+                        </p>
                       </div>
-                      <Badge variant="success">
+                      <Badge
+                        data-testid={`settlement-suggestion-actionability-${suggestion.debtorUserId}-${suggestion.creditorUserId}-${suggestion.currency}`}
+                        variant={
+                          suggestion.actionability === "DIRECTLY_SETTLEABLE" ? "success" : "neutral"
+                        }
+                      >
                         {suggestion.currency} {suggestion.amount}
                       </Badge>
                     </div>

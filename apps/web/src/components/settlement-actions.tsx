@@ -113,32 +113,11 @@ export function SettlementActions({
   const recordableObligations = obligations.filter(
     (obligation) => obligation.status === "OPEN" && obligation.debtorUserId === currentUserId,
   );
-  const recordableSuggestions = suggestions
-    .filter((suggestion) => suggestion.debtorUserId === currentUserId)
-    .map((suggestion) => {
-      const directObligations = obligations.filter(
-        (obligation) =>
-          obligation.status === "OPEN" &&
-          obligation.debtorUserId === suggestion.debtorUserId &&
-          obligation.creditorUserId === suggestion.creditorUserId &&
-          obligation.settlementCurrency === suggestion.currency,
-      );
-      const directRemainingAmount = directObligations.reduce(
-        (total, obligation) => total + Number(obligation.remainingAmount),
-        0,
-      );
-
-      return {
-        ...suggestion,
-        directObligationCount: directObligations.length,
-        directRemainingAmount,
-      };
-    })
-    .filter(
-      (suggestion) =>
-        suggestion.directObligationCount > 0 &&
-        suggestion.directRemainingAmount + Number.EPSILON >= Number(suggestion.amount),
-    );
+  const recordableSuggestions = suggestions.filter(
+    (suggestion) =>
+      suggestion.debtorUserId === currentUserId &&
+      suggestion.actionability === "DIRECTLY_SETTLEABLE",
+  );
   const pendingSettlements = settlements.filter(
     (settlement) => settlement.status === "SUBMITTED" && settlement.payeeUserId === currentUserId,
   );
@@ -256,7 +235,7 @@ export function SettlementActions({
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {labels.suggestedTransfer}: {suggestion.currency} {suggestion.amount} ·{" "}
-                        {suggestion.directObligationCount} {labels.directObligations}
+                        {suggestion.directOpenObligationCount} {labels.directObligations}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {labels.suggestedTransfersHint}
@@ -273,7 +252,7 @@ export function SettlementActions({
                         className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                         data-testid={`suggested-settlement-amount-${key}`}
                         defaultValue={suggestion.amount}
-                        max={decimalInputValue(suggestion.directRemainingAmount)}
+                        max={decimalInputValue(Number(suggestion.directRemainingAmount))}
                         min="0.000001"
                         name="amount"
                         required

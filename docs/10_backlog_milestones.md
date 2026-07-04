@@ -98,6 +98,8 @@ Current implemented subset for FX: proposal/revision/task-expense creation locks
 - Reversal/adjustment flow.
 - Month close/lock.
 
+Current implementation for settlement suggestions exposes optimized net transfers with explicit actionability. Direct debtor/payee/currency suggestions are `DIRECTLY_SETTLEABLE` and can be submitted by the debtor when enough matching open obligations exist. Fully netted suggestions that would require clearing through a third party are `GUIDANCE_ONLY` until a household clearing policy is designed.
+
 ## Epic 5 — Settlements
 
 ### P0

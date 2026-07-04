@@ -20,6 +20,9 @@ export type SettlementSuggestion = {
   currency: string;
   debtorOpenObligationCount: number;
   creditorOpenObligationCount: number;
+  directOpenObligationCount: number;
+  directRemainingAmount: string;
+  actionability: "DIRECTLY_SETTLEABLE" | "GUIDANCE_ONLY";
 };
 
 type SettlementSuggestionObligationInput = {
@@ -172,6 +175,13 @@ export async function listBalanceEdgesForHousehold(userId: string, householdId: 
 export function computeSettlementSuggestions(
   obligations: SettlementSuggestionObligationInput[],
 ): SettlementSuggestion[] {
+  const directObligationStats = new Map<
+    string,
+    {
+      count: number;
+      remainingAmount: Decimal;
+    }
+  >();
   const currencyBuckets = new Map<
     string,
     Map<
@@ -191,6 +201,17 @@ export function computeSettlementSuggestions(
     if (amount.isZero()) {
       continue;
     }
+
+    const directKey = `${obligation.settlementCurrency}:${obligation.debtorUserId}:${obligation.creditorUserId}`;
+    const directStats = directObligationStats.get(directKey) ?? {
+      count: 0,
+      remainingAmount: new Decimal(0),
+    };
+
+    directObligationStats.set(directKey, {
+      count: directStats.count + 1,
+      remainingAmount: directStats.remainingAmount.plus(amount),
+    });
 
     const bucket = currencyBuckets.get(obligation.settlementCurrency) ?? new Map();
     const debtor = bucket.get(obligation.debtorUserId) ?? {
@@ -255,6 +276,12 @@ export function computeSettlementSuggestions(
       const amount = Decimal.min(debtor.amount, creditor.amount);
 
       if (!amount.isZero()) {
+        const directKey = `${currency}:${debtor.userId}:${creditor.userId}`;
+        const directStats = directObligationStats.get(directKey) ?? {
+          count: 0,
+          remainingAmount: new Decimal(0),
+        };
+
         suggestions.push({
           debtorUserId: debtor.userId,
           creditorUserId: creditor.userId,
@@ -262,6 +289,11 @@ export function computeSettlementSuggestions(
           currency,
           debtorOpenObligationCount: debtor.debtorOpenObligationCount,
           creditorOpenObligationCount: creditor.creditorOpenObligationCount,
+          directOpenObligationCount: directStats.count,
+          directRemainingAmount: decimalToCompactString(directStats.remainingAmount),
+          actionability: directStats.remainingAmount.gte(amount)
+            ? "DIRECTLY_SETTLEABLE"
+            : "GUIDANCE_ONLY",
         });
       }
 

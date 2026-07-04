@@ -133,6 +133,8 @@
     "noPendingSettlements": "暂无等待你确认的还款",
     "suggestedTransfer": "建议转账",
     "suggestedTransfersHint": "确认一次即可按顺序分配到匹配的未结清债务。",
+    "directlySettleable": "存在直接债务，债务人可以提交这笔付款。",
+    "guidanceOnlySuggestion": "仅作参考；启用家庭清算策略后才能直接提交。",
     "directObligations": "笔直接债务",
     "manualMethod": "manual",
     "payer": "付款人",

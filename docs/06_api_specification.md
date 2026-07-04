@@ -285,7 +285,7 @@ Only the debtor can submit it. The creditor must confirm it before the service c
 
 ### Settlement suggestions
 
-`GET /households/{householdId}/settlement-suggestions` returns a read-only list of optimized transfers. Current implementation nets all open obligations per currency, then emits the minimal debtor-to-creditor transfer set for each currency. Pending/rejected proposals and settled/reversed obligations are excluded.
+`GET /households/{householdId}/settlement-suggestions` returns a read-only list of optimized transfers. Current implementation nets all open obligations per currency, then emits the minimal debtor-to-creditor transfer set for each currency. Pending/rejected proposals and settled/reversed obligations are excluded. Suggestions include `actionability`: `DIRECTLY_SETTLEABLE` when enough direct open obligations already exist from the suggested payer to payee, or `GUIDANCE_ONLY` when the transfer is a fully netted recommendation that would require a future household clearing policy.
 
 ### Create calendar event
 

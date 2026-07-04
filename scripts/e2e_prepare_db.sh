@@ -8,6 +8,9 @@ fi
 
 export DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev}
 
+# Next dev can keep stale route manifests after branch switches or production builds.
+rm -rf apps/web/.next/dev
+
 node <<'NODE'
 const databaseUrl = process.env.DATABASE_URL;
 

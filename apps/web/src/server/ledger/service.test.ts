@@ -26,6 +26,9 @@ describe("computeSettlementSuggestions", () => {
         currency: "CNY",
         debtorOpenObligationCount: 1,
         creditorOpenObligationCount: 1,
+        directOpenObligationCount: 0,
+        directRemainingAmount: "0",
+        actionability: "GUIDANCE_ONLY",
       },
     ]);
   });
@@ -60,6 +63,9 @@ describe("computeSettlementSuggestions", () => {
         currency: "CNY",
         debtorOpenObligationCount: 1,
         creditorOpenObligationCount: 1,
+        directOpenObligationCount: 1,
+        directRemainingAmount: "12.5",
+        actionability: "DIRECTLY_SETTLEABLE",
       },
       {
         debtorUserId: "alice",
@@ -68,6 +74,9 @@ describe("computeSettlementSuggestions", () => {
         currency: "USD",
         debtorOpenObligationCount: 1,
         creditorOpenObligationCount: 1,
+        directOpenObligationCount: 1,
+        directRemainingAmount: "3",
+        actionability: "DIRECTLY_SETTLEABLE",
       },
     ]);
   });

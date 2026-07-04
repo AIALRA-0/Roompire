@@ -888,6 +888,180 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("audit-filter-entity-type")).toHaveValue("Export");
     await expect(page.getByText("export.created").first()).toBeVisible();
     await expect(page.getByText("Export").first()).toBeVisible();
+
+    const guidanceMembersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/members`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": "alice@example.test",
+        },
+      },
+    );
+    expect(guidanceMembersResponse.ok()).toBeTruthy();
+    const guidanceMembersPayload = (await guidanceMembersResponse.json()) as {
+      members: Array<{ userId: string; email: string }>;
+    };
+    const aliceUserId = guidanceMembersPayload.members.find(
+      (member) => member.email === "alice@example.test",
+    )?.userId;
+    const bobUserId = guidanceMembersPayload.members.find(
+      (member) => member.email === "bob@example.test",
+    )?.userId;
+    const chenUserId = guidanceMembersPayload.members.find(
+      (member) => member.email === "chen@example.test",
+    )?.userId;
+    expect(aliceUserId).toBeTruthy();
+    expect(bobUserId).toBeTruthy();
+    expect(chenUserId).toBeTruthy();
+    if (!aliceUserId || !bobUserId || !chenUserId) {
+      throw new Error("Expected seeded Alice, Bob, and Chen users for guidance-only settlement.");
+    }
+
+    const guidanceId = Date.now();
+    const bobToAliceAdjustment = await postApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/ledger/adjustments`,
+      {
+        data: {
+          debtorUserId: bobUserId,
+          creditorUserId: aliceUserId,
+          amount: "10",
+          currency: "CNY",
+          occurredAt: "2026-07-04",
+          reason: "Guidance-only chain Bob to Alice",
+        },
+        headers: {
+          "Idempotency-Key": `guidance-bob-alice-${guidanceId}`,
+          "x-roompire-dev-user-email": "alice@example.test",
+        },
+      },
+    );
+    expect(bobToAliceAdjustment.status()).toBe(201);
+    const bobToAliceAdjustmentPayload = (await bobToAliceAdjustment.json()) as {
+      transaction: { obligations: Array<{ id: string }> };
+    };
+    const bobToAliceObligationId = bobToAliceAdjustmentPayload.transaction.obligations[0]?.id;
+    expect(bobToAliceObligationId).toBeTruthy();
+    const aliceToChenAdjustment = await postApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/ledger/adjustments`,
+      {
+        data: {
+          debtorUserId: aliceUserId,
+          creditorUserId: chenUserId,
+          amount: "10",
+          currency: "CNY",
+          occurredAt: "2026-07-04",
+          reason: "Guidance-only chain Alice to Chen",
+        },
+        headers: {
+          "Idempotency-Key": `guidance-alice-chen-${guidanceId}`,
+          "x-roompire-dev-user-email": "alice@example.test",
+        },
+      },
+    );
+    expect(aliceToChenAdjustment.status()).toBe(201);
+    const aliceToChenAdjustmentPayload = (await aliceToChenAdjustment.json()) as {
+      transaction: { obligations: Array<{ id: string }> };
+    };
+    const aliceToChenObligationId = aliceToChenAdjustmentPayload.transaction.obligations[0]?.id;
+    expect(aliceToChenObligationId).toBeTruthy();
+    if (!bobToAliceObligationId || !aliceToChenObligationId) {
+      throw new Error("Expected guidance-only adjustment obligations to be returned.");
+    }
+
+    const guidanceSuggestionsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/settlement-suggestions`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": "bob@example.test",
+        },
+      },
+    );
+    expect(guidanceSuggestionsResponse.ok()).toBeTruthy();
+    const guidanceSuggestionsPayload = (await guidanceSuggestionsResponse.json()) as {
+      suggestions: Array<{
+        debtorUserId: string;
+        creditorUserId: string;
+        amount: string;
+        currency: string;
+        directOpenObligationCount: number;
+        directRemainingAmount: string;
+        actionability: "DIRECTLY_SETTLEABLE" | "GUIDANCE_ONLY";
+      }>;
+    };
+    expect(guidanceSuggestionsPayload.suggestions).toContainEqual(
+      expect.objectContaining({
+        debtorUserId: bobUserId,
+        creditorUserId: chenUserId,
+        amount: "10",
+        currency: "CNY",
+        directOpenObligationCount: 0,
+        directRemainingAmount: "0",
+        actionability: "GUIDANCE_ONLY",
+      }),
+    );
+
+    const guidanceTransferKey = `${bobUserId}-${chenUserId}-CNY`;
+    await setDevSessionWithRetry(page, "bob@example.test", "Bob");
+    await page.goto("/en-US/app/ledger");
+    const guidanceSuggestionRow = page.getByTestId(`settlement-suggestion-${guidanceTransferKey}`);
+    await expect(guidanceSuggestionRow).toContainText("Bob pays Chen");
+    await expect(guidanceSuggestionRow).toContainText(
+      "Guidance only until a household clearing policy is enabled.",
+    );
+    await expect(
+      page.getByTestId(`settlement-suggestion-actionability-${guidanceTransferKey}`),
+    ).toContainText("CNY 10");
+    await expect(page.getByTestId(`suggested-settlement-form-${guidanceTransferKey}`)).toHaveCount(
+      0,
+    );
+
+    const guidanceSettlementResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/settlements`,
+      {
+        data: {
+          payeeUserId: chenUserId,
+          currency: "CNY",
+          amount: "10",
+          settlementDate: "2026-07-04",
+          method: "manual",
+        },
+        headers: {
+          "Idempotency-Key": `guidance-settlement-${guidanceId}`,
+          "x-roompire-dev-user-email": "bob@example.test",
+        },
+      },
+    );
+    expect(guidanceSettlementResponse.status()).toBe(409);
+    const guidanceSettlementPayload = (await guidanceSettlementResponse.json()) as {
+      error: { code: string };
+    };
+    expect(guidanceSettlementPayload.error.code).toBe("NO_SETTLEABLE_OBLIGATIONS");
+
+    for (const [obligationId, reason] of [
+      [aliceToChenObligationId, "Clean up guidance-only Alice to Chen adjustment"],
+      [bobToAliceObligationId, "Clean up guidance-only Bob to Alice adjustment"],
+    ] as const) {
+      const reversalResponse = await postApiWithRetry(
+        page,
+        `/api/v1/households/${sessionPayload.household!.id}/ledger/obligations/${obligationId}/reverse`,
+        {
+          data: {
+            reason,
+            occurredAt: "2026-07-04",
+          },
+          headers: {
+            "Idempotency-Key": `guidance-reversal-${obligationId}-${guidanceId}`,
+            "x-roompire-dev-user-email": "alice@example.test",
+          },
+        },
+      );
+      expect(reversalResponse.ok()).toBeTruthy();
+    }
   });
 
   test("mobile user sees zh-CN shell and protected-route failure state", async ({ page }) => {
@@ -1375,6 +1549,9 @@ test.describe("Roompire real browser smoke", () => {
         currency: string;
         debtorOpenObligationCount: number;
         creditorOpenObligationCount: number;
+        directOpenObligationCount: number;
+        directRemainingAmount: string;
+        actionability: "DIRECTLY_SETTLEABLE" | "GUIDANCE_ONLY";
       }>;
     };
     expect(suggestionsPayload.suggestions).toEqual([
@@ -1385,6 +1562,9 @@ test.describe("Roompire real browser smoke", () => {
         currency: "CNY",
         debtorOpenObligationCount: 1,
         creditorOpenObligationCount: 1,
+        directOpenObligationCount: 1,
+        directRemainingAmount: "324",
+        actionability: "DIRECTLY_SETTLEABLE",
       },
     ]);
 
@@ -1928,7 +2108,13 @@ test.describe("Roompire real browser smoke", () => {
     );
     expect(adjustmentSuggestionsResponse.ok()).toBeTruthy();
     const adjustmentSuggestionsPayload = (await adjustmentSuggestionsResponse.json()) as {
-      suggestions: Array<{ amount: string; currency: string }>;
+      suggestions: Array<{
+        amount: string;
+        currency: string;
+        directOpenObligationCount: number;
+        directRemainingAmount: string;
+        actionability: "DIRECTLY_SETTLEABLE" | "GUIDANCE_ONLY";
+      }>;
     };
     expect(adjustmentSuggestionsPayload.suggestions).toEqual([
       {
@@ -1938,6 +2124,9 @@ test.describe("Roompire real browser smoke", () => {
         currency: "CNY",
         debtorOpenObligationCount: 1,
         creditorOpenObligationCount: 1,
+        directOpenObligationCount: 1,
+        directRemainingAmount: "15",
+        actionability: "DIRECTLY_SETTLEABLE",
       },
     ]);
 
