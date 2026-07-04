@@ -4,6 +4,7 @@ import {
   ExpenseProposalStatus,
   SettlementStatus,
   ShareStatus,
+  type Prisma,
   type ExpenseProposal,
   type ExpensePayer,
   type ExpenseShare,
@@ -11,12 +12,25 @@ import {
   type Task,
   type User,
 } from "@prisma/client";
+import { z } from "zod";
+import { validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
 import { requireActiveMembership } from "@/server/permissions/rbac";
 
 export type AmountTotal = {
   currency: string;
   amount: string;
+};
+
+export type StatsWindow = {
+  from: string | null;
+  to: string | null;
+};
+
+export type ProposalTrendPoint = {
+  date: string;
+  proposalCount: number;
+  proposalTotals: AmountTotal[];
 };
 
 type MembershipWithUser = HouseholdMembership & {
@@ -34,8 +48,118 @@ type ProposalForStats = ExpenseProposal & {
   shares: ExpenseShare[];
 };
 
+function isRealDateOnly(value: string) {
+  const [yearText, monthText, dayText] = value.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    year < 1000
+  ) {
+    return false;
+  }
+
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
+}
+
+const dateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(isRealDateOnly, "Date must be a real calendar date.");
+
+const optionalDateOnlySchema = z.preprocess((value) => {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value === "" || value === null ? undefined : value;
+}, dateOnlySchema.optional());
+
+export const statsQuerySchema = z
+  .object({
+    from: optionalDateOnlySchema,
+    to: optionalDateOnlySchema,
+  })
+  .superRefine((data, context) => {
+    if (data.from && data.to && data.from > data.to) {
+      context.addIssue({
+        code: "custom",
+        message: "from must be before or equal to to.",
+        path: ["from"],
+      });
+    }
+  });
+
+type ParsedStatsQuery = {
+  fromDate?: Date;
+  toExclusiveDate?: Date;
+  window: StatsWindow;
+};
+
 function decimalToCompactString(value: Decimal.Value) {
   return new Decimal(value).toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toString();
+}
+
+function dateOnlyToUtc(value: string) {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function addUtcDays(value: Date, days: number) {
+  const next = new Date(value);
+
+  next.setUTCDate(next.getUTCDate() + days);
+
+  return next;
+}
+
+function dateKey(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function normalizeQueryInput(query: unknown) {
+  if (query instanceof URLSearchParams) {
+    return Object.fromEntries(query);
+  }
+
+  return query ?? {};
+}
+
+function parseStatsQuery(query: unknown): ParsedStatsQuery {
+  const parsed = statsQuerySchema.safeParse(normalizeQueryInput(query));
+
+  if (!parsed.success) {
+    throw validationError("Statistics query is invalid.", parsed.error.flatten());
+  }
+
+  return {
+    fromDate: parsed.data.from ? dateOnlyToUtc(parsed.data.from) : undefined,
+    toExclusiveDate: parsed.data.to ? addUtcDays(dateOnlyToUtc(parsed.data.to), 1) : undefined,
+    window: {
+      from: parsed.data.from ?? null,
+      to: parsed.data.to ?? null,
+    },
+  };
+}
+
+function dateRangeFilter(query: ParsedStatsQuery): Prisma.DateTimeFilter | undefined {
+  if (!query.fromDate && !query.toExclusiveDate) {
+    return undefined;
+  }
+
+  return {
+    gte: query.fromDate,
+    lt: query.toExclusiveDate,
+  };
 }
 
 function addCurrencyTotal(totals: Map<string, Decimal>, currency: string, value: Decimal.Value) {
@@ -64,6 +188,42 @@ function proposalCountMap(proposals: ProposalForStats[]) {
   return counts;
 }
 
+function proposalTrend(proposals: ProposalForStats[]): ProposalTrendPoint[] {
+  const rows = new Map<
+    string,
+    {
+      date: string;
+      proposalCount: number;
+      proposalTotals: Map<string, Decimal>;
+    }
+  >();
+
+  for (const proposal of proposals) {
+    if (proposal.status === ExpenseProposalStatus.CANCELLED) {
+      continue;
+    }
+
+    const key = dateKey(proposal.expenseDate);
+    const row = rows.get(key) ?? {
+      date: key,
+      proposalCount: 0,
+      proposalTotals: new Map<string, Decimal>(),
+    };
+
+    row.proposalCount += 1;
+    addCurrencyTotal(row.proposalTotals, proposal.settlementCurrency, proposal.settlementAmount);
+    rows.set(key, row);
+  }
+
+  return [...rows.values()]
+    .map((row) => ({
+      date: row.date,
+      proposalCount: row.proposalCount,
+      proposalTotals: serializeCurrencyTotals(row.proposalTotals),
+    }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+}
+
 function taskCountMap(tasks: Task[]) {
   return {
     open: tasks.filter((task) => task.status === "OPEN").length,
@@ -71,12 +231,59 @@ function taskCountMap(tasks: Task[]) {
   };
 }
 
-export async function getStatsSummaryForHousehold(userId: string, householdId: string) {
+export async function getStatsSummaryForHousehold(
+  userId: string,
+  householdId: string,
+  query: unknown = {},
+) {
   const membership = await requireActiveMembership(userId, householdId);
+  const parsedQuery = parseStatsQuery(query);
+  const range = dateRangeFilter(parsedQuery);
+  const proposalWhere: Prisma.ExpenseProposalWhereInput = {
+    householdId,
+    ...(range ? { expenseDate: range } : {}),
+  };
+  const obligationWhere: Prisma.DebtObligationWhereInput = {
+    householdId,
+    ...(range ? { createdAt: range } : {}),
+  };
+  const settlementWhere: Prisma.SettlementWhereInput = {
+    householdId,
+    ...(range ? { settlementDate: range } : {}),
+  };
+  const taskWhere: Prisma.TaskWhereInput = {
+    householdId,
+    ...(range
+      ? {
+          OR: [
+            {
+              dueAt: {
+                ...range,
+                not: null,
+              },
+            },
+            {
+              dueAt: null,
+              createdAt: range,
+            },
+          ],
+        }
+      : {}),
+  };
+  const auditWhere: Prisma.AuditEventWhereInput = {
+    householdId,
+    ...(range ? { occurredAt: range } : {}),
+  };
+  const proposalFileWhere: Prisma.ProposalFileWhereInput = {
+    proposal: {
+      householdId,
+    },
+    ...(range ? { createdAt: range } : {}),
+  };
   const [proposals, obligations, settlements, tasks, auditEventCount, receiptFileCount] =
     await Promise.all([
       prisma.expenseProposal.findMany({
-        where: { householdId },
+        where: proposalWhere,
         include: {
           category: true,
           payers: true,
@@ -84,23 +291,19 @@ export async function getStatsSummaryForHousehold(userId: string, householdId: s
         },
       }),
       prisma.debtObligation.findMany({
-        where: { householdId },
+        where: obligationWhere,
       }),
       prisma.settlement.findMany({
-        where: { householdId },
+        where: settlementWhere,
       }),
       prisma.task.findMany({
-        where: { householdId },
+        where: taskWhere,
       }),
       prisma.auditEvent.count({
-        where: { householdId },
+        where: auditWhere,
       }),
       prisma.proposalFile.count({
-        where: {
-          proposal: {
-            householdId,
-          },
-        },
+        where: proposalFileWhere,
       }),
     ]);
   const proposalTotals = new Map<string, Decimal>();
@@ -131,21 +334,31 @@ export async function getStatsSummaryForHousehold(userId: string, householdId: s
 
   return {
     householdId,
+    window: parsedQuery.window,
     settlementCurrency: membership.household.settlementCurrency,
     proposalCounts: proposalCountMap(proposals),
     proposalSettlementTotals: serializeCurrencyTotals(proposalTotals),
     openObligationTotals: serializeCurrencyTotals(openObligationTotals),
     confirmedSettlementTotals: serializeCurrencyTotals(confirmedSettlementTotals),
     taskCounts: taskCountMap(tasks),
+    proposalTrend: proposalTrend(proposals),
     auditEventCount,
     receiptFileCount,
   };
 }
 
-export async function listCategoryStatsForHousehold(userId: string, householdId: string) {
+export async function listCategoryStatsForHousehold(
+  userId: string,
+  householdId: string,
+  query: unknown = {},
+) {
   await requireActiveMembership(userId, householdId);
+  const range = dateRangeFilter(parseStatsQuery(query));
   const proposals = await prisma.expenseProposal.findMany({
-    where: { householdId },
+    where: {
+      householdId,
+      ...(range ? { expenseDate: range } : {}),
+    },
     include: {
       category: true,
       payers: true,
@@ -261,8 +474,13 @@ type MemberStatsAccumulator = {
   confirmedSettlementReceivedTotals: Map<string, Decimal>;
 };
 
-export async function listMemberStatsForHousehold(userId: string, householdId: string) {
+export async function listMemberStatsForHousehold(
+  userId: string,
+  householdId: string,
+  query: unknown = {},
+) {
   await requireActiveMembership(userId, householdId);
+  const range = dateRangeFilter(parseStatsQuery(query));
   const [memberships, proposals, obligations, settlements] = await Promise.all([
     prisma.householdMembership.findMany({
       where: {
@@ -273,7 +491,10 @@ export async function listMemberStatsForHousehold(userId: string, householdId: s
       orderBy: [{ role: "asc" }, { createdAt: "asc" }],
     }),
     prisma.expenseProposal.findMany({
-      where: { householdId },
+      where: {
+        householdId,
+        ...(range ? { expenseDate: range } : {}),
+      },
       include: {
         category: true,
         payers: true,
@@ -281,10 +502,16 @@ export async function listMemberStatsForHousehold(userId: string, householdId: s
       },
     }),
     prisma.debtObligation.findMany({
-      where: { householdId },
+      where: {
+        householdId,
+        ...(range ? { createdAt: range } : {}),
+      },
     }),
     prisma.settlement.findMany({
-      where: { householdId },
+      where: {
+        householdId,
+        ...(range ? { settlementDate: range } : {}),
+      },
     }),
   ]);
   const rows = new Map<string, MemberStatsAccumulator>();

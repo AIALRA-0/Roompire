@@ -13,7 +13,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId } = await context.params;
-    const categories = await listCategoryStatsForHousehold(user.id, householdId);
+    const categories = await listCategoryStatsForHousehold(
+      user.id,
+      householdId,
+      Object.fromEntries(request.nextUrl.searchParams),
+    );
 
     return NextResponse.json({ categories });
   } catch (error) {

@@ -1,11 +1,11 @@
 # 14 — Deployment Runbook
 
-Roompire's current production baseline is a Docker Compose deployment on a VPS or self-hosted server for `roompire.aialra.online`.
+Roompire's current production baseline is a Docker Compose deployment on the self-hosted server for `roompire.aialra.online`. The current live host already runs nginx for multiple sites, so Roompire runs behind that host nginx on a localhost-only web port. The bundled Caddy service remains available as an optional profile for a dedicated host where Roompire owns ports 80/443.
 
 ## Prerequisites
 
 - DNS `A` record for `roompire.aialra.online` points at the deployment server.
-- Ports `80/tcp`, `443/tcp`, and `443/udp` are open to the public internet.
+- Ports `80/tcp` and `443/tcp` are open to the public internet on the host reverse proxy. Use the optional Caddy profile only when Roompire owns `80/tcp`, `443/tcp`, and `443/udp` directly.
 - Docker Engine and the Docker Compose plugin are installed on the server.
 - The repository checkout on the server matches the branch or tag being deployed.
 
@@ -44,17 +44,17 @@ Do not commit real production credentials. The public site gate stays enabled wh
 
 ## First Deploy
 
-Build images and start the data services:
+Build images and start the data services. On the current nginx host, include the nginx override so only `127.0.0.1:${ROOMPIRE_WEB_HOST_PORT:-18300}` is exposed by Compose:
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml --profile migrate --profile seed build
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres redis
+docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.nginx.example.yml --profile migrate build web migrate
+docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.nginx.example.yml up -d postgres redis
 ```
 
 Run database migrations:
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml --profile migrate run --rm migrate
+docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.nginx.example.yml --profile migrate run --rm migrate
 ```
 
 For demo or staging data only, seed the database:
@@ -63,10 +63,18 @@ For demo or staging data only, seed the database:
 docker compose --env-file .env.production -f docker-compose.prod.yml --profile seed run --rm seed
 ```
 
-Start the web and Caddy reverse proxy:
+Start the web service behind host nginx:
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d web caddy
+docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.nginx.example.yml up -d web
+```
+
+The host nginx vhost should terminate TLS and proxy to `http://127.0.0.1:${ROOMPIRE_WEB_HOST_PORT:-18300}` while preserving the `Authorization` header for the site gate.
+
+On a dedicated host without an existing reverse proxy, Caddy can be started explicitly:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml --profile caddy up -d web caddy
 ```
 
 ## Smoke Test
@@ -113,11 +121,9 @@ Run a restore drill before production use and after any backup-script change.
 
 ## Current Live-Site Notes
 
-The last probe from this development environment found:
+The current live site is served directly from this host; no SSH hop to another VPS is required.
 
-- `roompire.aialra.online` resolves to `213.136.74.126`.
-- Plain HTTP returns an nginx `500`.
-- HTTPS certificate verification fails for the hostname.
-- This Codex environment does not have a usable SSH key or hosting-platform CLI session for publishing to the server.
-
-Fix the server access path and TLS/nginx state before treating the public site as live.
+- `roompire.aialra.online` terminates HTTPS through host nginx with a Let's Encrypt certificate.
+- The nginx vhost proxies to the Compose web service on `127.0.0.1:18300`.
+- The production `.env.production` file is local, ignored by git, and contains the private site-gate credentials and signing secrets.
+- `./scripts/smoke_production.sh` passed against the real domain after authentication.

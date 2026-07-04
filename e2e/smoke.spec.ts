@@ -621,17 +621,65 @@ test.describe("Roompire real browser smoke", () => {
     expect(statsSummaryResponse.ok()).toBeTruthy();
     const statsSummaryPayload = (await statsSummaryResponse.json()) as {
       summary: {
+        window: { from: string | null; to: string | null };
         proposalCounts: { SUBMITTED: number };
         proposalSettlementTotals: Array<{ currency: string; amount: string }>;
+        proposalTrend: Array<{
+          date: string;
+          proposalCount: number;
+          proposalTotals: Array<{ currency: string; amount: string }>;
+        }>;
         taskCounts: { open: number; completed: number };
         auditEventCount: number;
       };
     };
+    expect(statsSummaryPayload.summary.window).toEqual({ from: null, to: null });
     expect(statsSummaryPayload.summary.proposalCounts.SUBMITTED).toBeGreaterThan(0);
     expect(statsSummaryPayload.summary.proposalSettlementTotals).toContainEqual(
       expect.objectContaining({ currency: "CNY" }),
     );
+    expect(statsSummaryPayload.summary.proposalTrend).toContainEqual(
+      expect.objectContaining({
+        date: "2026-07-01",
+        proposalCount: expect.any(Number),
+      }),
+    );
     expect(statsSummaryPayload.summary.auditEventCount).toBeGreaterThan(0);
+
+    const filteredStatsSummaryResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/stats/summary?from=2026-07-01&to=2026-07-01`,
+    );
+    expect(filteredStatsSummaryResponse.ok()).toBeTruthy();
+    const filteredStatsSummaryPayload =
+      (await filteredStatsSummaryResponse.json()) as typeof statsSummaryPayload;
+    expect(filteredStatsSummaryPayload.summary.window).toEqual({
+      from: "2026-07-01",
+      to: "2026-07-01",
+    });
+    expect(filteredStatsSummaryPayload.summary.proposalCounts.SUBMITTED).toBeGreaterThan(0);
+    expect(filteredStatsSummaryPayload.summary.proposalTrend).toContainEqual(
+      expect.objectContaining({
+        date: "2026-07-01",
+        proposalCount: expect.any(Number),
+      }),
+    );
+
+    const emptyStatsSummaryResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/stats/summary?from=2030-01-01&to=2030-01-31`,
+    );
+    expect(emptyStatsSummaryResponse.ok()).toBeTruthy();
+    const emptyStatsSummaryPayload =
+      (await emptyStatsSummaryResponse.json()) as typeof statsSummaryPayload;
+    expect(emptyStatsSummaryPayload.summary.proposalCounts.SUBMITTED).toBe(0);
+    expect(emptyStatsSummaryPayload.summary.proposalTrend).toHaveLength(0);
+
+    const invalidStatsSummaryResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/stats/summary?from=2026-02-31`,
+    );
+    expect(invalidStatsSummaryResponse.status()).toBe(400);
 
     const statsCategoriesResponse = await getApiWithRetry(
       page,
@@ -642,6 +690,16 @@ test.describe("Roompire real browser smoke", () => {
       categories: Array<{ categoryKey: string; proposalCount: number }>;
     };
     expect(statsCategoriesPayload.categories).toContainEqual(
+      expect.objectContaining({ categoryKey: "groceries" }),
+    );
+    const filteredStatsCategoriesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/stats/categories?from=2026-07-01&to=2026-07-01`,
+    );
+    expect(filteredStatsCategoriesResponse.ok()).toBeTruthy();
+    const filteredStatsCategoriesPayload =
+      (await filteredStatsCategoriesResponse.json()) as typeof statsCategoriesPayload;
+    expect(filteredStatsCategoriesPayload.categories).toContainEqual(
       expect.objectContaining({ categoryKey: "groceries" }),
     );
 
@@ -656,6 +714,19 @@ test.describe("Roompire real browser smoke", () => {
     expect(statsMembersPayload.members).toContainEqual(
       expect.objectContaining({ email: "alice@example.test" }),
     );
+    const emptyStatsMembersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/stats/members?from=2030-01-01&to=2030-01-31`,
+    );
+    expect(emptyStatsMembersResponse.ok()).toBeTruthy();
+    const emptyStatsMembersPayload =
+      (await emptyStatsMembersResponse.json()) as typeof statsMembersPayload;
+    expect(emptyStatsMembersPayload.members).toContainEqual(
+      expect.objectContaining({
+        email: "alice@example.test",
+        createdProposalCount: 0,
+      }),
+    );
 
     await expect(page.getByTestId("dashboard-stats-link")).toHaveAttribute(
       "href",
@@ -664,11 +735,32 @@ test.describe("Roompire real browser smoke", () => {
     await page.goto("/en-US/app/stats");
 
     await expect(page.getByRole("heading", { name: "Household statistics" })).toBeVisible();
+    await expect(page.getByTestId("stats-filter-form")).toBeVisible();
+    await expect(page.getByTestId("stats-window-label")).toContainText("All time");
     await expect(page.getByTestId("stats-summary-proposals")).toBeVisible();
     await expect(page.getByTestId("stats-summary-audit")).toBeVisible();
+    await expect(page.getByTestId("stats-proposal-trend")).toBeVisible();
+    await expect(page.getByTestId("stats-trend-row-2026-07-01")).toBeVisible();
     await expect(page.getByTestId("export-panel")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Category breakdown" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Member breakdown" })).toBeVisible();
+
+    await page.goto("/en-US/app/stats?from=2026-07-01&to=2026-07-01");
+    await expect(page.getByTestId("stats-filter-from")).toHaveValue("2026-07-01");
+    await expect(page.getByTestId("stats-filter-to")).toHaveValue("2026-07-01");
+    await expect(page.getByTestId("stats-window-label")).toContainText("2026-07-01 to 2026-07-01");
+    await expect(page.getByTestId("stats-trend-row-2026-07-01")).toBeVisible();
+    await page.getByTestId("stats-filter-from").fill("2030-01-01");
+    await page.getByTestId("stats-filter-to").fill("2030-01-31");
+    await Promise.all([
+      page.waitForURL(/\/en-US\/app\/stats\?from=2030-01-01&to=2030-01-31/),
+      page.getByTestId("stats-filter-submit").click(),
+    ]);
+    await expect(page.getByText("No proposal activity in this window")).toBeVisible();
+    await Promise.all([
+      page.waitForURL("**/en-US/app/stats"),
+      page.getByTestId("stats-filter-clear").click(),
+    ]);
 
     const auditExportResponse = await postApiWithRetry(
       page,

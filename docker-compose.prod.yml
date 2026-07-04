@@ -37,6 +37,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?Set NEXT_PUBLIC_APP_URL}
+      HOSTNAME: 0.0.0.0
       ROOMPIRE_ENABLE_DEV_AUTH: ${ROOMPIRE_ENABLE_DEV_AUTH:-false}
       ROOMPIRE_DEV_SESSION_EMAIL: ${ROOMPIRE_DEV_SESSION_EMAIL:-alice@example.test}
       ROOMPIRE_FILE_SIGNING_SECRET: ${ROOMPIRE_FILE_SIGNING_SECRET:?Set ROOMPIRE_FILE_SIGNING_SECRET}
@@ -51,6 +52,7 @@ services:
       ROOMPIRE_S3_FORCE_PATH_STYLE: ${ROOMPIRE_S3_FORCE_PATH_STYLE:-false}
       ROOMPIRE_SITE_GATE_USERNAME: ${ROOMPIRE_SITE_GATE_USERNAME:?Set ROOMPIRE_SITE_GATE_USERNAME}
       ROOMPIRE_SITE_GATE_PASSWORD: ${ROOMPIRE_SITE_GATE_PASSWORD:?Set ROOMPIRE_SITE_GATE_PASSWORD}
+      ROOMPIRE_SITE_GATE_SESSION_EMAIL: ${ROOMPIRE_SITE_GATE_SESSION_EMAIL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,6 +105,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    profiles: ["caddy"]
     environment:
       ROOMPIRE_DOMAIN: ${ROOMPIRE_DOMAIN:-roompire.aialra.online}
     depends_on:

@@ -1,0 +1,6 @@
+name: roompire
+
+services:
+  web:
+    ports:
+      - "127.0.0.1:${ROOMPIRE_WEB_HOST_PORT:-18300}:3000"

@@ -180,6 +180,29 @@ components:
       properties:
         open: { type: integer, minimum: 0 }
         completed: { type: integer, minimum: 0 }
+    StatsWindow:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          format: date
+          nullable: true
+          description: Inclusive start date for the selected statistics window.
+        to:
+          type: string
+          format: date
+          nullable: true
+          description: Inclusive end date for the selected statistics window.
+    StatsProposalTrendPoint:
+      type: object
+      required: [date, proposalCount, proposalTotals]
+      properties:
+        date: { type: string, format: date }
+        proposalCount: { type: integer, minimum: 0 }
+        proposalTotals:
+          type: array
+          items: { $ref: "#/components/schemas/AmountTotal" }
     ExportDataset:
       type: string
       enum: [expense_proposals, ledger_obligations, settlements, audit_events, members]
@@ -218,17 +241,20 @@ components:
       required:
         [
           householdId,
+          window,
           settlementCurrency,
           proposalCounts,
           proposalSettlementTotals,
           openObligationTotals,
           confirmedSettlementTotals,
           taskCounts,
+          proposalTrend,
           auditEventCount,
           receiptFileCount,
         ]
       properties:
         householdId: { type: string, format: uuid }
+        window: { $ref: "#/components/schemas/StatsWindow" }
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         proposalCounts: { $ref: "#/components/schemas/StatsProposalCounts" }
         proposalSettlementTotals:
@@ -241,6 +267,10 @@ components:
           type: array
           items: { $ref: "#/components/schemas/AmountTotal" }
         taskCounts: { $ref: "#/components/schemas/StatsTaskCounts" }
+        proposalTrend:
+          type: array
+          description: Non-cancelled proposal volume grouped by expense date within the selected window.
+          items: { $ref: "#/components/schemas/StatsProposalTrendPoint" }
         auditEventCount: { type: integer, minimum: 0 }
         receiptFileCount: { type: integer, minimum: 0 }
     StatsSummaryResponse:
@@ -2633,18 +2663,31 @@ paths:
   /households/{householdId}/stats/summary:
     get:
       summary: Get household statistics summary
-      description: Returns read-only proposal, ledger, task, audit, and receipt summary totals for the active household.
+      description: Returns read-only proposal, ledger, task, audit, receipt, and proposal trend totals for the active household. Optional from/to query dates select an inclusive statistics window.
       parameters:
         - in: path
           name: householdId
           required: true
           schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          description: Inclusive window start date. Proposals use expenseDate; tasks use dueAt or createdAt; audit, receipts, obligations, and settlements use their operational timestamps.
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          description: Inclusive window end date.
+          schema: { type: string, format: date }
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/StatsSummaryResponse" }
+        "400":
+          description: Invalid statistics query
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Household not found or caller is not an active member
           content:
@@ -2653,18 +2696,31 @@ paths:
   /households/{householdId}/stats/categories:
     get:
       summary: List category statistics
-      description: Returns read-only proposal totals and matured share totals grouped by expense category.
+      description: Returns read-only proposal totals and matured share totals grouped by expense category. Optional from/to query dates filter by proposal expenseDate.
       parameters:
         - in: path
           name: householdId
           required: true
           schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          description: Inclusive proposal expenseDate window start date.
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          description: Inclusive proposal expenseDate window end date.
+          schema: { type: string, format: date }
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CategoryStatsListResponse" }
+        "400":
+          description: Invalid statistics query
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Household not found or caller is not an active member
           content:
@@ -2673,18 +2729,31 @@ paths:
   /households/{householdId}/stats/members:
     get:
       summary: List member statistics
-      description: Returns read-only proposal, payer, obligation, and confirmed settlement totals for active household members.
+      description: Returns read-only proposal, payer, obligation, and confirmed settlement totals for active household members. Optional from/to query dates filter proposals by expenseDate, obligations by creation time, and settlements by settlementDate.
       parameters:
         - in: path
           name: householdId
           required: true
           schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          description: Inclusive statistics window start date.
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          description: Inclusive statistics window end date.
+          schema: { type: string, format: date }
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MemberStatsListResponse" }
+        "400":
+          description: Invalid statistics query
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Household not found or caller is not an active member
           content:

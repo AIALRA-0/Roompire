@@ -30,6 +30,7 @@ import {
 
 type PageProps = {
   params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 function formatAmount(locale: Locale, total: AmountTotal) {
@@ -50,8 +51,21 @@ function formatTotals(locale: Locale, totals: AmountTotal[]) {
   return totals.length > 0 ? totals.map((total) => formatAmount(locale, total)).join(" · ") : "—";
 }
 
-export default async function StatsPage({ params }: PageProps) {
+function searchParamValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+}
+
+function compactDate(value: string | null | undefined, fallback: string) {
+  return value && value.length > 0 ? value : fallback;
+}
+
+export default async function StatsPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const statsQuery = {
+    from: searchParamValue(resolvedSearchParams.from),
+    to: searchParamValue(resolvedSearchParams.to),
+  };
   const nav = await getTranslations({ locale, namespace: "Nav" });
   const common = await getTranslations({ locale, namespace: "Common" });
   const identity = await getTranslations({ locale, namespace: "Identity" });
@@ -61,9 +75,9 @@ export default async function StatsPage({ params }: PageProps) {
   const activeHouseholdId = model.activeHousehold?.id ?? null;
   const [summary, categories, members] = activeHouseholdId
     ? await Promise.all([
-        getStatsSummaryForHousehold(model.user.id, activeHouseholdId),
-        listCategoryStatsForHousehold(model.user.id, activeHouseholdId),
-        listMemberStatsForHousehold(model.user.id, activeHouseholdId),
+        getStatsSummaryForHousehold(model.user.id, activeHouseholdId, statsQuery),
+        listCategoryStatsForHousehold(model.user.id, activeHouseholdId, statsQuery),
+        listMemberStatsForHousehold(model.user.id, activeHouseholdId, statsQuery),
       ])
     : [null, [], []];
   const roleLabels = {
@@ -85,6 +99,17 @@ export default async function StatsPage({ params }: PageProps) {
   const totalProposalCount = summary
     ? Object.values(summary.proposalCounts).reduce((total, count) => total + count, 0)
     : 0;
+  const maxTrendCount = Math.max(
+    1,
+    ...(summary?.proposalTrend.map((point) => point.proposalCount) ?? [0]),
+  );
+  const windowLabel =
+    summary?.window.from || summary?.window.to
+      ? stats("activeWindow", {
+          from: compactDate(summary.window.from, stats("windowStart")),
+          to: compactDate(summary.window.to, stats("windowEnd")),
+        })
+      : stats("allTimeWindow");
   const summaryCards = [
     {
       label: stats("settlementCurrency"),
@@ -235,8 +260,47 @@ export default async function StatsPage({ params }: PageProps) {
               <p className="max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">
                 {stats("hint")}
               </p>
-              <Badge variant="neutral">{stats("readOnly")}</Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge data-testid="stats-window-label" variant="neutral">
+                  {windowLabel}
+                </Badge>
+                <Badge variant="neutral">{stats("readOnly")}</Badge>
+              </div>
             </div>
+
+            <form
+              action={`/${locale}/app/stats`}
+              className="mb-6 grid gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] sm:items-end"
+              data-testid="stats-filter-form"
+            >
+              <label className="grid gap-1.5 text-sm font-medium">
+                <span>{stats("fromDate")}</span>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="stats-filter-from"
+                  defaultValue={statsQuery.from}
+                  name="from"
+                  type="date"
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                <span>{stats("toDate")}</span>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="stats-filter-to"
+                  defaultValue={statsQuery.to}
+                  name="to"
+                  type="date"
+                />
+              </label>
+              <Button data-testid="stats-filter-submit" type="submit">
+                <CalendarDays aria-hidden="true" className="h-4 w-4" />
+                {stats("applyFilters")}
+              </Button>
+              <Button asChild data-testid="stats-filter-clear" variant="outline">
+                <Link href={`/${locale}/app/stats`}>{stats("clearFilters")}</Link>
+              </Button>
+            </form>
 
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {summaryCards.map((card) => (
@@ -253,6 +317,48 @@ export default async function StatsPage({ params }: PageProps) {
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">{card.detail}</p>
                 </div>
               ))}
+            </section>
+
+            <section
+              className="mt-6 rounded-lg border border-border bg-card"
+              data-testid="stats-proposal-trend"
+            >
+              <div className="border-b border-border p-5">
+                <h2 className="text-lg font-semibold">{stats("proposalTrend")}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{stats("proposalTrendHint")}</p>
+              </div>
+              {summary && summary.proposalTrend.length > 0 ? (
+                <div className="grid gap-3 p-5">
+                  {summary.proposalTrend.map((point) => (
+                    <div
+                      className="grid gap-2 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(8rem,auto)] sm:items-center"
+                      data-testid={`stats-trend-row-${point.date}`}
+                      key={point.date}
+                    >
+                      <p className="text-sm font-medium">{point.date}</p>
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{
+                            width: `${Math.max(8, (point.proposalCount / maxTrendCount) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {stats("trendPoint", {
+                          count: point.proposalCount,
+                          totals: formatTotals(locale, point.proposalTotals),
+                        })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex min-h-32 flex-col items-center justify-center px-6 py-10 text-center">
+                  <BarChart3 aria-hidden="true" className="h-8 w-8 text-muted-foreground" />
+                  <p className="mt-3 font-medium">{stats("noTrendActivity")}</p>
+                </div>
+              )}
             </section>
 
             <div className="mt-6">
