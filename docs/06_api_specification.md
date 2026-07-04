@@ -42,6 +42,7 @@ Pagination envelope:
 Mutation headers:
 
 - `Idempotency-Key`: required for proposal submit, approval, maturity, settlement, file finalize.
+- Implemented financial mutations persist the key per user. Repeating the same key with the same endpoint and body replays the stored response; reusing the key with a changed request returns `409`.
 
 ## Endpoint groups
 

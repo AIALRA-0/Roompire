@@ -632,6 +632,127 @@ test.describe("Roompire real browser smoke", () => {
     );
     await expect(balanceRow).toContainText("Expense Debtor E2E owes Expense Owner E2E");
     await expect(balanceRow).toContainText("CNY 324");
+
+    const idempotentProposalBody = {
+      title: `E2E Idempotent ${suffix}`,
+      expenseDate: "2026-07-04",
+      originalAmount: "20",
+      originalCurrency: "CNY",
+      participantUserIds: [approvedShare!.debtorUserId],
+    };
+    const proposalIdempotencyKey = `proposal-idempotency-${Date.now()}`;
+    const idempotentProposalResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals`,
+      {
+        data: idempotentProposalBody,
+        headers: {
+          "Idempotency-Key": proposalIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(idempotentProposalResponse.status()).toBe(201);
+    const idempotentProposalPayload = (await idempotentProposalResponse.json()) as {
+      proposal: {
+        id: string;
+        shares: Array<{ id: string }>;
+      };
+    };
+    const idempotentShareId = idempotentProposalPayload.proposal.shares[0]?.id;
+    expect(idempotentShareId).toBeTruthy();
+
+    const idempotentProposalReplayResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals`,
+      {
+        data: idempotentProposalBody,
+        headers: {
+          "Idempotency-Key": proposalIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(idempotentProposalReplayResponse.status()).toBe(201);
+    const idempotentProposalReplayPayload =
+      (await idempotentProposalReplayResponse.json()) as typeof idempotentProposalPayload;
+    expect(idempotentProposalReplayPayload.proposal.id).toBe(idempotentProposalPayload.proposal.id);
+
+    const idempotentProposalConflictResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals`,
+      {
+        data: {
+          ...idempotentProposalBody,
+          title: `E2E Idempotent Conflict ${suffix}`,
+        },
+        headers: {
+          "Idempotency-Key": proposalIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(idempotentProposalConflictResponse.status()).toBe(409);
+
+    const approvalIdempotencyKey = `approval-idempotency-${Date.now()}`;
+    const idempotentApprovalBody = { comment: "Idempotent approval" };
+    const idempotentApprovalResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/shares/${idempotentShareId}/approve`,
+      {
+        data: idempotentApprovalBody,
+        headers: {
+          "Idempotency-Key": approvalIdempotencyKey,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(idempotentApprovalResponse.ok()).toBeTruthy();
+    const idempotentApprovalPayload = (await idempotentApprovalResponse.json()) as {
+      proposal: { id: string };
+    };
+
+    const idempotentApprovalReplayResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/shares/${idempotentShareId}/approve`,
+      {
+        data: idempotentApprovalBody,
+        headers: {
+          "Idempotency-Key": approvalIdempotencyKey,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(idempotentApprovalReplayResponse.ok()).toBeTruthy();
+    const idempotentApprovalReplayPayload =
+      (await idempotentApprovalReplayResponse.json()) as typeof idempotentApprovalPayload;
+    expect(idempotentApprovalReplayPayload.proposal.id).toBe(idempotentApprovalPayload.proposal.id);
+
+    const idempotentApprovalConflictResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/shares/${idempotentShareId}/approve`,
+      {
+        data: { comment: "Changed approval comment" },
+        headers: {
+          "Idempotency-Key": approvalIdempotencyKey,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(idempotentApprovalConflictResponse.status()).toBe(409);
+
+    const obligationsAfterIdempotentApprovalResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(obligationsAfterIdempotentApprovalResponse.ok()).toBeTruthy();
+    const obligationsAfterIdempotentApproval =
+      (await obligationsAfterIdempotentApprovalResponse.json()) as {
+        obligations: Array<{ sourceShareId: string }>;
+      };
+    expect(
+      obligationsAfterIdempotentApproval.obligations.filter(
+        (obligation) => obligation.sourceShareId === idempotentShareId,
+      ),
+    ).toHaveLength(1);
   });
 
   test("debtor rejects a submitted expense share without ledger impact", async ({
@@ -722,6 +843,50 @@ test.describe("Roompire real browser smoke", () => {
     await expect(
       page.getByText("No formal ledger obligation has been created for this proposal."),
     ).toBeVisible();
+
+    const rejectIdempotencyKey = `reject-idempotency-${Date.now()}`;
+    const rejectReplayBody = { reason: "Wrong utility period" };
+    const rejectReplayResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/shares/${shareId}/reject`,
+      {
+        data: rejectReplayBody,
+        headers: {
+          "Idempotency-Key": rejectIdempotencyKey,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(rejectReplayResponse.ok()).toBeTruthy();
+    const rejectReplayPayload = (await rejectReplayResponse.json()) as {
+      proposal: { id: string };
+    };
+
+    const rejectSecondReplayResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/shares/${shareId}/reject`,
+      {
+        data: rejectReplayBody,
+        headers: {
+          "Idempotency-Key": rejectIdempotencyKey,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(rejectSecondReplayResponse.ok()).toBeTruthy();
+    const rejectSecondReplayPayload =
+      (await rejectSecondReplayResponse.json()) as typeof rejectReplayPayload;
+    expect(rejectSecondReplayPayload.proposal.id).toBe(rejectReplayPayload.proposal.id);
+
+    const rejectConflictResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/shares/${shareId}/reject`,
+      {
+        data: { reason: "Changed rejection reason" },
+        headers: {
+          "Idempotency-Key": rejectIdempotencyKey,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(rejectConflictResponse.status()).toBe(409);
 
     await page.goto("/en-US/app");
     await expect(page.getByTestId("dashboard-stat-matured-obligations")).toContainText("0");

@@ -715,7 +715,8 @@ paths:
         - in: header
           name: Idempotency-Key
           required: true
-          schema: { type: string }
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
         - in: path
           name: householdId
           required: true
@@ -743,6 +744,11 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Idempotency-Key is already in progress or was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -776,7 +782,7 @@ paths:
         - in: header
           name: Idempotency-Key
           required: true
-          schema: { type: string }
+          schema: { type: string, maxLength: 160 }
         - in: path
           name: householdId
           required: true
@@ -794,7 +800,8 @@ paths:
         - in: header
           name: Idempotency-Key
           required: true
-          schema: { type: string }
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
         - in: path
           name: householdId
           required: true
@@ -830,7 +837,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Share or proposal is no longer actionable
+          description: Share/proposal is no longer actionable, the idempotent request is in progress, or the Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -841,7 +848,8 @@ paths:
         - in: header
           name: Idempotency-Key
           required: true
-          schema: { type: string }
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
         - in: path
           name: householdId
           required: true
@@ -877,7 +885,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Share or proposal is no longer actionable
+          description: Share/proposal is no longer actionable, the idempotent request is in progress, or the Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

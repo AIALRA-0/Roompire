@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ApiError, apiErrorResponse, validationError } from "@/server/api/errors";
+import { apiErrorResponse, validationError } from "@/server/api/errors";
 import { requireApiUser } from "@/server/auth/session";
 import { approveExpenseShareForHousehold } from "@/server/expenses/service";
 import { serializeExpenseProposal } from "@/server/expenses/serializers";
+import { requireIdempotencyKey, runIdempotentMutation } from "@/server/idempotency/service";
 
 export const dynamic = "force-dynamic";
 
@@ -24,30 +25,35 @@ async function readJsonBodyOrEmpty(request: NextRequest) {
   }
 }
 
-function requireIdempotencyKey(request: NextRequest) {
-  const idempotencyKey = request.headers.get("idempotency-key")?.trim();
-
-  if (!idempotencyKey) {
-    throw new ApiError(
-      400,
-      "IDEMPOTENCY_KEY_REQUIRED",
-      "Idempotency-Key header is required for share decisions.",
-    );
-  }
-}
-
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId, shareId } = await context.params;
-    requireIdempotencyKey(request);
-
+    const idempotencyKey = requireIdempotencyKey(
+      request.headers.get("idempotency-key"),
+      "share decisions",
+    );
     const body = await readJsonBodyOrEmpty(request);
-    const proposal = await approveExpenseShareForHousehold(user.id, householdId, shareId, body);
+    const response = await runIdempotentMutation({
+      key: idempotencyKey,
+      userId: user.id,
+      householdId,
+      method: "POST",
+      routeKey: `/households/${householdId}/expenses/shares/${shareId}/approve`,
+      requestBody: body,
+      handler: async () => {
+        const proposal = await approveExpenseShareForHousehold(user.id, householdId, shareId, body);
 
-    return NextResponse.json({
-      proposal: serializeExpenseProposal(proposal),
+        return {
+          status: 200,
+          body: {
+            proposal: serializeExpenseProposal(proposal),
+          },
+        };
+      },
     });
+
+    return NextResponse.json(response.body, { status: response.status });
   } catch (error) {
     return apiErrorResponse(error);
   }

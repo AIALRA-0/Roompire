@@ -108,6 +108,7 @@ model User {
 
   memberships HouseholdMembership[]
   createdHouseholds Household[] @relation("HouseholdCreator")
+  idempotencyRecords IdempotencyRecord[]
 }
 
 model Household {
@@ -129,6 +130,7 @@ model Household {
   proposals ExpenseProposal[]
   ledgerTransactions LedgerTransaction[]
   auditEvents AuditEvent[]
+  idempotencyRecords IdempotencyRecord[]
 
   @@index([createdByUserId])
 }
@@ -183,6 +185,29 @@ model ExpenseCategory {
 
   @@unique([householdId, key])
   @@index([householdId])
+}
+
+model IdempotencyRecord {
+  id                 String    @id @default(uuid()) @db.Uuid
+  key                String    @db.VarChar(160)
+  userId             String    @db.Uuid
+  householdId         String?   @db.Uuid
+  method             String    @db.VarChar(12)
+  routeKey           String
+  requestHash        String    @db.Char(64)
+  status             String    @default("IN_PROGRESS") @db.VarChar(32)
+  responseStatusCode Int?
+  responseBody       Json?
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([householdId])
+  @@index([createdAt])
 }
 
 model ExpenseProposal {

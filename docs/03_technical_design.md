@@ -148,7 +148,7 @@ A share can mature when:
 - share has not already created a ledger obligation;
 - household settings allow partial maturity or all shares are approved.
 
-Use idempotency keys and unique constraints to prevent duplicate ledger creation.
+Use persisted idempotency keys and unique constraints to prevent duplicate ledger creation. Current financial mutations store one `IdempotencyRecord` per user/key with a request hash and replayable response; a reused key with a different endpoint or body is rejected with `409`.
 
 ## Ledger design
 

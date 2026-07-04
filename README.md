@@ -39,12 +39,13 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
 - Debtors can approve or reject only their own pending shares from the proposal detail page.
 - Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once.
+- Proposal creation and share approve/reject persist `Idempotency-Key` records, replay matching duplicate requests, and reject key reuse with changed request bodies.
 - Rejected shares and pending proposals do not affect formal balances.
 - Dashboard formal balances render from open `DebtObligation` rows, not proposal totals.
 - Dedicated formal ledger page lists net balances, open obligations, and append-only ledger transactions.
 - Read-only formal ledger APIs expose balances, obligations, and transactions derived from `DebtObligation` and settlement allocations.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current list/create/detail proposal, share approve/reject, balance, obligation, and ledger transaction endpoints.
+- OpenAPI covers the current list/create/detail proposal, share approve/reject idempotency, balance, obligation, and ledger transaction endpoints.
 
 ## Development
 
