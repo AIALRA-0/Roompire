@@ -118,7 +118,7 @@ Mutation headers:
 - `POST /households/{householdId}/tasks/{taskId}/complete`
 - `POST /households/{householdId}/tasks/{taskId}/create-expense-proposal`
 
-Current implementation supports list/create calendar event, list/create task, assign task at creation, and complete task. Creating a task with `dueAt` automatically creates a linked `TASK` calendar event. Recurrence, event editing/deletion, task editing, and task-to-expense proposal creation remain backlog items.
+Current implementation supports list/create calendar event, list/create task, assign task at creation, complete task, finite daily/weekly/monthly recurrence, and list/week/month calendar UI views. Creating a task with `dueAt` automatically creates a linked `TASK` calendar event. Event editing/deletion, task editing, and task-to-expense proposal creation remain backlog items.
 
 ### Files
 

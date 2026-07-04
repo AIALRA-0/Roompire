@@ -24,6 +24,7 @@ type EventTypeKey = (typeof eventTypeKeys)[number];
 type PriorityKey = (typeof priorityKeys)[number];
 type RecurrenceKey = (typeof recurrenceKeys)[number];
 type StatusKey = "OPEN" | "COMPLETED";
+type EventViewMode = "LIST" | "WEEK" | "MONTH";
 
 type CalendarWorkspaceMember = {
   userId: string;
@@ -58,6 +59,7 @@ type CalendarWorkspaceLabels = {
   taskCreated: string;
   taskCompleted: string;
   noEvents: string;
+  noEventsInView: string;
   noTasks: string;
   noDueDate: string;
   cannotCreate: string;
@@ -65,6 +67,9 @@ type CalendarWorkspaceLabels = {
   working: string;
   errorFallback: string;
   linkedTask: string;
+  eventViewList: string;
+  eventViewWeek: string;
+  eventViewMonth: string;
   eventTypes: Record<EventTypeKey, string>;
   priorities: Record<PriorityKey, string>;
   recurrences: Record<RecurrenceKey, string>;
@@ -147,6 +152,56 @@ function memberName(memberNamesByUserId: Map<string, string>, userId: string) {
   return memberNamesByUserId.get(userId) ?? userId;
 }
 
+function utcDateKey(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function startOfUtcDay(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function addUtcDays(value: Date, days: number) {
+  const next = new Date(value);
+
+  next.setUTCDate(next.getUTCDate() + days);
+
+  return next;
+}
+
+function startOfUtcWeek(value: Date) {
+  return addUtcDays(startOfUtcDay(value), -value.getUTCDay());
+}
+
+function buildWeekDays(referenceDate: Date) {
+  const start = startOfUtcWeek(referenceDate);
+
+  return Array.from({ length: 7 }, (_, index) => addUtcDays(start, index));
+}
+
+function buildMonthDays(referenceDate: Date) {
+  const firstOfMonth = new Date(
+    Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1),
+  );
+  const start = startOfUtcWeek(firstOfMonth);
+
+  return Array.from({ length: 42 }, (_, index) => addUtcDays(start, index));
+}
+
+function formatDayHeading(value: Date, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(value);
+}
+
+function formatMonthHeading(value: Date, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+  }).format(value);
+}
+
 export function CalendarWorkspace({
   activeHouseholdId,
   canCreateWorkItems,
@@ -160,11 +215,40 @@ export function CalendarWorkspace({
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  const [eventViewMode, setEventViewMode] = useState<EventViewMode>("LIST");
   const writableMembers = members.filter((member) => member.role !== "VIEWER");
   const memberNamesByUserId = useMemo(
     () => new Map(members.map((member) => [member.userId, member.displayName])),
     [members],
   );
+  const sortedEvents = useMemo(
+    () =>
+      [...events].sort(
+        (left, right) =>
+          new Date(left.startAt).getTime() - new Date(right.startAt).getTime() ||
+          left.id.localeCompare(right.id),
+      ),
+    [events],
+  );
+  const referenceDate = useMemo(
+    () => (sortedEvents[0] ? new Date(sortedEvents[0].startAt) : new Date()),
+    [sortedEvents],
+  );
+  const weekDays = useMemo(() => buildWeekDays(referenceDate), [referenceDate]);
+  const monthDays = useMemo(() => buildMonthDays(referenceDate), [referenceDate]);
+  const eventsByDate = useMemo(() => {
+    const groupedEvents = new Map<string, SerializedCalendarEvent[]>();
+
+    for (const event of sortedEvents) {
+      const key = utcDateKey(new Date(event.startAt));
+      const dayEvents = groupedEvents.get(key) ?? [];
+
+      dayEvents.push(event);
+      groupedEvents.set(key, dayEvents);
+    }
+
+    return groupedEvents;
+  }, [sortedEvents]);
   const taskAssignmentsByTaskId = useMemo(
     () =>
       new Map(
@@ -520,42 +604,162 @@ export function CalendarWorkspace({
 
         <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
           <div className="border-b border-border p-5">
-            <h2 className="text-lg font-semibold">{labels.events}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{labels.eventsHint}</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold">{labels.events}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{labels.eventsHint}</p>
+              </div>
+              <div
+                aria-label={labels.events}
+                className="inline-flex rounded-md border border-border bg-background p-1"
+                role="tablist"
+              >
+                {[
+                  { mode: "LIST", label: labels.eventViewList },
+                  { mode: "WEEK", label: labels.eventViewWeek },
+                  { mode: "MONTH", label: labels.eventViewMonth },
+                ].map(({ mode, label }) => (
+                  <button
+                    aria-selected={eventViewMode === mode}
+                    className={`focus-ring h-8 rounded px-3 text-sm font-medium transition-colors ${
+                      eventViewMode === mode
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                    data-testid={`calendar-view-${mode.toLowerCase()}`}
+                    key={mode}
+                    onClick={() => setEventViewMode(mode as EventViewMode)}
+                    role="tab"
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-          {events.length > 0 ? (
-            <div className="divide-y divide-border">
-              {events.map((event) => (
+          {sortedEvents.length === 0 ? (
+            <p className="p-5 text-sm text-muted-foreground">{labels.noEvents}</p>
+          ) : (
+            <>
+              {eventViewMode === "LIST" ? (
+                <div className="divide-y divide-border">
+                  {sortedEvents.map((event) => (
+                    <div
+                      className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                      data-testid={`calendar-event-row-${event.id}`}
+                      key={event.id}
+                    >
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-medium">{event.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatDateTime(event.startAt, locale)}
+                        </p>
+                        {event.description ? (
+                          <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                            {event.description}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                        <Badge variant="neutral">
+                          {labels.eventTypes[event.type as EventTypeKey]}
+                        </Badge>
+                        <Badge variant={statusVariant(event.status)}>
+                          {labels.statuses[(event.status as StatusKey) ?? "OPEN"] ?? event.status}
+                        </Badge>
+                        {event.links.some((link) => link.linkedType === "task") ? (
+                          <Badge>{labels.linkedTask}</Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {eventViewMode === "WEEK" ? (
                 <div
-                  className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                  data-testid={`calendar-event-row-${event.id}`}
-                  key={event.id}
+                  className="grid gap-px bg-border sm:grid-cols-7"
+                  data-testid="calendar-week-view"
                 >
-                  <div className="min-w-0">
-                    <p className="break-words text-sm font-medium">{event.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {formatDateTime(event.startAt, locale)}
-                    </p>
-                    {event.description ? (
-                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                        {event.description}
-                      </p>
-                    ) : null}
+                  {weekDays.map((day) => {
+                    const dayKey = utcDateKey(day);
+                    const dayEvents = eventsByDate.get(dayKey) ?? [];
+
+                    return (
+                      <div
+                        className="min-h-32 bg-card p-3"
+                        data-testid={`calendar-week-day-${dayKey}`}
+                        key={dayKey}
+                      >
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          {formatDayHeading(day, locale)}
+                        </p>
+                        <div className="mt-3 grid gap-2">
+                          {dayEvents.length > 0 ? (
+                            dayEvents.map((event) => (
+                              <div
+                                className="rounded-md border border-border bg-background px-2 py-1.5"
+                                data-testid={`calendar-week-event-${event.id}`}
+                                key={event.id}
+                              >
+                                <p className="line-clamp-2 text-xs font-medium">{event.title}</p>
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  {labels.eventTypes[event.type as EventTypeKey]}
+                                </p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-muted-foreground">{labels.noEventsInView}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {eventViewMode === "MONTH" ? (
+                <div data-testid="calendar-month-view">
+                  <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+                    {formatMonthHeading(referenceDate, locale)}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                    <Badge variant="neutral">{labels.eventTypes[event.type as EventTypeKey]}</Badge>
-                    <Badge variant={statusVariant(event.status)}>
-                      {labels.statuses[(event.status as StatusKey) ?? "OPEN"] ?? event.status}
-                    </Badge>
-                    {event.links.some((link) => link.linkedType === "task") ? (
-                      <Badge>{labels.linkedTask}</Badge>
-                    ) : null}
+                  <div className="grid gap-px bg-border sm:grid-cols-7">
+                    {monthDays.map((day) => {
+                      const dayKey = utcDateKey(day);
+                      const dayEvents = eventsByDate.get(dayKey) ?? [];
+                      const isReferenceMonth = day.getUTCMonth() === referenceDate.getUTCMonth();
+
+                      return (
+                        <div
+                          className={`min-h-28 bg-card p-2 ${isReferenceMonth ? "" : "opacity-55"}`}
+                          data-testid={`calendar-month-day-${dayKey}`}
+                          key={dayKey}
+                        >
+                          <p className="text-xs font-semibold text-muted-foreground">
+                            {day.getUTCDate()}
+                          </p>
+                          <div className="mt-2 grid gap-1.5">
+                            {dayEvents.slice(0, 3).map((event) => (
+                              <div
+                                className="truncate rounded bg-muted px-2 py-1 text-[11px] font-medium"
+                                data-testid={`calendar-month-event-${event.id}`}
+                                key={event.id}
+                              >
+                                {event.title}
+                              </div>
+                            ))}
+                            {dayEvents.length > 3 ? (
+                              <p className="text-[11px] text-muted-foreground">
+                                +{dayEvents.length - 3}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="p-5 text-sm text-muted-foreground">{labels.noEvents}</p>
+              ) : null}
+            </>
           )}
         </div>
 

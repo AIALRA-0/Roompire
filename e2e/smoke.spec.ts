@@ -2093,6 +2093,17 @@ test.describe("Roompire real browser smoke", () => {
         event.links.some((link) => link.linkedType === "recurrence_rule"),
       ),
     ).toBe(true);
+    await page.getByTestId("calendar-view-month").click();
+    await expect(page.getByTestId("calendar-month-view")).toBeVisible();
+    await expect(page.getByTestId(`calendar-month-event-${recurringEvents[0]!.id}`)).toContainText(
+      eventTitle,
+    );
+    await page.getByTestId("calendar-view-week").click();
+    await expect(page.getByTestId("calendar-week-view")).toBeVisible();
+    await expect(page.getByTestId(`calendar-week-event-${recurringEvents[0]!.id}`)).toContainText(
+      eventTitle,
+    );
+    await page.getByTestId("calendar-view-list").click();
     const taskEvents = eventsPayload.events.filter(
       (event) => event.title === taskTitle && event.type === "TASK",
     );

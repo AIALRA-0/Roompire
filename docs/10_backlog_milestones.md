@@ -121,7 +121,7 @@
 - Complete task.
 - Link proposal/task/event.
 
-Current implemented subset on `feat/calendar-tasks`: calendar/task page shell, event list/create, task list/create, assignment at creation, task completion, and task-to-calendar-event linking. Month view, proposal/task/expense linking, recurrence, and task-generated reimbursement proposals remain backlog items.
+Current implemented subset across calendar branches: calendar/task page shell, event list/create, event list/week/month views, task list/create, assignment at creation, task completion, task-to-calendar-event linking, repayment due events, and finite recurrence. Proposal/task/expense linking and task-generated reimbursement proposals remain backlog items.
 
 ### P1
 

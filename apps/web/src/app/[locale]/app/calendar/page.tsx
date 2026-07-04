@@ -151,6 +151,7 @@ export default async function CalendarPage({ params }: PageProps) {
                 taskCreated: calendar("taskCreated"),
                 taskCompleted: calendar("taskCompleted"),
                 noEvents: calendar("noEvents"),
+                noEventsInView: calendar("noEventsInView"),
                 noTasks: calendar("noTasks"),
                 noDueDate: calendar("noDueDate"),
                 cannotCreate: calendar("cannotCreate"),
@@ -158,6 +159,9 @@ export default async function CalendarPage({ params }: PageProps) {
                 working: common("working"),
                 errorFallback: calendar("errorFallback"),
                 linkedTask: calendar("linkedTask"),
+                eventViewList: calendar("eventViewList"),
+                eventViewWeek: calendar("eventViewWeek"),
+                eventViewMonth: calendar("eventViewMonth"),
                 eventTypes: {
                   TASK: calendar("eventTypeTask"),
                   CHORE: calendar("eventTypeChore"),
