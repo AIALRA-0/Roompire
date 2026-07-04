@@ -1338,6 +1338,145 @@ components:
         tasks:
           type: array
           items: { $ref: "#/components/schemas/Task" }
+    OpsHealthState:
+      type: string
+      enum: [ok, warning, unknown]
+    OpsSmokeState:
+      type: string
+      enum: [passed, failed, missing, unknown]
+    OpsSmokeCheck:
+      type: object
+      required: [path, status, httpStatus, message]
+      properties:
+        path: { type: string, example: /api/v1/health }
+        status:
+          type: string
+          enum: [passed, failed]
+        httpStatus:
+          type: integer
+          nullable: true
+        message:
+          type: string
+          nullable: true
+    OpsStatusSnapshot:
+      type: object
+      required:
+        [
+          schemaVersion,
+          source,
+          generatedAt,
+          summary,
+          statusFile,
+          disk,
+          backupTimer,
+          backupService,
+          latestSmoke,
+        ]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        source:
+          type: string
+          enum: [host_status_file, runtime_fallback]
+        generatedAt: { type: string, format: date-time }
+        summary:
+          type: object
+          required: [status, warnings]
+          properties:
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            warnings:
+              type: array
+              items: { type: string }
+        statusFile:
+          type: object
+          required: [path, loaded, error]
+          properties:
+            path:
+              type: string
+              nullable: true
+            loaded: { type: boolean }
+            error:
+              type: string
+              nullable: true
+        disk:
+          type: object
+          required:
+            [path, sizeBytes, usedBytes, availableBytes, usedPercent, status, checkedAt, error]
+          properties:
+            path: { type: string, example: / }
+            sizeBytes: { type: integer, nullable: true }
+            usedBytes: { type: integer, nullable: true }
+            availableBytes: { type: integer, nullable: true }
+            usedPercent: { type: number, nullable: true }
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        backupTimer:
+          type: object
+          required: [name, activeState, enabledState, nextElapse, lastTrigger, status, error]
+          properties:
+            name: { type: string, example: roompire-backup.timer }
+            activeState: { type: string, example: active }
+            enabledState: { type: string, example: enabled }
+            nextElapse:
+              type: string
+              nullable: true
+            lastTrigger:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        backupService:
+          type: object
+          required:
+            [name, activeState, result, execMainStatus, startedAt, finishedAt, status, error]
+          properties:
+            name: { type: string, example: roompire-backup.service }
+            activeState: { type: string, example: inactive }
+            result: { type: string, example: success }
+            execMainStatus: { type: string, example: "0" }
+            startedAt:
+              type: string
+              nullable: true
+            finishedAt:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        latestSmoke:
+          type: object
+          required: [status, generatedAt, baseUrl, checks, failedPath, message]
+          properties:
+            status: { $ref: "#/components/schemas/OpsSmokeState" }
+            generatedAt:
+              type: string
+              format: date-time
+              nullable: true
+            baseUrl:
+              type: string
+              nullable: true
+            checks:
+              type: array
+              items: { $ref: "#/components/schemas/OpsSmokeCheck" }
+            failedPath:
+              type: string
+              nullable: true
+            message:
+              type: string
+              nullable: true
+    OpsStatusResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/OpsStatusSnapshot" }
 paths:
   /session:
     get:
@@ -1356,6 +1495,26 @@ paths:
             schema: { $ref: "#/components/schemas/DevSessionRequest" }
       responses:
         "200": { description: Developer session set }
+  /ops/status:
+    get:
+      summary: Get server ops health
+      description: Returns the latest host-generated operational snapshot for the self-hosted deployment. Only the configured site-gate owner or household owners/admins may read it.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpsStatusResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not allowed to view ops health
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households:
     get:
       summary: List current user's households

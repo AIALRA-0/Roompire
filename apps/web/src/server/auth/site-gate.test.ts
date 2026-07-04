@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   basicAuthorizationHeader,
+  resolveConfiguredSiteGateSessionEmail,
   resolveSiteGateSessionEmailFromAuthorization,
 } from "./site-gate";
 
@@ -21,6 +22,16 @@ describe("site gate session identity", () => {
 
     expect(
       resolveSiteGateSessionEmailFromAuthorization(authorization, {
+        ROOMPIRE_SITE_GATE_USERNAME: "roompire",
+        ROOMPIRE_SITE_GATE_PASSWORD: "secret",
+        ROOMPIRE_SITE_GATE_SESSION_EMAIL: "Owner@example.test",
+      }),
+    ).toBe("owner@example.test");
+  });
+
+  it("resolves the configured session email without checking a request header", () => {
+    expect(
+      resolveConfiguredSiteGateSessionEmail({
         ROOMPIRE_SITE_GATE_USERNAME: "roompire",
         ROOMPIRE_SITE_GATE_PASSWORD: "secret",
         ROOMPIRE_SITE_GATE_SESSION_EMAIL: "Owner@example.test",

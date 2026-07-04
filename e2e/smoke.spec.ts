@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 async function clickMemberMutationWithRetry(
@@ -121,6 +122,65 @@ async function getApiWithRetry(
   }
 
   throw new Error(`GET ${url} failed: ${lastError}`);
+}
+
+async function writeOpsStatusFixture() {
+  const generatedAt = new Date().toISOString();
+
+  await mkdir("ops/status", { recursive: true });
+  await writeFile(
+    "ops/status/ops-status.json",
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        source: "host_status_file",
+        generatedAt,
+        disk: {
+          path: "/",
+          sizeBytes: 100 * 1024 * 1024 * 1024,
+          usedBytes: 42 * 1024 * 1024 * 1024,
+          availableBytes: 58 * 1024 * 1024 * 1024,
+          usedPercent: 42,
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
+        backupTimer: {
+          name: "roompire-backup.timer",
+          activeState: "active",
+          enabledState: "enabled",
+          nextElapse: "2026-07-05T04:30:00.000Z",
+          lastTrigger: "2026-07-04T04:30:00.000Z",
+          status: "ok",
+          error: null,
+        },
+        backupService: {
+          name: "roompire-backup.service",
+          activeState: "inactive",
+          result: "success",
+          execMainStatus: "0",
+          startedAt: "2026-07-04T04:30:00.000Z",
+          finishedAt: "2026-07-04T04:31:00.000Z",
+          status: "ok",
+          error: null,
+        },
+        latestSmoke: {
+          status: "passed",
+          generatedAt,
+          baseUrl: "https://roompire.aialra.online",
+          checks: [
+            { path: "/en-US", status: "passed", httpStatus: 200, message: null },
+            { path: "/api/v1/health", status: "passed", httpStatus: 200, message: null },
+            { path: "/manifest.webmanifest", status: "passed", httpStatus: 200, message: null },
+          ],
+          failedPath: null,
+          message: null,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 async function clickInviteCreateWithRetry(page: Page) {
@@ -1112,6 +1172,58 @@ test.describe("Roompire real browser smoke", () => {
     await page.goto("/zh-CN/app/forbidden");
     await expect(page.getByRole("heading", { name: "需要访问权限" })).toBeVisible();
     await expect(page.getByRole("link", { name: /返回工作台/ })).toBeVisible();
+  });
+
+  test("owner reviews ops health and viewer is blocked", async ({ page }) => {
+    await writeOpsStatusFixture();
+    await page.goto("/en-US/app");
+    await expect(page.getByTestId("dashboard-ops-link")).toHaveAttribute("href", "/en-US/app/ops");
+
+    await Promise.all([
+      page.waitForURL("**/en-US/app/ops"),
+      page.getByTestId("dashboard-ops-link").click(),
+    ]);
+
+    await expect(page.getByRole("heading", { name: "Ops health" })).toBeVisible();
+    await expect(page.getByTestId("ops-summary-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-disk-card")).toContainText("58 GB");
+    await expect(page.getByTestId("ops-backup-timer-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-smoke-status")).toContainText("Passed");
+    await expect(page.getByTestId("ops-status-file-card")).toContainText("Loaded");
+
+    const opsResponse = await getApiWithRetry(page, "/api/v1/ops/status");
+    expect(opsResponse.ok()).toBeTruthy();
+    const opsPayload = (await opsResponse.json()) as {
+      status: {
+        source: string;
+        summary: { status: string; warnings: string[] };
+        latestSmoke: { status: string; checks: Array<{ path: string }> };
+      };
+    };
+    expect(opsPayload.status.source).toBe("host_status_file");
+    expect(opsPayload.status.summary).toEqual({ status: "ok", warnings: [] });
+    expect(opsPayload.status.latestSmoke).toEqual(
+      expect.objectContaining({
+        status: "passed",
+        checks: expect.arrayContaining([expect.objectContaining({ path: "/api/v1/health" })]),
+      }),
+    );
+
+    const viewerOpsResponse = await getApiWithRetry(page, "/api/v1/ops/status", {
+      headers: {
+        "x-roompire-dev-user-email": "dana@example.test",
+      },
+    });
+    expect(viewerOpsResponse.status()).toBe(403);
+
+    await setDevSessionWithRetry(page, "dana@example.test", "Dana");
+    await page.goto("/en-US/app/ops");
+    await expect(page.getByRole("heading", { name: "Ops access needed" })).toBeVisible();
+    await expect(
+      page.getByText(
+        "Only the site gate owner or household owners and admins can view server health.",
+      ),
+    ).toBeVisible();
   });
 
   test("owner creates a household from the dashboard form", async ({ page }, testInfo) => {

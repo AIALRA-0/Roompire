@@ -8,6 +8,7 @@ import {
   ListChecks,
   Search,
   ReceiptText,
+  ServerCog,
   Settings,
   WalletCards,
 } from "lucide-react";
@@ -71,6 +72,7 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
     { label: nav("tasks"), icon: ListChecks, href: `/${locale}/app/calendar` },
     { label: nav("stats"), icon: BarChart3, href: `/${locale}/app/stats` },
     { label: nav("audit"), icon: Activity, href: `/${locale}/app/audit`, active: true },
+    { label: nav("ops"), icon: ServerCog, href: `/${locale}/app/ops` },
     { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];
   const memberNamesByUserId = new Map(

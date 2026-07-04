@@ -6,6 +6,7 @@ playwright-report/
 test-results/
 .roompire_uploads/
 apps/web/.roompire_uploads/
+ops/status/*.json
 .turbo/
 .vercel/
 .env

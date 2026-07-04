@@ -71,6 +71,12 @@ docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-c
 
 The host nginx vhost should terminate TLS and proxy to `http://127.0.0.1:${ROOMPIRE_WEB_HOST_PORT:-18300}` while preserving the `Authorization` header for the site gate.
 
+Generate the host ops snapshot before and after deployment so `/en-US/app/ops` can read disk, backup, and smoke status from the read-only `ops/status` bind mount:
+
+```bash
+./scripts/collect_ops_status.sh
+```
+
 On a dedicated host without an existing reverse proxy, Caddy can be started explicitly:
 
 ```bash
@@ -90,6 +96,8 @@ The smoke test verifies:
 - localized app shell at `/en-US`
 - authenticated API health at `/api/v1/health`
 - PWA manifest at `/manifest.webmanifest`
+
+It also writes `ops/status/latest-smoke.json` without credentials. Run `./scripts/collect_ops_status.sh` after a successful smoke test to fold that result into `ops/status/ops-status.json` for the authenticated ops dashboard.
 
 If TLS is being bootstrapped and the certificate is not valid yet, `CURL_INSECURE=true ./scripts/smoke_production.sh` can be used for diagnosis only.
 
@@ -143,3 +151,4 @@ The current live site is served directly from this host; no SSH hop to another V
 - The nginx vhost proxies to the Compose web service on `127.0.0.1:18300`.
 - The production `.env.production` file is local, ignored by git, and contains the private site-gate credentials and signing secrets.
 - `./scripts/smoke_production.sh` passed against the real domain after authentication.
+- The authenticated ops page is available at `/en-US/app/ops` for the site-gate owner and household owner/admin users; it reads host status files from `ops/status/` and does not execute host commands from the web request path.

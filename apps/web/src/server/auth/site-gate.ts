@@ -53,6 +53,17 @@ export function resolveSiteGateSessionEmailFromAuthorization(
     return null;
   }
 
+  return resolveConfiguredSiteGateSessionEmail(env);
+}
+
+export function resolveConfiguredSiteGateSessionEmail(env: SiteGateEnv = process.env) {
+  const expectedUsername = env.ROOMPIRE_SITE_GATE_USERNAME?.trim();
+  const expectedPassword = env.ROOMPIRE_SITE_GATE_PASSWORD;
+
+  if (!expectedUsername || !expectedPassword) {
+    return null;
+  }
+
   const email = normalizeEmail(env.ROOMPIRE_SITE_GATE_SESSION_EMAIL || expectedUsername);
 
   return looksLikeEmail(email) ? email : null;

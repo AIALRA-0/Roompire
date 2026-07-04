@@ -7,6 +7,7 @@ import {
   Home,
   ListChecks,
   ReceiptText,
+  ServerCog,
   Settings,
   WalletCards,
 } from "lucide-react";
@@ -60,6 +61,7 @@ export default async function LedgerPage({ params }: PageProps) {
     { label: nav("tasks"), icon: ListChecks, href: `/${locale}/app/calendar` },
     { label: nav("stats"), icon: BarChart3, href: `/${locale}/app/stats` },
     { label: nav("audit"), icon: Activity, href: `/${locale}/app/audit` },
+    { label: nav("ops"), icon: ServerCog, href: `/${locale}/app/ops` },
     { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];
   const memberNamesByUserId = new Map(

@@ -53,6 +53,7 @@ services:
       ROOMPIRE_SITE_GATE_USERNAME: ${ROOMPIRE_SITE_GATE_USERNAME:?Set ROOMPIRE_SITE_GATE_USERNAME}
       ROOMPIRE_SITE_GATE_PASSWORD: ${ROOMPIRE_SITE_GATE_PASSWORD:?Set ROOMPIRE_SITE_GATE_PASSWORD}
       ROOMPIRE_SITE_GATE_SESSION_EMAIL: ${ROOMPIRE_SITE_GATE_SESSION_EMAIL:-}
+      ROOMPIRE_OPS_STATUS_FILE: ${ROOMPIRE_OPS_STATUS_FILE:-/app/ops/status/ops-status.json}
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,6 +75,7 @@ services:
       retries: 3
     volumes:
       - roompire-uploads:/app/apps/web/.roompire_uploads
+      - ./ops/status:/app/ops/status:ro
 
   migrate:
     build:

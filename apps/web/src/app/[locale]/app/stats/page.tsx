@@ -9,6 +9,7 @@ import {
   ListChecks,
   PieChart,
   ReceiptText,
+  ServerCog,
   Settings,
   UsersRound,
   WalletCards,
@@ -94,6 +95,7 @@ export default async function StatsPage({ params, searchParams }: PageProps) {
     { label: nav("tasks"), icon: ListChecks, href: `/${locale}/app/calendar` },
     { label: nav("stats"), icon: BarChart3, href: `/${locale}/app/stats`, active: true },
     { label: nav("audit"), icon: Activity, href: `/${locale}/app/audit` },
+    { label: nav("ops"), icon: ServerCog, href: `/${locale}/app/ops` },
     { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];
   const totalProposalCount = summary

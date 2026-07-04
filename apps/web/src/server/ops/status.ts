@@ -1,0 +1,429 @@
+import { readFile, statfs } from "node:fs/promises";
+import { resolve } from "node:path";
+import type { User } from "@prisma/client";
+import { ApiError } from "@/server/api/errors";
+import { resolveConfiguredSiteGateSessionEmail } from "@/server/auth/site-gate";
+import { prisma } from "@/server/db/prisma";
+
+type HealthState = "ok" | "warning" | "unknown";
+type SmokeState = "passed" | "failed" | "missing" | "unknown";
+
+export type OpsSmokeCheck = {
+  path: string;
+  status: "passed" | "failed";
+  httpStatus: number | null;
+  message: string | null;
+};
+
+export type OpsSmokeStatus = {
+  status: SmokeState;
+  generatedAt: string | null;
+  baseUrl: string | null;
+  checks: OpsSmokeCheck[];
+  failedPath: string | null;
+  message: string | null;
+};
+
+export type OpsStatusSnapshot = {
+  schemaVersion: 1;
+  source: "host_status_file" | "runtime_fallback";
+  generatedAt: string;
+  summary: {
+    status: HealthState;
+    warnings: string[];
+  };
+  statusFile: {
+    path: string | null;
+    loaded: boolean;
+    error: string | null;
+  };
+  disk: {
+    path: string;
+    sizeBytes: number | null;
+    usedBytes: number | null;
+    availableBytes: number | null;
+    usedPercent: number | null;
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
+  backupTimer: {
+    name: string;
+    activeState: string;
+    enabledState: string;
+    nextElapse: string | null;
+    lastTrigger: string | null;
+    status: HealthState;
+    error: string | null;
+  };
+  backupService: {
+    name: string;
+    activeState: string;
+    result: string;
+    execMainStatus: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+    status: HealthState;
+    error: string | null;
+  };
+  latestSmoke: OpsSmokeStatus;
+};
+
+const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
+const staleStatusMs = 36 * 60 * 60 * 1000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown, fallback = "") {
+  return typeof value === "string" ? value : fallback;
+}
+
+function nullableStringValue(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function healthStateValue(value: unknown): HealthState {
+  return value === "ok" || value === "warning" || value === "unknown" ? value : "unknown";
+}
+
+function smokeStateValue(value: unknown): SmokeState {
+  return value === "passed" || value === "failed" || value === "missing" || value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function resolveStatusFileCandidates() {
+  const configured = process.env.ROOMPIRE_OPS_STATUS_FILE?.trim();
+
+  if (configured) {
+    return [resolve(configured)];
+  }
+
+  const relativePath = "ops/status/ops-status.json";
+  const candidates = [
+    resolve(process.cwd(), relativePath),
+    resolve(process.cwd(), "..", "..", relativePath),
+    resolve("/app", relativePath),
+  ];
+
+  return [...new Set(candidates)];
+}
+
+async function readConfiguredStatusFile() {
+  const candidates = resolveStatusFileCandidates();
+  const errors: string[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      return {
+        path: candidate,
+        text: await readFile(candidate, "utf8"),
+      };
+    } catch (error) {
+      if (isRecord(error) && error.code === "ENOENT") {
+        continue;
+      }
+
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  return {
+    path: candidates[0] ?? null,
+    text: null,
+    error: errors.join("; ") || "Ops status file is not available.",
+  };
+}
+
+function normalizeSmokeCheck(value: unknown): OpsSmokeCheck | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const path = stringValue(value.path);
+
+  if (!path) {
+    return null;
+  }
+
+  const status = value.status === "failed" ? "failed" : "passed";
+
+  return {
+    path,
+    status,
+    httpStatus: numberValue(value.httpStatus),
+    message: nullableStringValue(value.message),
+  };
+}
+
+function normalizeSmoke(value: unknown): OpsSmokeStatus {
+  if (!isRecord(value)) {
+    return {
+      status: "missing",
+      generatedAt: null,
+      baseUrl: null,
+      checks: [],
+      failedPath: null,
+      message: "No smoke-test status has been recorded yet.",
+    };
+  }
+
+  return {
+    status: smokeStateValue(value.status),
+    generatedAt: nullableStringValue(value.generatedAt),
+    baseUrl: nullableStringValue(value.baseUrl),
+    checks: Array.isArray(value.checks)
+      ? value.checks.map(normalizeSmokeCheck).filter((check) => check !== null)
+      : [],
+    failedPath: nullableStringValue(value.failedPath),
+    message: nullableStringValue(value.message),
+  };
+}
+
+function diskStatusFromValues(
+  availableBytes: number | null,
+  usedPercent: number | null,
+): HealthState {
+  if (availableBytes === null && usedPercent === null) {
+    return "unknown" satisfies HealthState;
+  }
+
+  if (
+    (availableBytes !== null && availableBytes < diskWarningAvailableBytes) ||
+    (usedPercent !== null && usedPercent >= 90)
+  ) {
+    return "warning" satisfies HealthState;
+  }
+
+  return "ok" satisfies HealthState;
+}
+
+function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
+  const warnings: string[] = [];
+  const generatedAtTime = Date.parse(status.generatedAt);
+
+  if (!status.statusFile.loaded) {
+    warnings.push("status_file_missing");
+  }
+
+  if (Number.isFinite(generatedAtTime) && Date.now() - generatedAtTime > staleStatusMs) {
+    warnings.push("status_stale");
+  }
+
+  if (status.disk.status === "warning") {
+    warnings.push("disk_low");
+  }
+
+  if (status.disk.status === "unknown") {
+    warnings.push("disk_unknown");
+  }
+
+  if (status.backupTimer.status !== "ok") {
+    warnings.push("backup_timer_attention");
+  }
+
+  if (status.backupService.status === "warning") {
+    warnings.push("backup_service_attention");
+  }
+
+  if (status.latestSmoke.status === "failed") {
+    warnings.push("smoke_failed");
+  }
+
+  if (status.latestSmoke.status === "missing" || status.latestSmoke.status === "unknown") {
+    warnings.push("smoke_missing");
+  }
+
+  return warnings;
+}
+
+function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnapshot {
+  const raw = isRecord(parsed) ? parsed : {};
+  const rawDisk = isRecord(raw.disk) ? raw.disk : {};
+  const rawBackupTimer = isRecord(raw.backupTimer) ? raw.backupTimer : {};
+  const rawBackupService = isRecord(raw.backupService) ? raw.backupService : {};
+  const availableBytes = numberValue(rawDisk.availableBytes);
+  const usedPercent = numberValue(rawDisk.usedPercent);
+  const diskStatus = healthStateValue(rawDisk.status);
+  const partial: Omit<OpsStatusSnapshot, "summary"> = {
+    schemaVersion: 1 as const,
+    source: "host_status_file" as const,
+    generatedAt: nullableStringValue(raw.generatedAt) ?? new Date().toISOString(),
+    statusFile: {
+      path: filePath,
+      loaded: true,
+      error: null,
+    },
+    disk: {
+      path: stringValue(rawDisk.path, "/"),
+      sizeBytes: numberValue(rawDisk.sizeBytes),
+      usedBytes: numberValue(rawDisk.usedBytes),
+      availableBytes,
+      usedPercent,
+      status:
+        diskStatus === "unknown" ? diskStatusFromValues(availableBytes, usedPercent) : diskStatus,
+      checkedAt: nullableStringValue(rawDisk.checkedAt),
+      error: nullableStringValue(rawDisk.error),
+    },
+    backupTimer: {
+      name: stringValue(rawBackupTimer.name, "roompire-backup.timer"),
+      activeState: stringValue(rawBackupTimer.activeState, "unknown"),
+      enabledState: stringValue(rawBackupTimer.enabledState, "unknown"),
+      nextElapse: nullableStringValue(rawBackupTimer.nextElapse),
+      lastTrigger: nullableStringValue(rawBackupTimer.lastTrigger),
+      status: healthStateValue(rawBackupTimer.status),
+      error: nullableStringValue(rawBackupTimer.error),
+    },
+    backupService: {
+      name: stringValue(rawBackupService.name, "roompire-backup.service"),
+      activeState: stringValue(rawBackupService.activeState, "unknown"),
+      result: stringValue(rawBackupService.result, "unknown"),
+      execMainStatus: stringValue(rawBackupService.execMainStatus, "unknown"),
+      startedAt: nullableStringValue(rawBackupService.startedAt),
+      finishedAt: nullableStringValue(rawBackupService.finishedAt),
+      status: healthStateValue(rawBackupService.status),
+      error: nullableStringValue(rawBackupService.error),
+    },
+    latestSmoke: normalizeSmoke(raw.latestSmoke),
+  };
+  const warnings = deriveWarnings(partial);
+
+  return {
+    ...partial,
+    summary: {
+      status: warnings.length > 0 ? "warning" : "ok",
+      warnings,
+    },
+  };
+}
+
+async function runtimeFallbackStatus(statusFilePath: string | null, error: string | null) {
+  const diskPath = process.env.ROOMPIRE_OPS_DISK_PATH?.trim() || "/";
+  let disk: OpsStatusSnapshot["disk"];
+
+  try {
+    const stats = await statfs(diskPath);
+    const sizeBytes = stats.blocks * stats.bsize;
+    const availableBytes = stats.bavail * stats.bsize;
+    const usedBytes = sizeBytes - availableBytes;
+    const usedPercent = sizeBytes > 0 ? Math.round((usedBytes / sizeBytes) * 1000) / 10 : null;
+
+    disk = {
+      path: diskPath,
+      sizeBytes,
+      usedBytes,
+      availableBytes,
+      usedPercent,
+      status: diskStatusFromValues(availableBytes, usedPercent),
+      checkedAt: new Date().toISOString(),
+      error: null,
+    };
+  } catch (fallbackError) {
+    disk = {
+      path: diskPath,
+      sizeBytes: null,
+      usedBytes: null,
+      availableBytes: null,
+      usedPercent: null,
+      status: "unknown",
+      checkedAt: new Date().toISOString(),
+      error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+    };
+  }
+
+  const partial = {
+    schemaVersion: 1 as const,
+    source: "runtime_fallback" as const,
+    generatedAt: new Date().toISOString(),
+    statusFile: {
+      path: statusFilePath,
+      loaded: false,
+      error,
+    },
+    disk,
+    backupTimer: {
+      name: process.env.ROOMPIRE_BACKUP_TIMER?.trim() || "roompire-backup.timer",
+      activeState: "unknown",
+      enabledState: "unknown",
+      nextElapse: null,
+      lastTrigger: null,
+      status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    backupService: {
+      name: process.env.ROOMPIRE_BACKUP_SERVICE?.trim() || "roompire-backup.service",
+      activeState: "unknown",
+      result: "unknown",
+      execMainStatus: "unknown",
+      startedAt: null,
+      finishedAt: null,
+      status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    latestSmoke: normalizeSmoke(null),
+  };
+  const warnings = deriveWarnings(partial);
+
+  return {
+    ...partial,
+    summary: {
+      status: warnings.length > 0 ? ("warning" as const) : ("ok" as const),
+      warnings,
+    },
+  };
+}
+
+export async function readOpsStatus() {
+  const statusFile = await readConfiguredStatusFile();
+
+  if (!statusFile.text) {
+    return runtimeFallbackStatus(statusFile.path, statusFile.error ?? null);
+  }
+
+  try {
+    return normalizeLoadedStatus(JSON.parse(statusFile.text), statusFile.path);
+  } catch (error) {
+    return runtimeFallbackStatus(
+      statusFile.path,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
+export async function requireOpsStatusViewer(user: User) {
+  const configuredSiteGateEmail = resolveConfiguredSiteGateSessionEmail();
+
+  if (configuredSiteGateEmail && configuredSiteGateEmail === user.email.trim().toLowerCase()) {
+    return;
+  }
+
+  const adminMembershipCount = await prisma.householdMembership.count({
+    where: {
+      userId: user.id,
+      status: "ACTIVE",
+      role: {
+        in: ["OWNER", "ADMIN"],
+      },
+    },
+  });
+
+  if (adminMembershipCount === 0) {
+    throw new ApiError(
+      403,
+      "FORBIDDEN",
+      "Only the site gate owner or household owners and admins can view ops health.",
+    );
+  }
+}
+
+export async function readOpsStatusForUser(user: User) {
+  await requireOpsStatusViewer(user);
+
+  return readOpsStatus();
+}
