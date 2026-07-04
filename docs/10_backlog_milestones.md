@@ -160,6 +160,8 @@ Current implemented subset across calendar branches: calendar/task page shell, e
 - Backup script.
 - Restore script/drill.
 
+Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, Caddy reverse proxy, migration and demo-seed profiles, authenticated `/api/v1/health`, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, and VPS deployment runbook. Remaining work requires actual server access, valid TLS for `roompire.aialra.online`, remote secret configuration, and an online smoke run against the real domain.
+
 ### P1
 
 - Web Push.

@@ -50,6 +50,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Phase 2 proposal receipt attachment slice implemented on branch `feat/proposal-receipts`: added private file metadata/storage tables, a local private file adapter with upload intent/byte upload/complete/download-url APIs, proposal `fileIds` attachment support, signed short-lived receipt download links on proposal detail, docs/OpenAPI/i18n updates, and real-browser desktop/mobile E2E coverage for uploading and downloading an attached receipt.
 - Phase 2 proposal revision/request-changes slice implemented on branch `feat/proposal-revisions`: added debtor request-changes API/UI that moves pending shares and proposals to `DISPUTED`, creator revision/resubmit API/UI for disputed or rejected proposals without ledger obligations, version links through `supersedesProposalId`/`revisionNumber`, old-proposal cancellation, task/event link migration to the new revision, docs/OpenAPI/i18n updates, and real-browser desktop/mobile E2E coverage.
 - Deployment gate slice added on branch `feat/proposal-revisions`: `ROOMPIRE_SITE_GATE_USERNAME` and `ROOMPIRE_SITE_GATE_PASSWORD` enable site-level Basic Auth for localized pages and `/api/v1` routes, default off when unset; real credentials must be configured only through deployment secrets/server env, never committed.
+- Deployment foundation slice implemented on branch `feat/deployment-foundation`: production Docker Compose adds Postgres, Redis, standalone Next.js web, Caddy TLS reverse proxy, migration and demo-seed profiles, authenticated `/api/v1/health`, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, and `docs/14_deployment_runbook.md`.
 
 ## Current phase
 
@@ -57,34 +58,35 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 
 ## Decisions log
 
-| Date       | Decision                                                   | Rationale                                                                                                                                                                                         |
-| ---------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-07-03 | Choose custom PWA-first system                             | Existing tools do not satisfy approval-gated ledger + locked FX + calendar-linked tasks + bilingual self-hosting.                                                                                 |
-| 2026-07-03 | Use proposal/ledger split                                  | Pending expenses must be auditable but must not affect debt balances.                                                                                                                             |
-| 2026-07-03 | Use expense-date FX lock by default                        | More predictable for RMB repayment and avoids repayment-date FX disputes.                                                                                                                         |
-| 2026-07-03 | Use Playwright as primary E2E gate                         | User explicitly requires real webpage interaction testing.                                                                                                                                        |
-| 2026-07-04 | Pin Prisma to 6.x                                          | The supplied schema uses the stable Prisma datasource URL style; Prisma 7 requires a config migration that is not needed for Phase 0.                                                             |
-| 2026-07-04 | Pin TypeScript to 5.x and ESLint to 9.x                    | Current Next.js ecosystem is stable on these major versions; TS 6 and ESLint 10 introduced avoidable bootstrap friction.                                                                          |
-| 2026-07-04 | Use Postgres 18 volume mount at `/var/lib/postgresql`      | Postgres 18 Docker image expects the newer major-version-specific data layout.                                                                                                                    |
-| 2026-07-04 | Use dev-session cookie for MVP auth foundation             | Keeps Phase 1 browser-testable while leaving production auth provider selection open.                                                                                                             |
-| 2026-07-04 | Obscure inaccessible household APIs with 404               | Avoids leaking household existence to non-members.                                                                                                                                                |
-| 2026-07-04 | Ship submitted proposal creation before approvals          | Gives users a real expense intake loop while preserving the proposal/ledger split until approval logic is implemented.                                                                            |
-| 2026-07-04 | Enable partial share maturity by default                   | Current MVP has no household partial-maturity flag, so each debtor-approved share can create its own formal obligation immediately.                                                               |
-| 2026-07-04 | Treat payer submission as payer confirmation               | Proposal creation creates the primary payer record; debtor approval then satisfies the current maturity gate for that share.                                                                      |
-| 2026-07-04 | Persist idempotency per user and key                       | Duplicate-prone financial mutations must replay identical requests and reject key reuse with changed endpoint/body.                                                                               |
-| 2026-07-04 | Require creditor confirmation before settlement allocation | A debtor-submitted payment should be auditable immediately but should not reduce formal balances until the creditor confirms receipt.                                                             |
-| 2026-07-04 | Restrict ledger corrections to owner/admin                 | Manual adjustments and reversals are high-trust audit actions and should not be available to ordinary members or viewers.                                                                         |
-| 2026-07-04 | Keep settlement suggestion API read-only                   | Suggestions guide repayment without directly mutating balances; actual balance changes still require submitted and confirmed settlements.                                                         |
-| 2026-07-04 | Auto-link due tasks to calendar events                     | The first calendar/task shell should give users one operational surface immediately; task recurrence and task-to-expense proposal links can follow later.                                         |
-| 2026-07-04 | Make direct suggested transfers actionable                 | A debtor can submit one settlement for a suggested debtor/payee/currency pair when matching direct open obligations exist; creditor confirmation allocates oldest-first across those obligations. |
-| 2026-07-04 | Materialize finite recurrence for MVP                      | Daily/weekly/monthly recurrences are capped at 12 instances and written as concrete event/task rows so current list APIs, linked task events, and E2E flows stay simple and auditable.            |
-| 2026-07-04 | Create repayment due events at ledger maturity             | Proposal due dates should become operational reminders only after a debt is real; pending/rejected shares still stay out of calendar repayment obligations.                                       |
-| 2026-07-04 | Derive calendar views client-side from loaded events       | Week/month/list views add useful planning affordances without expanding the API surface before filtering/windowed event queries are needed.                                                       |
-| 2026-07-04 | Link tasks to proposals with a dedicated table             | Task reimbursement should work even without a due-date calendar event, while linked TASK events can still point to the generated pending proposal for calendar context.                           |
-| 2026-07-04 | Treat payer share as implicit for advanced splits          | Debtor rows are the only pending approval/debt rows; exact and percentage splits keep the payer's remainder implicit, while share-unit splits give the payer one implicit unit.                   |
-| 2026-07-04 | Start receipt files with a local private storage adapter   | The MVP needs browser-testable private attachments now; keeping metadata and signed download APIs stable lets production object storage replace local disk later without changing clients.        |
-| 2026-07-04 | Revise proposals by superseding, not mutating              | Requested changes should preserve the old submitted proposal for audit; a new submitted revision carries `supersedesProposalId` and old task/event links move to the latest proposal.             |
-| 2026-07-04 | Use env-configured site gate for public deployments        | The requested public-site gate should protect pages and APIs without committing shared credentials; deployment secrets provide the username/password and leaving either unset disables the gate.  |
+| Date       | Decision                                                   | Rationale                                                                                                                                                                                               |
+| ---------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-03 | Choose custom PWA-first system                             | Existing tools do not satisfy approval-gated ledger + locked FX + calendar-linked tasks + bilingual self-hosting.                                                                                       |
+| 2026-07-03 | Use proposal/ledger split                                  | Pending expenses must be auditable but must not affect debt balances.                                                                                                                                   |
+| 2026-07-03 | Use expense-date FX lock by default                        | More predictable for RMB repayment and avoids repayment-date FX disputes.                                                                                                                               |
+| 2026-07-03 | Use Playwright as primary E2E gate                         | User explicitly requires real webpage interaction testing.                                                                                                                                              |
+| 2026-07-04 | Pin Prisma to 6.x                                          | The supplied schema uses the stable Prisma datasource URL style; Prisma 7 requires a config migration that is not needed for Phase 0.                                                                   |
+| 2026-07-04 | Pin TypeScript to 5.x and ESLint to 9.x                    | Current Next.js ecosystem is stable on these major versions; TS 6 and ESLint 10 introduced avoidable bootstrap friction.                                                                                |
+| 2026-07-04 | Use Postgres 18 volume mount at `/var/lib/postgresql`      | Postgres 18 Docker image expects the newer major-version-specific data layout.                                                                                                                          |
+| 2026-07-04 | Use dev-session cookie for MVP auth foundation             | Keeps Phase 1 browser-testable while leaving production auth provider selection open.                                                                                                                   |
+| 2026-07-04 | Obscure inaccessible household APIs with 404               | Avoids leaking household existence to non-members.                                                                                                                                                      |
+| 2026-07-04 | Ship submitted proposal creation before approvals          | Gives users a real expense intake loop while preserving the proposal/ledger split until approval logic is implemented.                                                                                  |
+| 2026-07-04 | Enable partial share maturity by default                   | Current MVP has no household partial-maturity flag, so each debtor-approved share can create its own formal obligation immediately.                                                                     |
+| 2026-07-04 | Treat payer submission as payer confirmation               | Proposal creation creates the primary payer record; debtor approval then satisfies the current maturity gate for that share.                                                                            |
+| 2026-07-04 | Persist idempotency per user and key                       | Duplicate-prone financial mutations must replay identical requests and reject key reuse with changed endpoint/body.                                                                                     |
+| 2026-07-04 | Require creditor confirmation before settlement allocation | A debtor-submitted payment should be auditable immediately but should not reduce formal balances until the creditor confirms receipt.                                                                   |
+| 2026-07-04 | Restrict ledger corrections to owner/admin                 | Manual adjustments and reversals are high-trust audit actions and should not be available to ordinary members or viewers.                                                                               |
+| 2026-07-04 | Keep settlement suggestion API read-only                   | Suggestions guide repayment without directly mutating balances; actual balance changes still require submitted and confirmed settlements.                                                               |
+| 2026-07-04 | Auto-link due tasks to calendar events                     | The first calendar/task shell should give users one operational surface immediately; task recurrence and task-to-expense proposal links can follow later.                                               |
+| 2026-07-04 | Make direct suggested transfers actionable                 | A debtor can submit one settlement for a suggested debtor/payee/currency pair when matching direct open obligations exist; creditor confirmation allocates oldest-first across those obligations.       |
+| 2026-07-04 | Materialize finite recurrence for MVP                      | Daily/weekly/monthly recurrences are capped at 12 instances and written as concrete event/task rows so current list APIs, linked task events, and E2E flows stay simple and auditable.                  |
+| 2026-07-04 | Create repayment due events at ledger maturity             | Proposal due dates should become operational reminders only after a debt is real; pending/rejected shares still stay out of calendar repayment obligations.                                             |
+| 2026-07-04 | Derive calendar views client-side from loaded events       | Week/month/list views add useful planning affordances without expanding the API surface before filtering/windowed event queries are needed.                                                             |
+| 2026-07-04 | Link tasks to proposals with a dedicated table             | Task reimbursement should work even without a due-date calendar event, while linked TASK events can still point to the generated pending proposal for calendar context.                                 |
+| 2026-07-04 | Treat payer share as implicit for advanced splits          | Debtor rows are the only pending approval/debt rows; exact and percentage splits keep the payer's remainder implicit, while share-unit splits give the payer one implicit unit.                         |
+| 2026-07-04 | Start receipt files with a local private storage adapter   | The MVP needs browser-testable private attachments now; keeping metadata and signed download APIs stable lets production object storage replace local disk later without changing clients.              |
+| 2026-07-04 | Revise proposals by superseding, not mutating              | Requested changes should preserve the old submitted proposal for audit; a new submitted revision carries `supersedesProposalId` and old task/event links move to the latest proposal.                   |
+| 2026-07-04 | Use env-configured site gate for public deployments        | The requested public-site gate should protect pages and APIs without committing shared credentials; deployment secrets provide the username/password and leaving either unset disables the gate.        |
+| 2026-07-04 | Use Docker Compose/Caddy as the VPS production baseline    | The current domain already points at a server, and Compose keeps Postgres, Redis, Next.js, TLS reverse proxy, migration, backup, and smoke-test flows repeatable without choosing an edge platform yet. |
 
 ## Open questions for later human review
 
@@ -97,7 +99,7 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 ## Next recommended tasks
 
 1. Add production object storage for private files.
-2. Complete Docker/VPS deployment plumbing for `roompire.aialra.online`: remote access, reverse proxy, TLS certificate for the hostname, production env secrets including site gate credentials, and online smoke tests.
+2. Complete live server rollout for `roompire.aialra.online`: remote access, TLS/nginx cleanup, production env secrets including site gate credentials, and online smoke tests.
 3. Decide whether fully netted suggestions without matching direct obligations should stay guidance-only or gain a separate clearing policy.
 4. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
 5. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
@@ -106,6 +108,28 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 
 ## Last session verification
 
+- 2026-07-04 Deployment foundation:
+  - `pnpm format:check` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed.
+  - `pnpm test` passed: 3 test files, 10 tests.
+  - `pnpm build` passed with `/api/v1/health` in the Next route manifest.
+  - `pnpm db:validate` passed.
+  - `pnpm db:generate` passed.
+  - `pnpm db:migrate` passed with no pending migrations.
+  - `pnpm db:seed` passed.
+  - `docker compose --env-file .env.production.example -f docker-compose.prod.yml --profile migrate --profile seed config` passed.
+  - `docker run caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile` passed for `ops/Caddyfile`.
+  - Docker BuildKit was unavailable because the local Docker install lacks buildx, so legacy `docker build` was used.
+  - `docker build -f apps/web/Dockerfile --target migrator -t roompire-migrator:test .` passed.
+  - `docker run --rm ... roompire-migrator:test pnpm db:validate` passed.
+  - `docker build -f apps/web/Dockerfile -t roompire-web:test .` passed.
+  - Local dev-server smoke with temporary gate credentials passed: unauthenticated `/api/v1/health` returned 401; authenticated `/en-US`, `/api/v1/health`, and `/manifest.webmanifest` returned success.
+  - Docker web-container smoke with temporary gate credentials passed against `roompire-web:test`: unauthenticated `/api/v1/health` returned 401; authenticated smoke script passed `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`.
+  - `bash -n` passed for production backup/restore/smoke scripts; `shellcheck` was unavailable in this environment.
+  - `scripts/backup_postgres.sh` produced a local custom-format dump against the dev Postgres container, and `postgres:18 pg_restore --list` read the dump successfully.
+  - `pnpm e2e` passed: 24 Playwright tests across Chromium desktop and mobile.
+  - Live-domain probe still shows server-side rollout blockers: HTTP `roompire.aialra.online` returns 500 from `213.136.74.126`, normal HTTPS fails hostname certificate verification, and HTTPS only returns 200 with certificate verification disabled.
 - 2026-07-04 Phase 2 proposal revisions/request-changes + deployment gate:
   - `pnpm format:check` passed.
   - `pnpm typecheck` passed.

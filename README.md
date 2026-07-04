@@ -108,6 +108,7 @@ Because Phase 1 routes read PostgreSQL, run `docker compose up -d postgres redis
 ## Deployment
 
 Docker-first deployment is the current production baseline for `roompire.aialra.online`.
+Use [`docs/14_deployment_runbook.md`](docs/14_deployment_runbook.md) for the VPS/Caddy/PostgreSQL/Redis deployment flow, backup commands, restore drill, and smoke checks.
 For public/staging deployments, configure site-level Basic Auth through deployment secrets:
 
 - `ROOMPIRE_SITE_GATE_USERNAME`
@@ -135,6 +136,7 @@ Leave either value unset to disable the gate locally. Do not commit real gate cr
 | `docs/10_backlog_milestones.md`          | Prioritized backlog and release slices.               |
 | `docs/11_security_privacy_backup.md`     | Security, privacy, backup, recovery.                  |
 | `docs/12_acceptance_checklist.md`        | Definition of Done and acceptance gates.              |
+| `docs/14_deployment_runbook.md`          | Docker/VPS deployment, smoke, backup, restore.        |
 
 ## Core Product Invariants
 
