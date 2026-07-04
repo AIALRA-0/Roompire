@@ -1,0 +1,497 @@
+// Roompire starter Prisma schema.
+// This is a design baseline, not necessarily the final migration-ready schema.
+// Use raw SQL migrations for advanced constraints, partial indexes, audit hash-chain, and ledger-critical invariants.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  REMOVED
+}
+
+enum FxPolicy {
+  LOCK_AT_EXPENSE_DATE
+  ORIGINAL_CURRENCY_DEBT
+  MANUAL_RATE_WITH_APPROVAL
+  FX_DIFFERENCE_ADJUSTMENT
+}
+
+enum SplitMethod {
+  EQUAL
+  EXACT
+  PERCENTAGE
+  SHARES
+  ADJUSTMENT
+}
+
+enum ExpenseProposalStatus {
+  DRAFT
+  SUBMITTED
+  PARTIALLY_APPROVED
+  APPROVED
+  PARTIALLY_MATURED
+  MATURED_TO_LEDGER
+  REJECTED
+  DISPUTED
+  CANCELLED
+}
+
+enum ShareStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISPUTED
+  MATURED_TO_LEDGER
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+  REQUEST_CHANGES
+}
+
+enum LedgerTransactionType {
+  DEBT_CREATED
+  SETTLEMENT_RECORDED
+  REVERSAL
+  ADJUSTMENT
+  FX_ADJUSTMENT
+}
+
+enum DebtStatus {
+  OPEN
+  SETTLED
+  REVERSED
+}
+
+enum SettlementStatus {
+  SUBMITTED
+  CONFIRMED
+  REJECTED
+  CANCELLED
+}
+
+enum CalendarEventType {
+  TASK
+  CHORE
+  GROUP_ACTIVITY
+  BILL_DUE
+  REPAYMENT_DUE
+  SETTLEMENT_REMINDER
+  RECURRING_EXPENSE_GENERATION
+}
+
+model User {
+  id              String   @id @default(uuid()) @db.Uuid
+  email           String   @unique
+  displayName     String
+  avatarUrl       String?
+  preferredLocale String   @default("en-US")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  memberships HouseholdMembership[]
+  createdHouseholds Household[] @relation("HouseholdCreator")
+}
+
+model Household {
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String
+  slug               String?  @unique
+  defaultLocale      String   @default("en-US")
+  timezone           String   @default("America/Los_Angeles")
+  settlementCurrency String   @default("CNY") @db.Char(3)
+  fxPolicy           FxPolicy @default(LOCK_AT_EXPENSE_DATE)
+  approvalPolicy     String   @default("PAYER_AND_EACH_DEBTOR")
+  createdByUserId    String   @db.Uuid
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  createdBy User @relation("HouseholdCreator", fields: [createdByUserId], references: [id])
+  memberships HouseholdMembership[]
+  categories ExpenseCategory[]
+  proposals ExpenseProposal[]
+  ledgerTransactions LedgerTransaction[]
+  auditEvents AuditEvent[]
+
+  @@index([createdByUserId])
+}
+
+model HouseholdMembership {
+  id                  String           @id @default(uuid()) @db.Uuid
+  householdId          String           @db.Uuid
+  userId               String           @db.Uuid
+  role                 Role             @default(MEMBER)
+  status               MembershipStatus @default(ACTIVE)
+  displayNameOverride  String?
+  joinedAt             DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, userId])
+  @@index([userId])
+}
+
+model HouseholdInvite {
+  id              String   @id @default(uuid()) @db.Uuid
+  householdId      String   @db.Uuid
+  email            String?
+  tokenHash        String   @unique
+  role             Role     @default(MEMBER)
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  createdByUserId  String   @db.Uuid
+  createdAt        DateTime @default(now())
+
+  @@index([householdId])
+}
+
+model ExpenseCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  householdId String?  @db.Uuid
+  key         String
+  nameEn      String
+  nameZhCn    String
+  icon        String?
+  colorToken  String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  proposals ExpenseProposal[]
+
+  @@unique([householdId, key])
+  @@index([householdId])
+}
+
+model ExpenseProposal {
+  id                 String                @id @default(uuid()) @db.Uuid
+  householdId         String                @db.Uuid
+  createdByUserId     String                @db.Uuid
+  title              String
+  description        String?
+  merchant           String?
+  categoryId         String?               @db.Uuid
+  expenseDate        DateTime              @db.Date
+  dueDate            DateTime?             @db.Date
+  originalAmount     Decimal               @db.Decimal(20, 6)
+  originalCurrency   String                @db.Char(3)
+  settlementCurrency String                @db.Char(3)
+  settlementAmount   Decimal               @db.Decimal(20, 6)
+  splitMethod        SplitMethod
+  fxPolicy           FxPolicy
+  fxRate             Decimal?              @db.Decimal(24, 12)
+  fxRateDate         DateTime?             @db.Date
+  fxProvider         String?
+  fxLockedAt         DateTime?
+  status             ExpenseProposalStatus @default(DRAFT)
+  revisionNumber     Int                   @default(1)
+  supersedesProposalId String?              @db.Uuid
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  cancelledAt        DateTime?
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category ExpenseCategory? @relation(fields: [categoryId], references: [id])
+  payers ExpensePayer[]
+  shares ExpenseShare[]
+  approvals ProposalApproval[]
+  comments ProposalComment[]
+
+  @@index([householdId, status])
+  @@index([householdId, expenseDate])
+  @@index([createdByUserId])
+}
+
+model ExpensePayer {
+  id                 String  @id @default(uuid()) @db.Uuid
+  proposalId          String  @db.Uuid
+  userId              String  @db.Uuid
+  amountOriginal      Decimal @db.Decimal(20, 6)
+  amountSettlement    Decimal @db.Decimal(20, 6)
+  isPrimary           Boolean @default(false)
+
+  proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+  @@index([userId])
+}
+
+model ExpenseShare {
+  id                    String      @id @default(uuid()) @db.Uuid
+  proposalId             String      @db.Uuid
+  debtorUserId           String      @db.Uuid
+  creditorUserId         String      @db.Uuid
+  shareOriginalAmount    Decimal     @db.Decimal(20, 6)
+  shareSettlementAmount  Decimal     @db.Decimal(20, 6)
+  shareCurrency          String      @db.Char(3)
+  settlementCurrency     String      @db.Char(3)
+  percentage             Decimal?    @db.Decimal(10, 6)
+  shareUnits             Decimal?    @db.Decimal(20, 6)
+  status                 ShareStatus @default(PENDING)
+  ledgerObligationId     String?     @unique @db.Uuid
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  approvals ProposalApproval[]
+
+  @@index([proposalId])
+  @@index([debtorUserId])
+  @@index([creditorUserId])
+}
+
+model ProposalApproval {
+  id             String           @id @default(uuid()) @db.Uuid
+  proposalId      String           @db.Uuid
+  shareId         String?          @db.Uuid
+  approverUserId  String           @db.Uuid
+  decision        ApprovalDecision
+  comment         String?
+  createdAt       DateTime         @default(now())
+
+  proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  share ExpenseShare? @relation(fields: [shareId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+  @@index([shareId])
+  @@index([approverUserId])
+}
+
+model ProposalComment {
+  id             String   @id @default(uuid()) @db.Uuid
+  proposalId      String   @db.Uuid
+  shareId         String?  @db.Uuid
+  authorUserId    String   @db.Uuid
+  body            String
+  createdAt       DateTime @default(now())
+
+  proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+}
+
+model FxRate {
+  id            String   @id @default(uuid()) @db.Uuid
+  provider      String
+  baseCurrency  String   @db.Char(3)
+  quoteCurrency String   @db.Char(3)
+  rateDate      DateTime @db.Date
+  rate          Decimal  @db.Decimal(24, 12)
+  fetchedAt     DateTime @default(now())
+  sourceMeta    Json?
+
+  @@unique([provider, baseCurrency, quoteCurrency, rateDate])
+}
+
+model LedgerTransaction {
+  id                     String                @id @default(uuid()) @db.Uuid
+  householdId             String                @db.Uuid
+  type                   LedgerTransactionType
+  description            String?
+  sourceType             String?
+  sourceId               String?               @db.Uuid
+  createdByUserId         String?               @db.Uuid
+  occurredAt             DateTime
+  createdAt              DateTime              @default(now())
+  reversesTransactionId   String?               @db.Uuid
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  obligations DebtObligation[]
+  settlements Settlement[]
+
+  @@index([householdId, occurredAt])
+  @@index([sourceType, sourceId])
+}
+
+model DebtObligation {
+  id                   String     @id @default(uuid()) @db.Uuid
+  householdId           String     @db.Uuid
+  ledgerTransactionId   String     @db.Uuid
+  sourceShareId         String?    @unique @db.Uuid
+  debtorUserId          String     @db.Uuid
+  creditorUserId        String     @db.Uuid
+  originalAmount        Decimal    @db.Decimal(20, 6)
+  originalCurrency      String     @db.Char(3)
+  settlementAmount      Decimal    @db.Decimal(20, 6)
+  settlementCurrency    String     @db.Char(3)
+  remainingAmount       Decimal    @db.Decimal(20, 6)
+  status                DebtStatus @default(OPEN)
+  dueDate               DateTime?  @db.Date
+  createdAt             DateTime   @default(now())
+  settledAt             DateTime?
+
+  transaction LedgerTransaction @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
+  allocations SettlementAllocation[]
+
+  @@index([householdId, debtorUserId])
+  @@index([householdId, creditorUserId])
+  @@index([householdId, status])
+}
+
+model Settlement {
+  id                    String           @id @default(uuid()) @db.Uuid
+  householdId            String           @db.Uuid
+  ledgerTransactionId    String           @db.Uuid
+  payerUserId            String           @db.Uuid
+  payeeUserId            String           @db.Uuid
+  amount                Decimal          @db.Decimal(20, 6)
+  currency              String           @db.Char(3)
+  settlementDate        DateTime         @db.Date
+  method                String
+  status                SettlementStatus @default(SUBMITTED)
+  note                  String?
+  createdByUserId        String           @db.Uuid
+  createdAt             DateTime         @default(now())
+
+  transaction LedgerTransaction @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
+  allocations SettlementAllocation[]
+
+  @@index([householdId, payerUserId])
+  @@index([householdId, payeeUserId])
+}
+
+model SettlementAllocation {
+  id                String  @id @default(uuid()) @db.Uuid
+  settlementId       String  @db.Uuid
+  debtObligationId   String  @db.Uuid
+  amountApplied      Decimal @db.Decimal(20, 6)
+
+  settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  obligation DebtObligation @relation(fields: [debtObligationId], references: [id], onDelete: Restrict)
+}
+
+model CalendarEvent {
+  id              String            @id @default(uuid()) @db.Uuid
+  householdId      String            @db.Uuid
+  type            CalendarEventType
+  title           String
+  description     String?
+  startAt         DateTime
+  endAt           DateTime?
+  allDay          Boolean           @default(false)
+  timezone        String
+  status          String            @default("OPEN")
+  createdByUserId String?           @db.Uuid
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([householdId, startAt])
+  @@index([householdId, type])
+}
+
+model RecurrenceRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  householdId String   @db.Uuid
+  ownerType   String
+  ownerId     String   @db.Uuid
+  rruleText   String
+  dtstart     DateTime
+  timezone    String
+  until       DateTime?
+  count       Int?
+  createdAt   DateTime @default(now())
+
+  @@index([householdId, ownerType, ownerId])
+}
+
+model Task {
+  id                 String   @id @default(uuid()) @db.Uuid
+  householdId         String   @db.Uuid
+  title              String
+  description        String?
+  status             String   @default("OPEN")
+  priority           String   @default("NORMAL")
+  categoryId         String?  @db.Uuid
+  dueAt              DateTime?
+  createdByUserId     String   @db.Uuid
+  completedByUserId   String?  @db.Uuid
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  assignments TaskAssignment[]
+
+  @@index([householdId, status])
+  @@index([householdId, dueAt])
+}
+
+model TaskAssignment {
+  id             String @id @default(uuid()) @db.Uuid
+  taskId          String @db.Uuid
+  assignedUserId  String @db.Uuid
+  role           String @default("OWNER")
+  status         String @default("ASSIGNED")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([assignedUserId])
+}
+
+model EventLink {
+  id          String   @id @default(uuid()) @db.Uuid
+  eventId     String   @db.Uuid
+  linkedType  String
+  linkedId    String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@index([eventId])
+  @@index([linkedType, linkedId])
+}
+
+model Notification {
+  id          String   @id @default(uuid()) @db.Uuid
+  householdId String   @db.Uuid
+  userId      String   @db.Uuid
+  type        String
+  titleKey    String
+  bodyKey     String
+  payload     Json?
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([householdId, userId, readAt])
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  householdId   String   @db.Uuid
+  actorUserId   String?  @db.Uuid
+  action       String
+  entityType   String
+  entityId     String   @db.Uuid
+  before       Json?
+  after        Json?
+  metadata     Json?
+  prevHash     String?
+  eventHash    String?
+  occurredAt   DateTime @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId, occurredAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+}

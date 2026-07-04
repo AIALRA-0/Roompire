@@ -1,0 +1,79 @@
+[
+  {
+    "key": "rent",
+    "nameEn": "Rent",
+    "nameZhCn": "房租",
+    "icon": "home",
+    "colorToken": "category.rent"
+  },
+  {
+    "key": "utilities",
+    "nameEn": "Utilities",
+    "nameZhCn": "水电煤气",
+    "icon": "zap",
+    "colorToken": "category.utilities"
+  },
+  {
+    "key": "internet",
+    "nameEn": "Internet",
+    "nameZhCn": "网络",
+    "icon": "wifi",
+    "colorToken": "category.internet"
+  },
+  {
+    "key": "groceries",
+    "nameEn": "Groceries",
+    "nameZhCn": "食品杂货",
+    "icon": "shopping-cart",
+    "colorToken": "category.groceries"
+  },
+  {
+    "key": "household_supplies",
+    "nameEn": "Household supplies",
+    "nameZhCn": "生活用品",
+    "icon": "package",
+    "colorToken": "category.supplies"
+  },
+  {
+    "key": "furniture",
+    "nameEn": "Furniture",
+    "nameZhCn": "家具",
+    "icon": "armchair",
+    "colorToken": "category.furniture"
+  },
+  {
+    "key": "cleaning",
+    "nameEn": "Cleaning",
+    "nameZhCn": "清洁",
+    "icon": "sparkles",
+    "colorToken": "category.cleaning"
+  },
+  {
+    "key": "repair",
+    "nameEn": "Repair",
+    "nameZhCn": "维修",
+    "icon": "wrench",
+    "colorToken": "category.repair"
+  },
+  {
+    "key": "parking",
+    "nameEn": "Parking",
+    "nameZhCn": "停车",
+    "icon": "car",
+    "colorToken": "category.parking"
+  },
+  {
+    "key": "social",
+    "nameEn": "Social",
+    "nameZhCn": "聚会活动",
+    "icon": "party-popper",
+    "colorToken": "category.social"
+  },
+  {
+    "key": "other",
+    "nameEn": "Other",
+    "nameZhCn": "其他",
+    "icon": "circle-ellipsis",
+    "colorToken": "category.other"
+  }
+]

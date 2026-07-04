@@ -1,0 +1,33 @@
+{
+  "name": "roompire",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "build": "turbo build",
+    "e2e": "env -u NO_COLOR playwright test",
+    "e2e:headed": "env -u NO_COLOR playwright test --headed",
+    "db:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} prisma validate --schema db/schema.prisma",
+    "db:generate": "DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} prisma generate --schema db/schema.prisma",
+    "db:migrate": "DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} prisma migrate deploy --schema db/schema.prisma",
+    "db:migrate:dev": "DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} prisma migrate dev --schema db/schema.prisma",
+    "db:seed": "pnpm db:generate && DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} tsx scripts/seed.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@prisma/client": "6"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest",
+    "prettier": "latest",
+    "prisma": "6",
+    "tsx": "latest",
+    "turbo": "latest",
+    "typescript": "5"
+  }
+}

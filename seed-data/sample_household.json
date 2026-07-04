@@ -1,0 +1,43 @@
+{
+  "household": {
+    "name": "USC 3B2B",
+    "timezone": "America/Los_Angeles",
+    "settlementCurrency": "CNY",
+    "fxPolicy": "LOCK_AT_EXPENSE_DATE"
+  },
+  "users": [
+    {
+      "displayName": "Alice",
+      "email": "alice@example.test",
+      "role": "OWNER",
+      "preferredLocale": "en-US"
+    },
+    {
+      "displayName": "Bob",
+      "email": "bob@example.test",
+      "role": "MEMBER",
+      "preferredLocale": "en-US"
+    },
+    {
+      "displayName": "Chen",
+      "email": "chen@example.test",
+      "role": "MEMBER",
+      "preferredLocale": "zh-CN"
+    },
+    {
+      "displayName": "Dana",
+      "email": "dana@example.test",
+      "role": "VIEWER",
+      "preferredLocale": "en-US"
+    }
+  ],
+  "exampleExpense": {
+    "title": "Costco groceries",
+    "expenseDate": "2026-07-01",
+    "originalAmount": "120.00",
+    "originalCurrency": "USD",
+    "settlementCurrency": "CNY",
+    "splitMethod": "EQUAL",
+    "participants": ["Alice", "Bob", "Chen"]
+  }
+}

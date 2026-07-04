@@ -1,0 +1,33 @@
+{
+  "packageName": "roompire_dev_package",
+  "createdAt": "2026-07-03",
+  "repo": "https://github.com/AIALRA-0/Roompire.git",
+  "domain": "roompire.aialra.online",
+  "documents": [
+    "README.md",
+    "AGENTS.md",
+    "PROJECT_MEMORY.md",
+    "docs/00_context_decisions.md",
+    "docs/01_project_plan.md",
+    "docs/02_prd.md",
+    "docs/03_technical_design.md",
+    "docs/04_test_plan.md",
+    "docs/05_database_design.md",
+    "docs/06_api_specification.md",
+    "specs/openapi.roompire.v1.yaml",
+    "docs/07_ui_ux_spec.md",
+    "docs/08_coding_standards_tech_stack.md",
+    "docs/09_agent_instructions_workflow.md",
+    "prompts/CODEX_MASTER_PROMPT.md",
+    "prompts/CODEX_SESSION_START_PROMPT.md",
+    "docs/10_backlog_milestones.md",
+    "docs/11_security_privacy_backup.md",
+    "docs/12_acceptance_checklist.md",
+    "docs/13_sources.md",
+    "db/schema.prisma",
+    "seed-data/initial_categories.json",
+    "seed-data/sample_household.json",
+    ".github/workflows/ci.yml",
+    ".github/workflows/e2e.yml"
+  ]
+}

@@ -1,0 +1,58 @@
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: roompire
+          POSTGRES_PASSWORD: roompire
+          POSTGRES_DB: roompire_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+      - name: Prepare database
+        run: pnpm db:migrate && pnpm db:seed
+        env:
+          DATABASE_URL: postgresql://roompire:roompire@localhost:5432/roompire_test
+      - name: Build
+        run: pnpm build
+      - name: E2E real browser tests
+        run: pnpm e2e
+        env:
+          DATABASE_URL: postgresql://roompire:roompire@localhost:5432/roompire_test
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

@@ -1,0 +1,398 @@
+openapi: 3.1.0
+info:
+  title: Roompire API
+  version: 0.1.0
+  description: >
+    Roompire PWA-first shared-house ledger, approval, FX, calendar, task, and audit API.
+servers:
+  - url: https://roompire.aialra.online/api/v1
+    description: Production
+  - url: http://localhost:3000/api/v1
+    description: Local development
+security:
+  - cookieAuth: []
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: roompire_session
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+    Role:
+      type: string
+      enum: [OWNER, ADMIN, MEMBER, VIEWER]
+    CurrencyCode:
+      type: string
+      pattern: "^[A-Z]{3}$"
+      examples: [USD, CNY]
+    DecimalString:
+      type: string
+      pattern: '^-?\d+(\.\d+)?$'
+    FxPolicy:
+      type: string
+      enum:
+        [
+          LOCK_AT_EXPENSE_DATE,
+          ORIGINAL_CURRENCY_DEBT,
+          MANUAL_RATE_WITH_APPROVAL,
+          FX_DIFFERENCE_ADJUSTMENT,
+        ]
+    SplitMethod:
+      type: string
+      enum: [EQUAL, EXACT, PERCENTAGE, SHARES, ADJUSTMENT]
+    ExpenseProposalStatus:
+      type: string
+      enum:
+        [
+          DRAFT,
+          SUBMITTED,
+          PARTIALLY_APPROVED,
+          APPROVED,
+          PARTIALLY_MATURED,
+          MATURED_TO_LEDGER,
+          REJECTED,
+          DISPUTED,
+          CANCELLED,
+        ]
+    ShareStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, DISPUTED, MATURED_TO_LEDGER]
+    User:
+      type: object
+      required: [id, email, displayName]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        preferredLocale: { type: string, enum: [zh-CN, en-US] }
+    Household:
+      type: object
+      required: [id, name, timezone, settlementCurrency, fxPolicy]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        timezone: { type: string, example: America/Los_Angeles }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
+    Member:
+      type: object
+      required: [id, userId, role, displayName]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        role: { $ref: "#/components/schemas/Role" }
+        displayName: { type: string }
+    ExpensePayerInput:
+      type: object
+      required: [userId, amountOriginal]
+      properties:
+        userId: { type: string, format: uuid }
+        amountOriginal: { $ref: "#/components/schemas/DecimalString" }
+    ExpenseParticipantInput:
+      type: object
+      required: [userId]
+      properties:
+        userId: { type: string, format: uuid }
+        exactAmountOriginal: { $ref: "#/components/schemas/DecimalString" }
+        percentage: { $ref: "#/components/schemas/DecimalString" }
+        shareUnits: { $ref: "#/components/schemas/DecimalString" }
+    CreateExpenseProposalRequest:
+      type: object
+      required:
+        [
+          title,
+          categoryId,
+          expenseDate,
+          originalAmount,
+          originalCurrency,
+          settlementCurrency,
+          splitMethod,
+          payers,
+          participants,
+        ]
+      properties:
+        title: { type: string, minLength: 1 }
+        description: { type: string }
+        merchant: { type: string }
+        categoryId: { type: string, format: uuid }
+        expenseDate: { type: string, format: date }
+        dueDate: { type: string, format: date }
+        originalAmount: { $ref: "#/components/schemas/DecimalString" }
+        originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        splitMethod: { $ref: "#/components/schemas/SplitMethod" }
+        payers:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ExpensePayerInput" }
+        participants:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ExpenseParticipantInput" }
+        tagIds:
+          type: array
+          items: { type: string, format: uuid }
+        fileIds:
+          type: array
+          items: { type: string, format: uuid }
+    ExpenseShare:
+      type: object
+      required:
+        [id, debtorUserId, creditorUserId, shareOriginalAmount, shareSettlementAmount, status]
+      properties:
+        id: { type: string, format: uuid }
+        debtorUserId: { type: string, format: uuid }
+        creditorUserId: { type: string, format: uuid }
+        shareOriginalAmount: { $ref: "#/components/schemas/DecimalString" }
+        shareSettlementAmount: { $ref: "#/components/schemas/DecimalString" }
+        status: { $ref: "#/components/schemas/ShareStatus" }
+    ExpenseProposal:
+      type: object
+      required:
+        [
+          id,
+          title,
+          status,
+          originalAmount,
+          originalCurrency,
+          settlementAmount,
+          settlementCurrency,
+          shares,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        status: { $ref: "#/components/schemas/ExpenseProposalStatus" }
+        originalAmount: { $ref: "#/components/schemas/DecimalString" }
+        originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        settlementAmount: { $ref: "#/components/schemas/DecimalString" }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        fxRate: { $ref: "#/components/schemas/DecimalString" }
+        fxRateDate: { type: string, format: date }
+        fxProvider: { type: string }
+        shares:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseShare" }
+    BalanceEdge:
+      type: object
+      required: [debtorUserId, creditorUserId, amount, currency]
+      properties:
+        debtorUserId: { type: string, format: uuid }
+        creditorUserId: { type: string, format: uuid }
+        amount: { $ref: "#/components/schemas/DecimalString" }
+        currency: { $ref: "#/components/schemas/CurrencyCode" }
+paths:
+  /session:
+    get:
+      summary: Get current session
+      responses:
+        "200":
+          description: Current session or null user
+  /households:
+    get:
+      summary: List current user's households
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create household
+      responses:
+        "201": { description: Created }
+  /households/{householdId}/members:
+    get:
+      summary: List household members
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: OK }
+  /households/{householdId}/expenses/proposals:
+    get:
+      summary: List expense proposals
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/ExpenseProposalStatus" }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create expense proposal
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExpenseProposalRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseProposal" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/expenses/proposals/{proposalId}:
+    get:
+      summary: Get expense proposal detail
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: proposalId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseProposal" }
+  /households/{householdId}/expenses/proposals/{proposalId}/submit:
+    post:
+      summary: Submit a draft proposal for approval
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: proposalId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Submitted }
+  /households/{householdId}/expenses/shares/{shareId}/approve:
+    post:
+      summary: Approve own assigned expense share
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: shareId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Approved }
+  /households/{householdId}/expenses/shares/{shareId}/reject:
+    post:
+      summary: Reject own assigned expense share
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: shareId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1 }
+      responses:
+        "200": { description: Rejected }
+  /households/{householdId}/balances:
+    get:
+      summary: Get formal ledger balances only
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/BalanceEdge" }
+  /households/{householdId}/calendar/events:
+    get:
+      summary: List calendar events
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: start
+          schema: { type: string, format: date-time }
+        - in: query
+          name: end
+          schema: { type: string, format: date-time }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create calendar event
+      responses:
+        "201": { description: Created }
+  /households/{householdId}/tasks:
+    get:
+      summary: List tasks
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create task
+      responses:
+        "201": { description: Created }
+  /households/{householdId}/audit-events:
+    get:
+      summary: List audit events
+      responses:
+        "200": { description: OK }
