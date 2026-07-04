@@ -184,9 +184,27 @@ async function attachLinkedEventIdsToTasks(
     eventIdsByTaskId.set(link.linkedId, eventIds);
   }
 
+  const proposalLinks = await client.taskExpenseProposalLink.findMany({
+    where: {
+      taskId: {
+        in: tasks.map((task) => task.id),
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  const proposalIdsByTaskId = new Map<string, string[]>();
+
+  for (const link of proposalLinks) {
+    const proposalIds = proposalIdsByTaskId.get(link.taskId) ?? [];
+
+    proposalIds.push(link.proposalId);
+    proposalIdsByTaskId.set(link.taskId, proposalIds);
+  }
+
   return tasks.map((task) => ({
     ...task,
     linkedEventIds: eventIdsByTaskId.get(task.id) ?? [],
+    linkedProposalIds: proposalIdsByTaskId.get(task.id) ?? [],
   }));
 }
 
@@ -696,9 +714,8 @@ export async function completeTaskForHousehold(
       },
     });
 
-    return {
-      ...updatedTask,
-      linkedEventIds,
-    };
+    const [linkedTask] = await attachLinkedEventIdsToTasks(tx, [updatedTask]);
+
+    return linkedTask!;
   });
 }

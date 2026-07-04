@@ -48,9 +48,9 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Settlement create/confirm/reject mutations persist `Idempotency-Key` records with replay/conflict behavior.
 - Settlement suggestion API/page section nets open obligations by currency and returns optimized debtor-to-creditor transfers.
 - Owner/admin ledger correction APIs support manual adjustments and reversal of unallocated open obligations with append-only ledger transactions.
-- Calendar/task APIs and `/[locale]/app/calendar` page let owners/admins/members create one-off or finite recurring calendar events, switch event list/week/month views, create/assign one-off or recurring tasks, auto-link due tasks to `TASK` calendar events, and complete tasks with linked event status updates.
+- Calendar/task APIs and `/[locale]/app/calendar` page let owners/admins/members create one-off or finite recurring calendar events, switch event list/week/month views, create/assign one-off or recurring tasks, auto-link due tasks to `TASK` calendar events, complete tasks with linked event status updates, and create linked pending expense proposals from tasks.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current list/create/detail proposal, share approve/reject idempotency, balance, obligation, ledger transaction, settlement, settlement suggestion, ledger correction, calendar event, and task endpoints.
+- OpenAPI covers the current list/create/detail proposal, share approve/reject idempotency, balance, obligation, ledger transaction, settlement, settlement suggestion, ledger correction, calendar event, task, and task-to-expense proposal endpoints.
 
 ## Development
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { CalendarDays, Check, ListChecks, Plus } from "lucide-react";
+import { CalendarDays, Check, ListChecks, Plus, ReceiptText } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,11 @@ type CalendarWorkspaceMember = {
   displayName: string;
   email: string;
   role: string;
+};
+
+type ExpenseCategorySummary = {
+  id: string;
+  name: string;
 };
 
 type CalendarWorkspaceLabels = {
@@ -67,6 +73,23 @@ type CalendarWorkspaceLabels = {
   working: string;
   errorFallback: string;
   linkedTask: string;
+  linkedExpenseProposal: string;
+  createExpenseProposal: string;
+  expenseProposalCreated: string;
+  openProposal: string;
+  proposalTitle: string;
+  merchant: string;
+  category: string;
+  uncategorized: string;
+  expenseDate: string;
+  dueDate: string;
+  originalAmount: string;
+  originalCurrency: string;
+  settlementCurrency: string;
+  fxRate: string;
+  debtors: string;
+  payerShareIncluded: string;
+  submitProposal: string;
   eventViewList: string;
   eventViewWeek: string;
   eventViewMonth: string;
@@ -79,11 +102,15 @@ type CalendarWorkspaceLabels = {
 type CalendarWorkspaceProps = {
   activeHouseholdId: string | null;
   canCreateWorkItems: boolean;
+  canCreateExpenseProposals: boolean;
+  categories: ExpenseCategorySummary[];
+  currentUserId: string;
   events: SerializedCalendarEvent[];
   tasks: SerializedTask[];
   members: CalendarWorkspaceMember[];
   labels: CalendarWorkspaceLabels;
   locale: string;
+  settlementCurrency: string | null;
 };
 
 type ApiErrorPayload = {
@@ -142,6 +169,10 @@ function formatDateTime(value: string | null, locale: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function dateOnly(value: Date | string) {
+  return new Date(value).toISOString().slice(0, 10);
 }
 
 function statusVariant(status: string) {
@@ -204,19 +235,27 @@ function formatMonthHeading(value: Date, locale: string) {
 
 export function CalendarWorkspace({
   activeHouseholdId,
+  canCreateExpenseProposals,
   canCreateWorkItems,
+  categories,
+  currentUserId,
   events,
   tasks,
   members,
   labels,
   locale,
+  settlementCurrency,
 }: CalendarWorkspaceProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const [eventViewMode, setEventViewMode] = useState<EventViewMode>("LIST");
+  const [expandedExpenseTaskId, setExpandedExpenseTaskId] = useState<string | null>(null);
   const writableMembers = members.filter((member) => member.role !== "VIEWER");
+  const expenseDebtorOptions = members.filter(
+    (member) => member.role !== "VIEWER" && member.userId !== currentUserId,
+  );
   const memberNamesByUserId = useMemo(
     () => new Map(members.map((member) => [member.userId, member.displayName])),
     [members],
@@ -346,6 +385,42 @@ export function CalendarWorkspace({
         labels.errorFallback,
       );
       setMessage(labels.taskCompleted);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : labels.errorFallback);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
+
+  async function createTaskExpenseProposal(taskId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    setBusyActionId(`task-expense-${taskId}`);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      await postCalendarMutation(
+        `/api/v1/households/${activeHouseholdId}/tasks/${taskId}/create-expense-proposal`,
+        {
+          title: String(formData.get("title") ?? ""),
+          merchant: String(formData.get("merchant") ?? ""),
+          categoryId: String(formData.get("categoryId") ?? ""),
+          expenseDate: String(formData.get("expenseDate") ?? ""),
+          dueDate: String(formData.get("dueDate") ?? ""),
+          originalAmount: String(formData.get("originalAmount") ?? ""),
+          originalCurrency: String(formData.get("originalCurrency") ?? "").toUpperCase(),
+          fxRate: String(formData.get("fxRate") ?? ""),
+          participantUserIds: formData.getAll("participantUserIds").map(String),
+          splitMethod: "EQUAL",
+        },
+        labels.errorFallback,
+      );
+      form.reset();
+      setExpandedExpenseTaskId(null);
+      setMessage(labels.expenseProposalCreated);
       startTransition(() => router.refresh());
     } catch (error) {
       setMessage(error instanceof Error ? error.message : labels.errorFallback);
@@ -671,6 +746,9 @@ export function CalendarWorkspace({
                         {event.links.some((link) => link.linkedType === "task") ? (
                           <Badge>{labels.linkedTask}</Badge>
                         ) : null}
+                        {event.links.some((link) => link.linkedType === "expense_proposal") ? (
+                          <Badge>{labels.linkedExpenseProposal}</Badge>
+                        ) : null}
                       </div>
                     </div>
                   ))}
@@ -773,58 +851,231 @@ export function CalendarWorkspace({
               {tasks.map((task) => {
                 const assigneeNames = taskAssignmentsByTaskId.get(task.id) ?? [];
                 const taskStatus = task.status as StatusKey;
+                const hasLinkedProposal = task.linkedProposalIds.length > 0;
+                const isExpenseFormOpen = expandedExpenseTaskId === task.id;
+                const canCreateTaskExpenseProposal =
+                  canCreateExpenseProposals &&
+                  !hasLinkedProposal &&
+                  expenseDebtorOptions.length > 0;
+                const isTaskExpenseBusy = busyActionId === `task-expense-${task.id}`;
 
                 return (
                   <div
-                    className="grid min-w-0 gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+                    className="grid min-w-0 gap-3 p-4"
                     data-testid={`task-row-${task.id}`}
                     key={task.id}
                   >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="min-w-0 flex-1 break-words text-sm font-medium">
-                          {task.title}
+                    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="min-w-0 flex-1 break-words text-sm font-medium">
+                            {task.title}
+                          </p>
+                          <Badge variant={statusVariant(task.status)}>
+                            {labels.statuses[taskStatus] ?? task.status}
+                          </Badge>
+                          <Badge variant="neutral">
+                            {labels.priorities[(task.priority as PriorityKey) ?? "NORMAL"] ??
+                              task.priority}
+                          </Badge>
+                          {hasLinkedProposal ? <Badge>{labels.linkedExpenseProposal}</Badge> : null}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {task.dueAt ? formatDateTime(task.dueAt, locale) : labels.noDueDate}
                         </p>
-                        <Badge variant={statusVariant(task.status)}>
-                          {labels.statuses[taskStatus] ?? task.status}
-                        </Badge>
-                        <Badge variant="neutral">
-                          {labels.priorities[(task.priority as PriorityKey) ?? "NORMAL"] ??
-                            task.priority}
-                        </Badge>
+                        {assigneeNames.length > 0 ? (
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {assigneeNames.join(", ")}
+                          </p>
+                        ) : null}
+                        {task.description ? (
+                          <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                            {task.description}
+                          </p>
+                        ) : null}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {task.dueAt ? formatDateTime(task.dueAt, locale) : labels.noDueDate}
-                      </p>
-                      {assigneeNames.length > 0 ? (
-                        <p className="mt-1 truncate text-xs text-muted-foreground">
-                          {assigneeNames.join(", ")}
-                        </p>
-                      ) : null}
-                      {task.description ? (
-                        <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                          {task.description}
-                        </p>
-                      ) : null}
+                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        {task.linkedProposalIds.map((proposalId) => (
+                          <Button asChild key={proposalId} size="sm" variant="outline">
+                            <Link
+                              data-testid={`task-proposal-link-${task.id}-${proposalId}`}
+                              href={`/${locale}/app/households/${activeHouseholdId}/expenses/proposals/${proposalId}`}
+                            >
+                              {labels.openProposal}
+                            </Link>
+                          </Button>
+                        ))}
+                        <Button
+                          data-testid={`task-expense-toggle-${task.id}`}
+                          disabled={!canCreateTaskExpenseProposal || isTaskExpenseBusy || isPending}
+                          onClick={() =>
+                            setExpandedExpenseTaskId(isExpenseFormOpen ? null : task.id)
+                          }
+                          type="button"
+                          variant="outline"
+                        >
+                          <ReceiptText aria-hidden="true" className="h-4 w-4" />
+                          {labels.createExpenseProposal}
+                        </Button>
+                        <Button
+                          data-testid={`task-complete-${task.id}`}
+                          disabled={
+                            !canCreateWorkItems ||
+                            task.status === "COMPLETED" ||
+                            busyActionId === `complete-${task.id}` ||
+                            isPending
+                          }
+                          onClick={() => void completeTask(task.id)}
+                          type="button"
+                          variant="outline"
+                        >
+                          <Check aria-hidden="true" className="h-4 w-4" />
+                          {busyActionId === `complete-${task.id}`
+                            ? labels.working
+                            : labels.completeTask}
+                        </Button>
+                      </div>
                     </div>
-                    <Button
-                      data-testid={`task-complete-${task.id}`}
-                      className="w-full lg:w-auto"
-                      disabled={
-                        !canCreateWorkItems ||
-                        task.status === "COMPLETED" ||
-                        busyActionId === `complete-${task.id}` ||
-                        isPending
-                      }
-                      onClick={() => void completeTask(task.id)}
-                      type="button"
-                      variant="outline"
-                    >
-                      <Check aria-hidden="true" className="h-4 w-4" />
-                      {busyActionId === `complete-${task.id}`
-                        ? labels.working
-                        : labels.completeTask}
-                    </Button>
+                    {isExpenseFormOpen ? (
+                      <form
+                        className="grid gap-3 border-t border-border pt-3"
+                        data-testid={`task-expense-form-${task.id}`}
+                        onSubmit={(event) => void createTaskExpenseProposal(task.id, event)}
+                      >
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label={labels.proposalTitle}>
+                            <input
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                              data-testid={`task-expense-title-${task.id}`}
+                              defaultValue={task.title}
+                              maxLength={120}
+                              name="title"
+                              required
+                            />
+                          </Field>
+                          <Field label={labels.merchant}>
+                            <input
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                              data-testid={`task-expense-merchant-${task.id}`}
+                              name="merchant"
+                            />
+                          </Field>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label={labels.category}>
+                            <select
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                              data-testid={`task-expense-category-${task.id}`}
+                              name="categoryId"
+                            >
+                              <option value="">{labels.uncategorized}</option>
+                              {categories.map((category) => (
+                                <option key={category.id} value={category.id}>
+                                  {category.name}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field label={labels.expenseDate}>
+                            <input
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                              data-testid={`task-expense-date-${task.id}`}
+                              defaultValue={dateOnly(new Date())}
+                              name="expenseDate"
+                              required
+                              type="date"
+                            />
+                          </Field>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label={labels.dueDate}>
+                            <input
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                              data-testid={`task-expense-due-date-${task.id}`}
+                              defaultValue={task.dueAt ? dateOnly(task.dueAt) : ""}
+                              name="dueDate"
+                              type="date"
+                            />
+                          </Field>
+                          <Field label={labels.originalAmount}>
+                            <input
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                              data-testid={`task-expense-amount-${task.id}`}
+                              min="0.01"
+                              name="originalAmount"
+                              required
+                              step="0.01"
+                              type="number"
+                            />
+                          </Field>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <Field label={labels.originalCurrency}>
+                            <input
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
+                              data-testid={`task-expense-original-currency-${task.id}`}
+                              defaultValue={settlementCurrency ?? "USD"}
+                              maxLength={3}
+                              minLength={3}
+                              name="originalCurrency"
+                              required
+                            />
+                          </Field>
+                          <Field label={labels.settlementCurrency}>
+                            <input
+                              className="h-10 rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground"
+                              data-testid={`task-expense-settlement-currency-${task.id}`}
+                              disabled
+                              value={settlementCurrency ?? ""}
+                            />
+                          </Field>
+                          <Field label={labels.fxRate}>
+                            <input
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                              data-testid={`task-expense-fx-rate-${task.id}`}
+                              defaultValue="1"
+                              min="0.000001"
+                              name="fxRate"
+                              step="0.000001"
+                              type="number"
+                            />
+                          </Field>
+                        </div>
+                        <fieldset className="grid gap-2">
+                          <legend className="text-sm font-medium">{labels.debtors}</legend>
+                          <p className="text-xs text-muted-foreground">
+                            {labels.payerShareIncluded}
+                          </p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {expenseDebtorOptions.map((member) => (
+                              <label
+                                className="flex items-center gap-2 text-sm"
+                                key={member.userId}
+                              >
+                                <input
+                                  className="h-4 w-4 rounded border-input"
+                                  data-testid={`task-expense-debtor-${task.id}-${member.email}`}
+                                  name="participantUserIds"
+                                  type="checkbox"
+                                  value={member.userId}
+                                />
+                                <span className="min-w-0 truncate">
+                                  {member.displayName} · {member.email}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                        <Button
+                          data-testid={`task-expense-submit-${task.id}`}
+                          disabled={isTaskExpenseBusy || isPending}
+                          type="submit"
+                        >
+                          <Plus aria-hidden="true" className="h-4 w-4" />
+                          {isTaskExpenseBusy ? labels.working : labels.submitProposal}
+                        </Button>
+                      </form>
+                    ) : null}
                   </div>
                 );
               })}

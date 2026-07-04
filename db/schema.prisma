@@ -243,6 +243,7 @@ model ExpenseProposal {
   shares ExpenseShare[]
   approvals ProposalApproval[]
   comments ProposalComment[]
+  taskLinks TaskExpenseProposalLink[]
 
   @@index([householdId, status])
   @@index([householdId, expenseDate])
@@ -457,6 +458,7 @@ model Task {
   updatedAt          DateTime @updatedAt
 
   assignments TaskAssignment[]
+  expenseProposalLinks TaskExpenseProposalLink[]
 
   @@index([householdId, status])
   @@index([householdId, dueAt])
@@ -473,6 +475,20 @@ model TaskAssignment {
 
   @@index([taskId])
   @@index([assignedUserId])
+}
+
+model TaskExpenseProposalLink {
+  id              String   @id @default(uuid()) @db.Uuid
+  taskId          String   @unique @db.Uuid
+  proposalId      String   @unique @db.Uuid
+  createdByUserId String   @db.Uuid
+  createdAt       DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+  @@index([createdByUserId])
 }
 
 model EventLink {

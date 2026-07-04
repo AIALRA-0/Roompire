@@ -4,6 +4,7 @@ import {
   CalendarEventType,
   ExpenseProposalStatus,
   LedgerTransactionType,
+  Prisma,
   Role,
   ShareStatus,
   SplitMethod,
@@ -53,6 +54,16 @@ export const createExpenseProposalSchema = z.object({
   splitMethod: z.literal("EQUAL").default("EQUAL"),
 });
 
+export const createTaskExpenseProposalSchema = createExpenseProposalSchema
+  .omit({
+    description: true,
+    title: true,
+  })
+  .extend({
+    title: z.string().trim().min(2).max(120).optional(),
+    description: z.string().trim().max(1000).optional(),
+  });
+
 export const listExpenseProposalQuerySchema = z.object({
   status: z.nativeEnum(ExpenseProposalStatus).optional(),
 });
@@ -64,6 +75,34 @@ export const approveExpenseShareSchema = z.object({
 export const rejectExpenseShareSchema = z.object({
   reason: z.string().trim().min(1).max(1000),
 });
+
+type CreateExpenseProposalData = z.infer<typeof createExpenseProposalSchema>;
+type ExpenseCreatorMembership = Awaited<ReturnType<typeof requireExpenseProposalCreator>>;
+
+type PreparedExpenseProposalCreate = {
+  userId: string;
+  householdId: string;
+  data: CreateExpenseProposalData;
+  household: ExpenseCreatorMembership["household"];
+  debtorUserIds: string[];
+  originalAmount: Decimal;
+  originalCurrency: string;
+  settlementAmount: Decimal;
+  settlementCurrency: string;
+  sameCurrency: boolean;
+  fxRate: Decimal;
+  expenseDate: Date;
+  dueDate?: Date;
+  shareRows: Array<{
+    debtorUserId: string;
+    creditorUserId: string;
+    shareOriginalAmount: string;
+    shareSettlementAmount: string;
+    shareCurrency: string;
+    settlementCurrency: string;
+  }>;
+  sourceTaskId?: string;
+};
 
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
@@ -79,6 +118,10 @@ function uniqueValues(values: string[]) {
 
 function assertCanParticipate(role: Role) {
   return role === Role.OWNER || role === Role.ADMIN || role === Role.MEMBER;
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
 function proposalStatusFromShares(shares: Array<{ status: ShareStatus }>) {
@@ -259,19 +302,13 @@ export async function getExpenseProposalForUser(
   return proposal;
 }
 
-export async function createExpenseProposalForHousehold(
+async function prepareExpenseProposalCreate(
   userId: string,
   householdId: string,
-  input: unknown,
+  creatorMembership: ExpenseCreatorMembership,
+  data: CreateExpenseProposalData,
+  sourceTaskId?: string,
 ) {
-  const creatorMembership = await requireExpenseProposalCreator(userId, householdId);
-  const parsed = createExpenseProposalSchema.safeParse(input);
-
-  if (!parsed.success) {
-    throw validationError("Expense proposal input is invalid.", parsed.error.flatten());
-  }
-
-  const data = parsed.data;
   const household = creatorMembership.household;
   const debtorUserIds = uniqueValues(data.participantUserIds);
 
@@ -325,72 +362,261 @@ export async function createExpenseProposalForHousehold(
   const expenseDate = dateOnlyToUtc(data.expenseDate);
   const dueDate = data.dueDate ? dateOnlyToUtc(data.dueDate) : undefined;
 
-  return prisma.$transaction(async (tx) => {
-    const proposal = await tx.expenseProposal.create({
-      data: {
-        householdId,
-        createdByUserId: userId,
-        title: data.title,
-        description: data.description,
-        merchant: data.merchant,
-        categoryId: data.categoryId,
-        expenseDate,
-        dueDate,
-        originalAmount: decimalToFixed6(originalAmount),
-        originalCurrency,
-        settlementCurrency,
-        settlementAmount: decimalToFixed6(settlementAmount),
-        splitMethod: SplitMethod.EQUAL,
-        fxPolicy: household.fxPolicy,
-        fxRate: decimalToFixed6(fxRate),
-        fxRateDate: expenseDate,
-        fxProvider: sameCurrency ? "same-currency" : "manual-entry",
-        fxLockedAt: new Date(),
-        status: ExpenseProposalStatus.SUBMITTED,
-        payers: {
-          create: [
-            {
-              userId,
-              amountOriginal: decimalToFixed6(originalAmount),
-              amountSettlement: decimalToFixed6(settlementAmount),
-              isPrimary: true,
-            },
-          ],
-        },
-        shares: {
-          create: shareRows,
-        },
-      },
-      include: {
-        category: true,
-        payers: true,
-        shares: true,
-      },
-    });
+  return {
+    userId,
+    householdId,
+    data,
+    household,
+    debtorUserIds,
+    originalAmount,
+    originalCurrency,
+    settlementAmount,
+    settlementCurrency,
+    sameCurrency,
+    fxRate,
+    expenseDate,
+    dueDate,
+    shareRows,
+    sourceTaskId,
+  };
+}
 
-    await tx.auditEvent.create({
-      data: {
-        householdId,
-        actorUserId: userId,
-        action: "expense_proposal.submitted",
-        entityType: "ExpenseProposal",
-        entityId: proposal.id,
-        after: {
-          title: proposal.title,
-          status: proposal.status,
-          originalAmount: proposal.originalAmount.toString(),
-          originalCurrency,
-          settlementAmount: proposal.settlementAmount.toString(),
-          settlementCurrency,
-          splitMethod: proposal.splitMethod,
-          shareStatus: ShareStatus.PENDING,
-          debtorUserIds,
-        },
+async function createExpenseProposalRecord(
+  tx: Prisma.TransactionClient,
+  prepared: PreparedExpenseProposalCreate,
+) {
+  const proposal = await tx.expenseProposal.create({
+    data: {
+      householdId: prepared.householdId,
+      createdByUserId: prepared.userId,
+      title: prepared.data.title,
+      description: prepared.data.description,
+      merchant: prepared.data.merchant,
+      categoryId: prepared.data.categoryId,
+      expenseDate: prepared.expenseDate,
+      dueDate: prepared.dueDate,
+      originalAmount: decimalToFixed6(prepared.originalAmount),
+      originalCurrency: prepared.originalCurrency,
+      settlementCurrency: prepared.settlementCurrency,
+      settlementAmount: decimalToFixed6(prepared.settlementAmount),
+      splitMethod: SplitMethod.EQUAL,
+      fxPolicy: prepared.household.fxPolicy,
+      fxRate: decimalToFixed6(prepared.fxRate),
+      fxRateDate: prepared.expenseDate,
+      fxProvider: prepared.sameCurrency ? "same-currency" : "manual-entry",
+      fxLockedAt: new Date(),
+      status: ExpenseProposalStatus.SUBMITTED,
+      payers: {
+        create: [
+          {
+            userId: prepared.userId,
+            amountOriginal: decimalToFixed6(prepared.originalAmount),
+            amountSettlement: decimalToFixed6(prepared.settlementAmount),
+            isPrimary: true,
+          },
+        ],
       },
-    });
-
-    return proposal;
+      shares: {
+        create: prepared.shareRows,
+      },
+    },
+    include: {
+      category: true,
+      payers: true,
+      shares: true,
+    },
   });
+
+  await tx.auditEvent.create({
+    data: {
+      householdId: prepared.householdId,
+      actorUserId: prepared.userId,
+      action: "expense_proposal.submitted",
+      entityType: "ExpenseProposal",
+      entityId: proposal.id,
+      after: {
+        title: proposal.title,
+        status: proposal.status,
+        originalAmount: proposal.originalAmount.toString(),
+        originalCurrency: prepared.originalCurrency,
+        settlementAmount: proposal.settlementAmount.toString(),
+        settlementCurrency: prepared.settlementCurrency,
+        splitMethod: proposal.splitMethod,
+        shareStatus: ShareStatus.PENDING,
+        debtorUserIds: prepared.debtorUserIds,
+        sourceTaskId: prepared.sourceTaskId ?? null,
+      },
+    },
+  });
+
+  return proposal;
+}
+
+export async function createExpenseProposalForHousehold(
+  userId: string,
+  householdId: string,
+  input: unknown,
+) {
+  const creatorMembership = await requireExpenseProposalCreator(userId, householdId);
+  const parsed = createExpenseProposalSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Expense proposal input is invalid.", parsed.error.flatten());
+  }
+
+  const prepared = await prepareExpenseProposalCreate(
+    userId,
+    householdId,
+    creatorMembership,
+    parsed.data,
+  );
+
+  return prisma.$transaction((tx) => createExpenseProposalRecord(tx, prepared));
+}
+
+export async function createExpenseProposalFromTaskForHousehold(
+  userId: string,
+  householdId: string,
+  taskId: string,
+  input: unknown,
+) {
+  const creatorMembership = await requireExpenseProposalCreator(userId, householdId);
+  const parsed = createTaskExpenseProposalSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Task expense proposal input is invalid.", parsed.error.flatten());
+  }
+
+  const task = await prisma.task.findFirst({
+    where: {
+      id: taskId,
+      householdId,
+    },
+    include: {
+      assignments: true,
+      expenseProposalLinks: {
+        select: {
+          proposalId: true,
+        },
+      },
+    },
+  });
+
+  if (!task) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  const isManager = creatorMembership.role === Role.OWNER || creatorMembership.role === Role.ADMIN;
+  const isTaskParticipant =
+    task.createdByUserId === userId ||
+    task.assignments.some((assignment) => assignment.assignedUserId === userId);
+
+  if (!isManager && !isTaskParticipant) {
+    throw new ApiError(
+      403,
+      "FORBIDDEN",
+      "Members can create expense proposals only for tasks they created or are assigned to.",
+    );
+  }
+
+  if (task.expenseProposalLinks.length > 0) {
+    throw new ApiError(
+      409,
+      "TASK_EXPENSE_PROPOSAL_EXISTS",
+      "This task already has a linked expense proposal.",
+      {
+        proposalId: task.expenseProposalLinks[0]?.proposalId,
+      },
+    );
+  }
+
+  const taskDate = task.dueAt?.toISOString().slice(0, 10);
+  const data = {
+    ...parsed.data,
+    description: parsed.data.description ?? task.description ?? undefined,
+    dueDate: parsed.data.dueDate ?? taskDate,
+    title: parsed.data.title ?? task.title,
+  };
+  const prepared = await prepareExpenseProposalCreate(
+    userId,
+    householdId,
+    creatorMembership,
+    data,
+    task.id,
+  );
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existingLink = await tx.taskExpenseProposalLink.findUnique({
+        where: {
+          taskId,
+        },
+      });
+
+      if (existingLink) {
+        throw new ApiError(
+          409,
+          "TASK_EXPENSE_PROPOSAL_EXISTS",
+          "This task already has a linked expense proposal.",
+          {
+            proposalId: existingLink.proposalId,
+          },
+        );
+      }
+
+      const proposal = await createExpenseProposalRecord(tx, prepared);
+      const link = await tx.taskExpenseProposalLink.create({
+        data: {
+          taskId,
+          proposalId: proposal.id,
+          createdByUserId: userId,
+        },
+      });
+      const linkedTaskEvents = await tx.eventLink.findMany({
+        where: {
+          linkedType: "task",
+          linkedId: taskId,
+        },
+      });
+
+      if (linkedTaskEvents.length > 0) {
+        await tx.eventLink.createMany({
+          data: linkedTaskEvents.map((eventLink) => ({
+            eventId: eventLink.eventId,
+            linkedType: "expense_proposal",
+            linkedId: proposal.id,
+          })),
+        });
+      }
+
+      await tx.auditEvent.create({
+        data: {
+          householdId,
+          actorUserId: userId,
+          action: "task.expense_proposal_created",
+          entityType: "TaskExpenseProposalLink",
+          entityId: link.id,
+          after: {
+            taskId,
+            proposalId: proposal.id,
+            linkedEventIds: linkedTaskEvents.map((eventLink) => eventLink.eventId),
+          },
+        },
+      });
+
+      return proposal;
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new ApiError(
+        409,
+        "TASK_EXPENSE_PROPOSAL_EXISTS",
+        "This task already has a linked expense proposal.",
+      );
+    }
+
+    throw error;
+  }
 }
 
 export async function approveExpenseShareForHousehold(

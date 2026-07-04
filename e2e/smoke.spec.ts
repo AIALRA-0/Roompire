@@ -453,6 +453,31 @@ async function clickTaskCompleteWithRetry(page: Page, taskId: string) {
   throw new Error(`POST task complete failed with status ${lastStatus}`);
 }
 
+async function clickTaskExpenseProposalSubmitWithRetry(page: Page, taskId: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/tasks/${taskId}/create-expense-proposal`) &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByTestId(`task-expense-submit-${taskId}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Expense proposal created")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST task expense proposal failed with status ${lastStatus}`);
+}
+
 async function postViewerCalendarEventWithRetry(
   page: Page,
   householdId: string,
@@ -1964,6 +1989,7 @@ test.describe("Roompire real browser smoke", () => {
     const householdName = `Calendar House ${suffix}`;
     const eventTitle = `E2E Rent review ${suffix}`;
     const taskTitle = `E2E Kitchen reset ${suffix}`;
+    const taskProposalTitle = `E2E Task reimbursement ${suffix}`;
 
     await setDevSessionWithRetry(page, ownerEmail, "Calendar Owner E2E");
     const householdResponse = await page.request.post("/api/v1/households", {
@@ -2001,6 +2027,27 @@ test.describe("Roompire real browser smoke", () => {
       },
     });
     expect(acceptResponse.ok()).toBeTruthy();
+
+    const membersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(membersResponse.ok()).toBeTruthy();
+    const membersPayload = (await membersResponse.json()) as {
+      members: Array<{ userId: string; email: string }>;
+    };
+    const ownerUserId = membersPayload.members.find(
+      (member) => member.email === ownerEmail,
+    )?.userId;
+    expect(ownerUserId).toBeTruthy();
+    if (!ownerUserId) {
+      throw new Error("Expected owner user id in calendar members payload");
+    }
 
     await setDevSessionWithRetry(page, ownerEmail, "Calendar Owner E2E");
     await page.goto("/en-US/app/calendar");
@@ -2041,6 +2088,7 @@ test.describe("Roompire real browser smoke", () => {
         dueAt: string | null;
         assignments: Array<{ assignedUserId: string; status: string }>;
         linkedEventIds: string[];
+        linkedProposalIds: string[];
       }>;
     };
     const createdTasks = tasksPayload.tasks.filter((task) => task.title === taskTitle);
@@ -2051,12 +2099,14 @@ test.describe("Roompire real browser smoke", () => {
     expect(createdTask!.status).toBe("OPEN");
     expect(createdTask!.assignments).toHaveLength(1);
     expect(createdTask!.linkedEventIds).toHaveLength(1);
+    expect(createdTask!.linkedProposalIds).toHaveLength(0);
     for (const task of createdTasks) {
       expect(task).toMatchObject({
         status: "OPEN",
         assignments: [expect.objectContaining({ status: "ASSIGNED" })],
       });
       expect(task.linkedEventIds).toHaveLength(1);
+      expect(task.linkedProposalIds).toHaveLength(0);
     }
 
     const eventsResponse = await getApiWithRetry(
@@ -2175,6 +2225,183 @@ test.describe("Roompire real browser smoke", () => {
     expect(remainingTaskEvent).toMatchObject({
       status: "OPEN",
     });
+
+    await page.getByTestId(`task-expense-toggle-${createdTask!.id}`).click();
+    await expect(page.getByTestId(`task-expense-form-${createdTask!.id}`)).toBeVisible();
+    await page.getByTestId(`task-expense-title-${createdTask!.id}`).fill(taskProposalTitle);
+    await page.getByTestId(`task-expense-merchant-${createdTask!.id}`).fill("Task supplies");
+    await page.getByTestId(`task-expense-date-${createdTask!.id}`).fill("2026-07-09");
+    await page.getByTestId(`task-expense-amount-${createdTask!.id}`).fill("48");
+    await page.getByTestId(`task-expense-original-currency-${createdTask!.id}`).fill("CNY");
+    await page.getByTestId(`task-expense-fx-rate-${createdTask!.id}`).fill("1");
+    await page.getByTestId(`task-expense-debtor-${createdTask!.id}-${ownerEmail}`).check();
+    await clickTaskExpenseProposalSubmitWithRetry(page, createdTask!.id);
+
+    const taskLinkedProposalResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": memberEmail,
+        },
+      },
+    );
+    expect(taskLinkedProposalResponse.ok()).toBeTruthy();
+    const taskLinkedProposalPayload =
+      (await taskLinkedProposalResponse.json()) as typeof tasksPayload;
+    const taskWithProposal = taskLinkedProposalPayload.tasks.find(
+      (task) => task.id === createdTask!.id,
+    );
+    expect(taskWithProposal!.linkedProposalIds).toHaveLength(1);
+    const taskProposalId = taskWithProposal!.linkedProposalIds[0]!;
+
+    await expect(
+      page.getByTestId(`task-proposal-link-${createdTask!.id}-${taskProposalId}`),
+    ).toBeVisible();
+
+    const taskProposalResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals/${taskProposalId}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": memberEmail,
+        },
+      },
+    );
+    expect(taskProposalResponse.ok()).toBeTruthy();
+    const taskProposalPayload = (await taskProposalResponse.json()) as {
+      proposal: {
+        id: string;
+        title: string;
+        status: string;
+        originalAmount: string;
+        originalCurrency: string;
+        settlementAmount: string;
+        settlementCurrency: string;
+        shares: Array<{
+          debtorUserId: string;
+          creditorUserId: string;
+          status: string;
+          ledgerObligationId: string | null;
+        }>;
+      };
+    };
+    expect(taskProposalPayload.proposal).toMatchObject({
+      id: taskProposalId,
+      title: taskProposalTitle,
+      status: "SUBMITTED",
+      originalAmount: "48",
+      originalCurrency: "CNY",
+      settlementAmount: "48",
+      settlementCurrency: "CNY",
+    });
+    expect(taskProposalPayload.proposal.shares).toHaveLength(1);
+    expect(taskProposalPayload.proposal.shares[0]).toMatchObject({
+      debtorUserId: ownerUserId,
+      status: "PENDING",
+      ledgerObligationId: null,
+    });
+
+    const proposalLinkedEventsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": memberEmail,
+        },
+      },
+    );
+    expect(proposalLinkedEventsResponse.ok()).toBeTruthy();
+    const proposalLinkedEventsPayload =
+      (await proposalLinkedEventsResponse.json()) as typeof eventsPayload;
+    expect(
+      proposalLinkedEventsPayload.events.find((event) => event.id === taskEvent!.id)?.links,
+    ).toContainEqual(
+      expect.objectContaining({
+        linkedType: "expense_proposal",
+        linkedId: taskProposalId,
+      }),
+    );
+
+    const balancesAfterTaskProposalResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/balances`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": memberEmail,
+        },
+      },
+    );
+    expect(balancesAfterTaskProposalResponse.ok()).toBeTruthy();
+    const balancesAfterTaskProposalPayload = (await balancesAfterTaskProposalResponse.json()) as {
+      balances: unknown[];
+    };
+    expect(balancesAfterTaskProposalPayload.balances).toHaveLength(0);
+
+    const nextTask = createdTasks.find((task) => task.id !== createdTask!.id);
+    expect(nextTask).toBeTruthy();
+    if (!nextTask) {
+      throw new Error("Expected recurring task instance for idempotency coverage");
+    }
+
+    const taskProposalIdempotencyKey = `task-proposal-idempotency-${Date.now()}`;
+    const taskProposalReplayBody = {
+      title: `E2E API task reimbursement ${suffix}`,
+      expenseDate: "2026-07-16",
+      originalAmount: "12.00",
+      originalCurrency: "CNY",
+      fxRate: "1",
+      participantUserIds: [ownerUserId],
+      splitMethod: "EQUAL",
+    };
+    const taskProposalReplayResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks/${nextTask.id}/create-expense-proposal`,
+      {
+        data: taskProposalReplayBody,
+        headers: {
+          "Idempotency-Key": taskProposalIdempotencyKey,
+          "x-roompire-dev-user-email": memberEmail,
+        },
+      },
+    );
+    expect(taskProposalReplayResponse.ok()).toBeTruthy();
+    const taskProposalReplayPayload = (await taskProposalReplayResponse.json()) as {
+      proposal: { id: string; status: string };
+    };
+    expect(taskProposalReplayPayload.proposal.status).toBe("SUBMITTED");
+
+    const taskProposalSecondReplayResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks/${nextTask.id}/create-expense-proposal`,
+      {
+        data: taskProposalReplayBody,
+        headers: {
+          "Idempotency-Key": taskProposalIdempotencyKey,
+          "x-roompire-dev-user-email": memberEmail,
+        },
+      },
+    );
+    expect(taskProposalSecondReplayResponse.ok()).toBeTruthy();
+    const taskProposalSecondReplayPayload =
+      (await taskProposalSecondReplayResponse.json()) as typeof taskProposalReplayPayload;
+    expect(taskProposalSecondReplayPayload.proposal.id).toBe(taskProposalReplayPayload.proposal.id);
+
+    const taskProposalConflictResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks/${nextTask.id}/create-expense-proposal`,
+      {
+        data: {
+          ...taskProposalReplayBody,
+          originalAmount: "13.00",
+        },
+        headers: {
+          "Idempotency-Key": taskProposalIdempotencyKey,
+          "x-roompire-dev-user-email": memberEmail,
+        },
+      },
+    );
+    expect(taskProposalConflictResponse.status()).toBe(409);
   });
 
   test("viewer cannot create household invites", async ({ page }, testInfo) => {
@@ -2239,5 +2466,24 @@ test.describe("Roompire real browser smoke", () => {
     await expect(
       postViewerCalendarEventWithRetry(page, householdId, viewerEmail, `Viewer blocked ${suffix}`),
     ).resolves.toBe(403);
+
+    const viewerTaskProposalResponse = await page.request.post(
+      `/api/v1/households/${householdId}/tasks/00000000-0000-0000-0000-000000000000/create-expense-proposal`,
+      {
+        data: {
+          expenseDate: "2026-07-09",
+          originalAmount: "10.00",
+          originalCurrency: "CNY",
+          fxRate: "1",
+          participantUserIds: [],
+          splitMethod: "EQUAL",
+        },
+        headers: {
+          "Idempotency-Key": `viewer-task-proposal-${Date.now()}`,
+          "x-roompire-dev-user-email": viewerEmail,
+        },
+      },
+    );
+    expect(viewerTaskProposalResponse.status()).toBe(403);
   });
 });

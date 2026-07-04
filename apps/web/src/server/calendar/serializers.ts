@@ -1,4 +1,10 @@
-import type { CalendarEvent, EventLink, Task, TaskAssignment } from "@prisma/client";
+import type {
+  CalendarEvent,
+  EventLink,
+  Task,
+  TaskAssignment,
+  TaskExpenseProposalLink,
+} from "@prisma/client";
 
 export type CalendarEventWithLinks = CalendarEvent & {
   links: EventLink[];
@@ -6,7 +12,9 @@ export type CalendarEventWithLinks = CalendarEvent & {
 
 export type TaskWithAssignmentsAndLinks = Task & {
   assignments: TaskAssignment[];
+  expenseProposalLinks?: TaskExpenseProposalLink[];
   linkedEventIds: string[];
+  linkedProposalIds: string[];
 };
 
 export function serializeCalendarEvent(event: CalendarEventWithLinks) {
@@ -57,6 +65,8 @@ export function serializeTask(task: TaskWithAssignmentsAndLinks) {
       status: assignment.status,
     })),
     linkedEventIds: task.linkedEventIds,
+    linkedProposalIds:
+      task.linkedProposalIds ?? task.expenseProposalLinks?.map((link) => link.proposalId) ?? [],
   };
 }
 

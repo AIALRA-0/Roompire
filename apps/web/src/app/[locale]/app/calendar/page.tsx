@@ -29,6 +29,7 @@ export default async function CalendarPage({ params }: PageProps) {
   const common = await getTranslations({ locale, namespace: "Common" });
   const identity = await getTranslations({ locale, namespace: "Identity" });
   const calendar = await getTranslations({ locale, namespace: "Calendar" });
+  const expense = await getTranslations({ locale, namespace: "Expense" });
   const model = await getDashboardModel();
   const activeHouseholdName = model.activeHousehold?.name ?? calendar("title");
   const activeHouseholdId = model.activeHousehold?.id ?? null;
@@ -123,7 +124,13 @@ export default async function CalendarPage({ params }: PageProps) {
             </p>
             <CalendarWorkspace
               activeHouseholdId={activeHouseholdId}
+              canCreateExpenseProposals={model.canCreateExpenseProposals}
               canCreateWorkItems={model.canCreateWorkItems}
+              categories={model.categories.map((category) => ({
+                id: category.id,
+                name: locale === "zh-CN" ? category.nameZhCn : category.nameEn,
+              }))}
+              currentUserId={model.user.id}
               events={events.map(serializeCalendarEvent)}
               labels={{
                 events: calendar("events"),
@@ -159,6 +166,23 @@ export default async function CalendarPage({ params }: PageProps) {
                 working: common("working"),
                 errorFallback: calendar("errorFallback"),
                 linkedTask: calendar("linkedTask"),
+                linkedExpenseProposal: calendar("linkedExpenseProposal"),
+                createExpenseProposal: calendar("createExpenseProposal"),
+                expenseProposalCreated: calendar("expenseProposalCreated"),
+                openProposal: calendar("openProposal"),
+                proposalTitle: expense("proposalTitle"),
+                merchant: expense("merchant"),
+                category: expense("category"),
+                uncategorized: expense("uncategorized"),
+                expenseDate: expense("expenseDate"),
+                dueDate: expense("dueDate"),
+                originalAmount: expense("originalAmount"),
+                originalCurrency: expense("originalCurrency"),
+                settlementCurrency: expense("settlementCurrency"),
+                fxRate: expense("fxRate"),
+                debtors: expense("debtors"),
+                payerShareIncluded: expense("payerShareIncluded"),
+                submitProposal: expense("submitProposal"),
                 eventViewList: calendar("eventViewList"),
                 eventViewWeek: calendar("eventViewWeek"),
                 eventViewMonth: calendar("eventViewMonth"),
@@ -194,6 +218,7 @@ export default async function CalendarPage({ params }: PageProps) {
                 email: member.user.email,
                 role: member.role,
               }))}
+              settlementCurrency={model.activeHousehold?.settlementCurrency ?? null}
               tasks={tasks.map(serializeTask)}
             />
           </div>
