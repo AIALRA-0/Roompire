@@ -61,10 +61,11 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Event-to-expense proposal slice implemented on branch `feat/event-expense-proposals`: bill, chore, group activity, and recurring-expense calendar events can create one linked pending expense proposal through a persisted-idempotency API and row-level calendar UI; event links point back to the proposal, proposal audit metadata records the source event, and pending event-generated proposals stay out of formal balances until approval.
 - Statistics date-window slice implemented on branch `feat/stat-date-filters`: `stats/summary`, `stats/categories`, and `stats/members` accept `from`/`to` filters, the summary response includes the active window plus daily non-cancelled proposal trend rows, and the localized stats page exposes a date filter form and trend view backed by the same services.
 - Live deployment active on the self-hosted server: host nginx terminates TLS for `roompire.aialra.online` and proxies to the production Compose web service on `127.0.0.1:18300`; Postgres, Redis, migrations, web health checks, and the private site gate are managed from the local server without SSH to a separate VPS.
+- Audit hash-chain slice implemented on branch `feat/audit-hash-chain`: PostgreSQL migration `20260704050000_add_audit_hash_chain` enables `pgcrypto`, backfills existing `AuditEvent` rows, installs a per-household advisory-locked insert trigger that writes `prevHash`/`eventHash`, and the audit API/page expose hash-chain verification status and event hashes.
 
 ## Current phase
 
-Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, statistics, exports, and first calendar/task shell. Current scope creates submitted proposals with equal/exact/percentage/share-unit split methods, supports private receipt attachments on local disk or S3-compatible production object storage, locks cross-currency FX from cached/provider rates or manual override, supports proposal comments and a basic submitted/approval/rejection/change-request/comment timeline, exposes household audit, statistics, and export API/pages with audit filtering, lets debtors decide only their own shares, lets debtors request proposal changes before ledger maturity, lets original creators revise/resubmit disputed or rejected proposals without ledger obligations, matures approved shares into append-only ledger obligations exactly once, creates repayment due calendar events for matured obligations with due dates, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides one-off and finite recurring calendar event/task creation plus task completion with task-event links, offers list/week/month calendar views over loaded events, lets eligible users create one linked pending expense proposal from a task or eligible calendar event, filters statistics by date window with proposal trend rows, runs on the real `roompire.aialra.online` site behind the private gate, and keeps rejected/pending/disputed proposals out of formal balances. Remaining MVP hardening work should add audit hash chaining, CI-friendly E2E data isolation, backup/restore drills, and a long-term multi-user auth provider decision.
+Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, statistics, exports, and first calendar/task shell. Current scope creates submitted proposals with equal/exact/percentage/share-unit split methods, supports private receipt attachments on local disk or S3-compatible production object storage, locks cross-currency FX from cached/provider rates or manual override, supports proposal comments and a basic submitted/approval/rejection/change-request/comment timeline, exposes household audit, statistics, and export API/pages with audit filtering and tamper-evident audit hash-chain verification, lets debtors decide only their own shares, lets debtors request proposal changes before ledger maturity, lets original creators revise/resubmit disputed or rejected proposals without ledger obligations, matures approved shares into append-only ledger obligations exactly once, creates repayment due calendar events for matured obligations with due dates, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides one-off and finite recurring calendar event/task creation plus task completion with task-event links, offers list/week/month calendar views over loaded events, lets eligible users create one linked pending expense proposal from a task or eligible calendar event, filters statistics by date window with proposal trend rows, runs on the real `roompire.aialra.online` site behind the private gate, and keeps rejected/pending/disputed proposals out of formal balances. Remaining MVP hardening work should add CI-friendly E2E data isolation, backup/restore drills, and a long-term multi-user auth provider decision.
 
 ## Decisions log
 
@@ -107,6 +108,7 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 | 2026-07-04 | Keep audit filters URL-addressable                          | Audit review should be shareable and testable through query parameters, while the API and page use the same validated server-side filter service.                                                   |
 | 2026-07-04 | Keep statistics filters URL-addressable                     | Statistics review should use the same `from`/`to` query parameters across APIs and page rendering so windowed reports are shareable and browser-testable.                                           |
 | 2026-07-04 | Use host nginx for the current live site                    | The server already runs nginx for multiple domains, so Roompire should bind only to localhost from Compose and let nginx terminate TLS and route `roompire.aialra.online`.                          |
+| 2026-07-04 | Compute audit hashes in PostgreSQL                          | A trigger covers every `AuditEvent` insert, including future direct Prisma writes, and uses a per-household advisory lock to avoid concurrent append races.                                         |
 
 ## Open questions for later human review
 
@@ -117,15 +119,29 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 ## Next recommended tasks
 
-1. Add audit hash chaining for tamper-evident household event history.
-2. Add a scheduled backup/restore drill for live Postgres and the local upload volume.
-3. Decide whether fully netted suggestions without matching direct obligations should stay guidance-only or gain a separate clearing policy.
-4. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
-5. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
-6. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
+1. Add a scheduled backup/restore drill for live Postgres and the local upload volume.
+2. Decide whether fully netted suggestions without matching direct obligations should stay guidance-only or gain a separate clearing policy.
+3. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
+4. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
+5. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
+6. Monitor Docker disk usage before the next production image build; builder cache cleanup reclaimed 2.6GB during the audit-chain rollout.
 
 ## Last session verification
 
+- 2026-07-04 Audit hash chain:
+  - `pnpm db:migrate` passed locally and applied `20260704050000_add_audit_hash_chain`.
+  - `pnpm db:generate` passed.
+  - `pnpm db:validate` passed.
+  - Local database hash verification passed: 4902 total audit events, 4902 hashed, 0 broken after migration backfill and seed.
+  - `pnpm typecheck` passed.
+  - `pnpm format:check` passed.
+  - `pnpm test` passed: 6 test files, 21 tests.
+  - `pnpm lint` passed.
+  - `pnpm build` passed with `/api/v1/households/[householdId]/audit-events` and `/[locale]/app/audit` in the Next route manifest.
+  - Targeted Playwright passed for dashboard/stats/audit navigation on Chromium desktop and mobile, including audit API `chain.status=VERIFIED`, 64-character event hashes, and audit page hash-chain status rendering.
+  - Production migration applied successfully on the local server through the Compose migrator; production DB currently has 0 audit events, so chain verification is 0 total, 0 hashed, 0 broken with the trigger installed for future events.
+  - Production web image was rebuilt and redeployed behind host nginx; `roompire-web-1` is healthy, unauthenticated `/api/v1/health` returns 401, authenticated `/api/v1/health` and `/en-US/app` return 200, and `./scripts/smoke_production.sh` passed against the real domain.
+  - Docker image build initially hit `ENOSPC` while exporting the migrator image; `docker builder prune -f` reclaimed 2.6GB and the migration/deploy completed afterward.
 - 2026-07-04 Statistics date-window filters + live deployment:
   - `pnpm typecheck` passed.
   - `pnpm test` passed: 6 test files, 21 tests.

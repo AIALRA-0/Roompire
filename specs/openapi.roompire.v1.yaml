@@ -136,14 +136,37 @@ components:
           type: object
           additionalProperties: true
           nullable: true
+        prevHash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          nullable: true
+        eventHash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          nullable: true
         occurredAt: { type: string, format: date-time }
+    AuditHashChain:
+      type: object
+      required: [status, eventCount, hashedEventCount, brokenEventId, latestEventHash]
+      properties:
+        status:
+          type: string
+          enum: [VERIFIED, MISSING_HASHES, BROKEN]
+        eventCount: { type: integer, minimum: 0 }
+        hashedEventCount: { type: integer, minimum: 0 }
+        brokenEventId: { type: string, format: uuid, nullable: true }
+        latestEventHash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          nullable: true
     AuditEventListResponse:
       type: object
-      required: [events]
+      required: [events, chain]
       properties:
         events:
           type: array
           items: { $ref: "#/components/schemas/AuditEvent" }
+        chain: { $ref: "#/components/schemas/AuditHashChain" }
     AmountTotal:
       type: object
       required: [currency, amount]
@@ -2826,7 +2849,7 @@ paths:
   /households/{householdId}/audit-events:
     get:
       summary: List audit events
-      description: Returns immutable household audit events, ordered newest first, with optional filters.
+      description: Returns immutable household audit events, ordered newest first, with optional filters and a tamper-evident hash-chain verification summary.
       parameters:
         - in: path
           name: householdId

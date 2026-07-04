@@ -505,7 +505,7 @@ Fields:
 - `event_hash` nullable
 - `occurred_at`
 
-Hash chaining is optional in MVP but strongly recommended later.
+Current implementation stores tamper-evident `prev_hash` and `event_hash` values. Migration `20260704050000_add_audit_hash_chain` installs a PostgreSQL trigger that computes hashes before insert, backfills existing rows, and uses a per-household advisory lock so concurrent inserts append to a deterministic household chain ordered by `occurred_at, id`.
 
 ## Derived views
 
@@ -537,7 +537,8 @@ Pending approval items per user.
 4. Ledger transaction reversal never updates original transaction; it references original.
 5. FX fields must be non-null when original currency differs from settlement currency under `LOCK_AT_EXPENSE_DATE`.
 6. Every mutating transaction emits an `audit_events` row.
-7. Month lock prevents direct mutation of proposals/obligations in locked period except via adjustment/reversal.
+7. Audit event hashes must verify against the previous household event hash before the audit chain is considered intact.
+8. Month lock prevents direct mutation of proposals/obligations in locked period except via adjustment/reversal.
 
 ## Migration guidance
 

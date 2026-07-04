@@ -1,7 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiErrorResponse } from "@/server/api/errors";
-import { serializeAuditEvent } from "@/server/audit/serializers";
-import { listAuditEventsForHousehold } from "@/server/audit/service";
+import { serializeAuditEvent, serializeAuditHashChain } from "@/server/audit/serializers";
+import {
+  listAuditEventsForHousehold,
+  verifyAuditHashChainForHousehold,
+} from "@/server/audit/service";
 import { requireApiUser } from "@/server/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -14,14 +17,18 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId } = await context.params;
-    const events = await listAuditEventsForHousehold(
-      user.id,
-      householdId,
-      Object.fromEntries(request.nextUrl.searchParams),
-    );
+    const [events, chain] = await Promise.all([
+      listAuditEventsForHousehold(
+        user.id,
+        householdId,
+        Object.fromEntries(request.nextUrl.searchParams),
+      ),
+      verifyAuditHashChainForHousehold(user.id, householdId),
+    ]);
 
     return NextResponse.json({
       events: events.map(serializeAuditEvent),
+      chain: serializeAuditHashChain(chain),
     });
   } catch (error) {
     return apiErrorResponse(error);

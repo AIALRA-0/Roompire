@@ -821,9 +821,26 @@ test.describe("Roompire real browser smoke", () => {
     );
     expect(auditResponse.ok()).toBeTruthy();
     const auditPayload = (await auditResponse.json()) as {
-      events: Array<{ action: string; entityType: string; occurredAt: string }>;
+      events: Array<{
+        id: string;
+        action: string;
+        entityType: string;
+        occurredAt: string;
+        eventHash: string | null;
+        prevHash: string | null;
+      }>;
+      chain: {
+        status: "VERIFIED" | "MISSING_HASHES" | "BROKEN";
+        eventCount: number;
+        hashedEventCount: number;
+        latestEventHash: string | null;
+      };
     };
     expect(auditPayload.events.length).toBeGreaterThan(0);
+    expect(auditPayload.chain.status).toBe("VERIFIED");
+    expect(auditPayload.chain.hashedEventCount).toBe(auditPayload.chain.eventCount);
+    expect(auditPayload.chain.latestEventHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(auditPayload.events[0]?.eventHash).toMatch(/^[0-9a-f]{64}$/);
     expect(auditPayload.events).toContainEqual(
       expect.objectContaining({
         action: "expense_proposal.seeded",
@@ -859,7 +876,11 @@ test.describe("Roompire real browser smoke", () => {
 
     await expect(page.getByRole("heading", { name: "Audit trail" })).toBeVisible();
     await expect(page.getByTestId("audit-event-count")).toBeVisible();
+    await expect(page.getByTestId("audit-chain-status")).toContainText("Verified");
     await expect(page.getByText("expense_proposal.seeded")).toBeVisible();
+    await expect(page.getByTestId(`audit-event-hash-${auditPayload.events[0]!.id}`)).toContainText(
+      /[0-9a-f]{64}/,
+    );
 
     await page.goto("/en-US/app/audit?action=export.created&entityType=Export&limit=25");
     await expect(page.getByTestId("audit-filter-form")).toBeVisible();

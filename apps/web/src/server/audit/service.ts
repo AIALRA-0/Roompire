@@ -6,6 +6,25 @@ import { requireActiveMembership } from "@/server/permissions/rbac";
 
 export type AuditEventWithJson = AuditEvent;
 
+export type AuditHashChainStatus = "VERIFIED" | "MISSING_HASHES" | "BROKEN";
+
+export type AuditHashChainSummary = {
+  status: AuditHashChainStatus;
+  eventCount: number;
+  hashedEventCount: number;
+  brokenEventId: string | null;
+  latestEventHash: string | null;
+};
+
+type AuditHashChainRow = {
+  id: string;
+  prevHash: string | null;
+  eventHash: string | null;
+  expectedPrevHash: string | null;
+  expectedEventHash: string | null;
+  occurredAt: Date;
+};
+
 const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
 
 export const auditEventQuerySchema = z.object({
@@ -83,4 +102,67 @@ export async function listAuditEventsForHousehold(
     orderBy: [{ occurredAt: "desc" }, { id: "asc" }],
     take: parsed.data.limit,
   });
+}
+
+export async function verifyAuditHashChainForHousehold(userId: string, householdId: string) {
+  await requireActiveMembership(userId, householdId);
+  const rows = await prisma.$queryRaw<AuditHashChainRow[]>`
+    WITH ordered AS (
+      SELECT
+        "id"::TEXT AS "id",
+        "prevHash" AS "prevHash",
+        "eventHash" AS "eventHash",
+        LAG("eventHash") OVER (ORDER BY "occurredAt" ASC, "id" ASC) AS "expectedPrevHash",
+        encode(
+          digest(
+            roompire_audit_event_hash_payload(
+              "id",
+              "householdId",
+              "actorUserId",
+              "action",
+              "entityType",
+              "entityId",
+              "before",
+              "after",
+              "metadata",
+              "prevHash",
+              "occurredAt"
+            ),
+            'sha256'
+          ),
+          'hex'
+        ) AS "expectedEventHash",
+        "occurredAt" AS "occurredAt"
+      FROM "AuditEvent"
+      WHERE "householdId" = ${householdId}::UUID
+    )
+    SELECT *
+    FROM ordered
+    ORDER BY "occurredAt" ASC, "id" ASC
+  `;
+  let status: AuditHashChainStatus = "VERIFIED";
+  let brokenEventId: string | null = null;
+
+  for (const row of rows) {
+    if (!row.eventHash) {
+      if (status === "VERIFIED") {
+        status = "MISSING_HASHES";
+      }
+      continue;
+    }
+
+    if (row.prevHash !== row.expectedPrevHash || row.eventHash !== row.expectedEventHash) {
+      status = "BROKEN";
+      brokenEventId = row.id;
+      break;
+    }
+  }
+
+  return {
+    status,
+    eventCount: rows.length,
+    hashedEventCount: rows.filter((row) => Boolean(row.eventHash)).length,
+    brokenEventId,
+    latestEventHash: rows.at(-1)?.eventHash ?? null,
+  } satisfies AuditHashChainSummary;
 }

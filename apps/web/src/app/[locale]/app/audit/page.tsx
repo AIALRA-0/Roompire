@@ -17,8 +17,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
-import { serializeAuditEvent } from "@/server/audit/serializers";
-import { listAuditEventsForHousehold } from "@/server/audit/service";
+import { serializeAuditEvent, serializeAuditHashChain } from "@/server/audit/serializers";
+import {
+  listAuditEventsForHousehold,
+  verifyAuditHashChainForHousehold,
+} from "@/server/audit/service";
 import { getDashboardModel } from "@/server/dashboard/model";
 
 type PageProps = {
@@ -44,6 +47,10 @@ function actorName(memberNamesByUserId: Map<string, string>, actorUserId: string
 
 function firstSearchValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function shortHash(value: string | null) {
+  return value ? `${value.slice(0, 12)}...` : null;
 }
 
 export default async function AuditPage({ params, searchParams }: PageProps) {
@@ -81,16 +88,28 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
     to: firstSearchValue(rawSearchParams.to) ?? "",
     limit: firstSearchValue(rawSearchParams.limit) ?? "50",
   };
-  const events = activeHouseholdId
-    ? (await listAuditEventsForHousehold(model.user.id, activeHouseholdId, filters)).map(
-        serializeAuditEvent,
-      )
-    : [];
+  const [events, chain] = activeHouseholdId
+    ? await Promise.all([
+        listAuditEventsForHousehold(model.user.id, activeHouseholdId, filters).then((items) =>
+          items.map(serializeAuditEvent),
+        ),
+        verifyAuditHashChainForHousehold(model.user.id, activeHouseholdId).then(
+          serializeAuditHashChain,
+        ),
+      ])
+    : [[], null];
   const dateFormatter = new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   });
   const limitOptions = ["25", "50", "100"];
+  const chainStatusLabels = {
+    VERIFIED: audit("chainVerified"),
+    MISSING_HASHES: audit("chainMissingHashes"),
+    BROKEN: audit("chainBroken"),
+  };
+  const chainVariant =
+    chain?.status === "VERIFIED" ? "success" : chain?.status === "BROKEN" ? "danger" : "warning";
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -166,14 +185,43 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
               <p className="max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">
                 {audit("hint")}
               </p>
-              <div
-                className="rounded-lg border border-border bg-card px-4 py-3"
-                data-testid="audit-event-count"
-              >
-                <p className="text-xs font-medium uppercase text-muted-foreground">
-                  {audit("eventCount")}
-                </p>
-                <p className="mt-1 text-2xl font-semibold">{events.length}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div
+                  className="rounded-lg border border-border bg-card px-4 py-3"
+                  data-testid="audit-event-count"
+                >
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    {audit("eventCount")}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold">{events.length}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-card px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">
+                      {audit("chainStatus")}
+                    </p>
+                    {chain ? (
+                      <Badge data-testid="audit-chain-status" variant={chainVariant}>
+                        {chainStatusLabels[chain.status]}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {chain
+                      ? audit("chainCoverage", {
+                          hashed: chain.hashedEventCount,
+                          total: chain.eventCount,
+                        })
+                      : audit("chainUnavailable")}
+                  </p>
+                  <p
+                    className="mt-1 break-all text-xs text-muted-foreground"
+                    data-testid="audit-chain-latest-hash"
+                  >
+                    {audit("latestHash")}:{" "}
+                    {shortHash(chain?.latestEventHash ?? null) ?? audit("hashMissing")}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -321,6 +369,18 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
                           </p>
                           <p>
                             {audit("occurredAt")}: {event.occurredAt}
+                          </p>
+                          <p
+                            className="min-w-0 break-all"
+                            data-testid={`audit-event-hash-${event.id}`}
+                          >
+                            {audit("hash")}: {event.eventHash ?? audit("hashMissing")}
+                          </p>
+                          <p
+                            className="min-w-0 break-all"
+                            data-testid={`audit-event-prev-hash-${event.id}`}
+                          >
+                            {audit("previousHash")}: {event.prevHash ?? audit("genesisHash")}
                           </p>
                         </div>
                         {before || after || metadata ? (

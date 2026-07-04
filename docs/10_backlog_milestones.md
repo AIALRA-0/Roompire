@@ -144,7 +144,7 @@ Current implemented subset across calendar branches: calendar/task page shell, e
 - Basic household audit list.
 - Basic dashboard stats.
 
-Current implemented subset for audit/statistics: mutation flows emit `AuditEvent` rows, proposal detail renders a proposal-scoped timeline, dashboard shows basic operational stats plus an audit preview, the localized audit page/API expose household audit events with actor/action/entity/time, before/after/metadata JSON, and filters for action, actor, entity type/id, date window, and limit, the localized statistics page/API expose household summary, category, and member totals with date-window filters plus daily proposal trend rows, and active members can create signed CSV/JSON downloads for proposals, ledger obligations, settlements, audit events, and members. Audit hash chaining remains a backlog item.
+Current implemented subset for audit/statistics: mutation flows emit `AuditEvent` rows, proposal detail renders a proposal-scoped timeline, dashboard shows basic operational stats plus an audit preview, the localized audit page/API expose household audit events with actor/action/entity/time, before/after/metadata JSON, tamper-evident hash-chain fields/status, and filters for action, actor, entity type/id, date window, and limit, the localized statistics page/API expose household summary, category, and member totals with date-window filters plus daily proposal trend rows, and active members can create signed CSV/JSON downloads for proposals, ledger obligations, settlements, audit events, and members.
 
 ### P1
 

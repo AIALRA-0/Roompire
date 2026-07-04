@@ -101,9 +101,7 @@ Audit events should include:
 - timestamp
 - request ID
 
-Later enhancement:
-
-- Hash chain audit events with `prev_hash` and `event_hash`.
+Current implementation hash-chains audit events with `prev_hash` and `event_hash`. A PostgreSQL trigger computes the hash before insert, migration backfills existing rows, and the audit API/page expose verification status so backups can be checked for tampering after restore.
 
 ## Backup strategy
 

@@ -567,13 +567,14 @@ model AuditEvent {
   before      Json?
   after       Json?
   metadata    Json?
-  prevHash    String?
-  eventHash   String?
+  prevHash    String?  @db.VarChar(64)
+  eventHash   String?  @db.VarChar(64)
   occurredAt  DateTime @default(now())
 
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   @@index([householdId, occurredAt])
+  @@index([householdId, eventHash])
   @@index([entityType, entityId])
   @@index([actorUserId])
 }
