@@ -18,7 +18,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: `env -u NO_COLOR NODE_ENV=development pnpm --filter @roompire/web dev --hostname 127.0.0.1 --port ${e2ePort}`,
+    command: `env -u NO_COLOR NODE_ENV=development sh -c 'pnpm e2e:prepare && pnpm --filter @roompire/web dev --hostname 127.0.0.1 --port ${e2ePort}'`,
     url: e2eBaseUrl,
     reuseExistingServer: process.env.ROOMPIRE_E2E_REUSE_SERVER === "true",
     timeout: 120_000,

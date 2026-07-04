@@ -105,8 +105,9 @@ pnpm e2e
 ```
 
 `pnpm e2e` starts the real Next.js dev server and runs Playwright against Chromium desktop and mobile projects.
-Because Phase 1 routes read PostgreSQL, run `docker compose up -d postgres redis`, `pnpm db:migrate`, and `pnpm db:seed` before local E2E runs.
+Because Phase 1 routes read PostgreSQL, run `docker compose up -d postgres redis` before local E2E runs. Playwright runs `pnpm e2e:prepare` before starting the dev server; that command refuses production databases, resets the local dev/test/e2e database, applies migrations, and loads deterministic seed data so browser runs do not accumulate test households.
 Playwright uses port `3100` by default to avoid colliding with server-level nginx or other local services, and runs one worker by default for stable database/file-flow isolation. Override with `ROOMPIRE_E2E_PORT` or `ROOMPIRE_E2E_WORKERS` only when needed.
+Set `ROOMPIRE_E2E_SKIP_DB_RESET=true` only when reusing an already-prepared database/server intentionally.
 
 ## Deployment
 

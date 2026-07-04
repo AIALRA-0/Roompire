@@ -52,6 +52,8 @@ Required browsers/viewports:
 
 E2E must interact with the real webpage using accessible selectors and stable `data-testid` only where necessary.
 
+Before Playwright starts the dev server, `pnpm e2e:prepare` resets only allowed Roompire dev/test/e2e databases, applies migrations, and loads deterministic seed data. This keeps repeated local and CI browser runs isolated; set `ROOMPIRE_E2E_SKIP_DB_RESET=true` only when an already-prepared database is being reused intentionally.
+
 ### 4. Accessibility tests
 
 - Basic axe checks on primary pages.

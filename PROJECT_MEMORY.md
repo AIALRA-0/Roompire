@@ -63,10 +63,11 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Live deployment active on the self-hosted server: host nginx terminates TLS for `roompire.aialra.online` and proxies to the production Compose web service on `127.0.0.1:18300`; Postgres, Redis, migrations, web health checks, and the private site gate are managed from the local server without SSH to a separate VPS.
 - Audit hash-chain slice implemented on branch `feat/audit-hash-chain`: PostgreSQL migration `20260704050000_add_audit_hash_chain` enables `pgcrypto`, backfills existing `AuditEvent` rows, installs a per-household advisory-locked insert trigger that writes `prevHash`/`eventHash`, and the audit API/page expose hash-chain verification status and event hashes.
 - Backup/restore drill slice implemented on branch `ops/backup-restore-drill`: `backup_all.sh` creates PostgreSQL and upload-volume backups, `verify_postgres_backup.sh` restores dumps into a temporary database and verifies Prisma migrations plus audit hash-chain integrity, production backups are written under `/srv/aialra/backups/roompire`, and `roompire-backup.timer` is enabled on the server for daily runs.
+- E2E database isolation slice implemented on branch `test/e2e-db-isolation`: `pnpm e2e:prepare` safely refuses production database names, resets only local Roompire dev/test/e2e databases, reapplies migrations, seeds deterministic fixtures, and Playwright runs this setup before starting the dev server so repeated browser runs do not accumulate test households.
 
 ## Current phase
 
-Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, statistics, exports, and first calendar/task shell. Current scope creates submitted proposals with equal/exact/percentage/share-unit split methods, supports private receipt attachments on local disk or S3-compatible production object storage, locks cross-currency FX from cached/provider rates or manual override, supports proposal comments and a basic submitted/approval/rejection/change-request/comment timeline, exposes household audit, statistics, and export API/pages with audit filtering and tamper-evident audit hash-chain verification, lets debtors decide only their own shares, lets debtors request proposal changes before ledger maturity, lets original creators revise/resubmit disputed or rejected proposals without ledger obligations, matures approved shares into append-only ledger obligations exactly once, creates repayment due calendar events for matured obligations with due dates, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides one-off and finite recurring calendar event/task creation plus task completion with task-event links, offers list/week/month calendar views over loaded events, lets eligible users create one linked pending expense proposal from a task or eligible calendar event, filters statistics by date window with proposal trend rows, runs on the real `roompire.aialra.online` site behind the private gate, schedules daily production backup/restore drills, and keeps rejected/pending/disputed proposals out of formal balances. Remaining MVP hardening work should add CI-friendly E2E data isolation and a long-term multi-user auth provider decision.
+Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, statistics, exports, and first calendar/task shell. Current scope creates submitted proposals with equal/exact/percentage/share-unit split methods, supports private receipt attachments on local disk or S3-compatible production object storage, locks cross-currency FX from cached/provider rates or manual override, supports proposal comments and a basic submitted/approval/rejection/change-request/comment timeline, exposes household audit, statistics, and export API/pages with audit filtering and tamper-evident audit hash-chain verification, lets debtors decide only their own shares, lets debtors request proposal changes before ledger maturity, lets original creators revise/resubmit disputed or rejected proposals without ledger obligations, matures approved shares into append-only ledger obligations exactly once, creates repayment due calendar events for matured obligations with due dates, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides one-off and finite recurring calendar event/task creation plus task completion with task-event links, offers list/week/month calendar views over loaded events, lets eligible users create one linked pending expense proposal from a task or eligible calendar event, filters statistics by date window with proposal trend rows, runs on the real `roompire.aialra.online` site behind the private gate, schedules daily production backup/restore drills, resets E2E databases for repeatable browser testing, and keeps rejected/pending/disputed proposals out of formal balances. Remaining MVP hardening work should add a long-term multi-user auth provider decision and remaining household governance polish.
 
 ## Decisions log
 
@@ -111,6 +112,7 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 | 2026-07-04 | Use host nginx for the current live site                    | The server already runs nginx for multiple domains, so Roompire should bind only to localhost from Compose and let nginx terminate TLS and route `roompire.aialra.online`.                          |
 | 2026-07-04 | Compute audit hashes in PostgreSQL                          | A trigger covers every `AuditEvent` insert, including future direct Prisma writes, and uses a per-household advisory lock to avoid concurrent append races.                                         |
 | 2026-07-04 | Verify backups by restoring into a temporary database       | A backup is not trusted until `pg_restore` can rebuild it without touching production and audit hash-chain verification reports zero broken events.                                                 |
+| 2026-07-04 | Reset the E2E database before browser runs                  | Browser tests mutate many household records; resetting only approved dev/test/e2e databases keeps local and CI runs deterministic while refusing production database names.                         |
 
 ## Open questions for later human review
 
@@ -122,14 +124,25 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 ## Next recommended tasks
 
 1. Decide whether fully netted suggestions without matching direct obligations should stay guidance-only or gain a separate clearing policy.
-2. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
-3. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
-4. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
-5. Monitor Docker disk usage before the next production image build; builder cache cleanup reclaimed 2.6GB during the audit-chain rollout.
-6. Review backup encryption/off-host copy requirements once private production data grows beyond the initial household.
+2. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
+3. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
+4. Monitor Docker disk usage before the next production image build; builder cache cleanup reclaimed 2.6GB during the audit-chain rollout.
+5. Review backup encryption/off-host copy requirements once private production data grows beyond the initial household.
+6. Consider a lightweight admin health page for backup timer status, disk headroom, and latest smoke-test result.
 
 ## Last session verification
 
+- 2026-07-04 E2E database isolation:
+  - `bash -n scripts/e2e_prepare_db.sh` passed.
+  - `pnpm e2e:prepare` passed locally, reset `roompire_dev`, reapplied all 6 migrations, and seeded `USC 3B2B`.
+  - Safety refusal passed: `DATABASE_URL=postgresql://roompire:roompire@localhost:5432/roompire_prod pnpm e2e:prepare` failed before touching the database.
+  - Targeted Playwright passed on Chromium desktop and mobile for the dashboard/stats/audit smoke path; Playwright webServer output confirmed `e2e_prepare_db.sh` ran before Next dev server startup.
+  - Re-running `pnpm e2e:prepare` after browser tests restored the seed baseline: 1 household, 4 users, 1 audit event, and 1 expense proposal.
+  - `pnpm format:check` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm test` passed: 6 test files, 21 tests.
+  - `pnpm lint` passed.
+  - `pnpm build` passed with the existing app/API route manifest.
 - 2026-07-04 Production backup/restore drill:
   - `bash -n` passed for backup, restore, upload, combined backup, and verify scripts.
   - `systemd-analyze verify` passed for `ops/systemd/roompire-backup.service` and `ops/systemd/roompire-backup.timer`.

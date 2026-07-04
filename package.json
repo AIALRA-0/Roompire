@@ -9,6 +9,7 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "build": "turbo build",
+    "e2e:prepare": "bash scripts/e2e_prepare_db.sh",
     "e2e": "env -u NO_COLOR playwright test",
     "e2e:headed": "env -u NO_COLOR playwright test --headed",
     "db:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} prisma validate --schema db/schema.prisma",

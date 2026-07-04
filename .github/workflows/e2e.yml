@@ -40,7 +40,7 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
       - name: Prepare database
-        run: pnpm db:migrate && pnpm db:seed
+        run: pnpm e2e:prepare
         env:
           DATABASE_URL: postgresql://roompire:roompire@localhost:5432/roompire_test
       - name: Build
@@ -49,6 +49,7 @@ jobs:
         run: pnpm e2e
         env:
           DATABASE_URL: postgresql://roompire:roompire@localhost:5432/roompire_test
+          ROOMPIRE_E2E_SKIP_DB_RESET: "true"
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
