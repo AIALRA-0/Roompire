@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiErrorResponse } from "@/server/api/errors";
-import { readFileForSignedDownload } from "@/server/files/local-storage";
+import { readFileForSignedDownload } from "@/server/files/storage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

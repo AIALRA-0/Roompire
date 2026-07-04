@@ -22,11 +22,19 @@ Set these values in `.env.production` through the server's secret-management wor
 - `POSTGRES_PASSWORD`
 - `DATABASE_URL`
 - `ROOMPIRE_FILE_SIGNING_SECRET`
+- `ROOMPIRE_FILE_STORAGE_PROVIDER`
+- `ROOMPIRE_S3_BUCKET`
+- `ROOMPIRE_S3_REGION`
+- `ROOMPIRE_S3_ENDPOINT`
+- `ROOMPIRE_S3_ACCESS_KEY_ID`
+- `ROOMPIRE_S3_SECRET_ACCESS_KEY`
 - `ROOMPIRE_SITE_GATE_USERNAME`
 - `ROOMPIRE_SITE_GATE_PASSWORD`
 - `ROOMPIRE_SITE_GATE_SESSION_EMAIL` if the gate username is not the app user email
 
 Do not commit real production credentials. The public site gate stays enabled when both `ROOMPIRE_SITE_GATE_USERNAME` and `ROOMPIRE_SITE_GATE_PASSWORD` are set. Verified gate requests become the Roompire app user identified by `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or by the gate username when the username is already an email address.
+
+`ROOMPIRE_FILE_STORAGE_PROVIDER=local` stores private receipts in the Docker `roompire_uploads` volume. `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` stores private receipts in an S3-compatible bucket such as Cloudflare R2, AWS S3, or MinIO. Use `ROOMPIRE_S3_FORCE_PATH_STYLE=true` for MinIO/path-style endpoints when required by the provider.
 
 ## First Deploy
 
@@ -85,7 +93,7 @@ Create an upload-volume backup:
 ./scripts/backup_uploads.sh
 ```
 
-Backups are written under `backups/` and are ignored by git.
+Backups are written under `backups/` and are ignored by git. For S3-compatible production storage, enable bucket versioning or provider snapshots and export an object inventory/manifest alongside the PostgreSQL backup; file metadata in PostgreSQL stores the provider, bucket, object key, MIME type, size, and SHA-256 hash.
 
 ## Restore Drill
 

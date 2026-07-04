@@ -4,6 +4,11 @@ import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
 import { requireActiveMembership } from "@/server/permissions/rbac";
+import {
+  resolveFileStorageConfig,
+  storageBucketName,
+  storageProviderLabel,
+} from "./storage-config";
 
 export const maxUploadBytes = 5 * 1024 * 1024;
 export const pendingSha256 = "pending";
@@ -145,13 +150,14 @@ export async function createFileUploadIntentForHousehold(
 
   const safeName = sanitizeFilename(parsed.data.originalFilename) || "upload";
   const objectKey = `${householdId}/${randomUUID()}-${safeName}`;
+  const storageConfig = resolveFileStorageConfig();
 
   const file = await prisma.file.create({
     data: {
       householdId,
       uploadedByUserId: userId,
-      storageProvider: "local",
-      bucket: null,
+      storageProvider: storageProviderLabel(storageConfig),
+      bucket: storageBucketName(storageConfig),
       objectKey,
       originalFilename: parsed.data.originalFilename,
       mimeType: parsed.data.mimeType,

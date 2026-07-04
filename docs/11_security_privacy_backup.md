@@ -123,6 +123,8 @@ Later enhancement:
 - Offsite backup copy.
 - Monthly restore drill.
 
+Private receipts can be stored locally for development or in S3-compatible object storage for production. Production buckets must be private, should use versioning or provider snapshots, and should be covered by an object inventory/manifest export that can be reconciled against the database `File` rows.
+
 ## Restore drill
 
 At least before production launch:

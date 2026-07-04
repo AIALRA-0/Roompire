@@ -1,23 +1,26 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const e2ePort = process.env.ROOMPIRE_E2E_PORT ?? "3100";
+const e2eBaseUrl = `http://127.0.0.1:${e2ePort}`;
+const e2eWorkers = Number(process.env.ROOMPIRE_E2E_WORKERS ?? "1");
+
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 75_000,
+  timeout: 120_000,
   fullyParallel: true,
-  workers: 2,
+  workers: e2eWorkers,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [["html"], ["github"]] : [["list"], ["html"]],
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: e2eBaseUrl,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
   webServer: {
-    command:
-      "env -u NO_COLOR NODE_ENV=development pnpm --filter @roompire/web dev --hostname 127.0.0.1",
-    url: "http://127.0.0.1:3000",
-    reuseExistingServer: !process.env.CI,
+    command: `env -u NO_COLOR NODE_ENV=development pnpm --filter @roompire/web dev --hostname 127.0.0.1 --port ${e2ePort}`,
+    url: e2eBaseUrl,
+    reuseExistingServer: process.env.ROOMPIRE_E2E_REUSE_SERVER === "true",
     timeout: 120_000,
   },
   projects: [

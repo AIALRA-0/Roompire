@@ -395,7 +395,7 @@ components:
         id: { type: string, format: uuid }
         householdId: { type: string, format: uuid }
         uploadedByUserId: { type: string, format: uuid }
-        storageProvider: { type: string, examples: [local] }
+        storageProvider: { type: string, examples: [local, s3] }
         originalFilename: { type: string }
         mimeType: { type: string, examples: [application/pdf, image/png] }
         sizeBytes: { type: integer, minimum: 1, maximum: 5242880 }

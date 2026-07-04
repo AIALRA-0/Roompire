@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1079.0",
     "@hookform/resolvers": "latest",
     "@radix-ui/react-slot": "latest",
     "class-variance-authority": "latest",

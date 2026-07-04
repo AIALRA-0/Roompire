@@ -61,7 +61,7 @@
 - Revision flow.
 - Dispute state.
 
-Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, receipt upload/attachment with private signed download URLs, proposal submission, debtor-only approve/reject/request-changes actions, disputed/rejected proposal revision/resubmit with supersedes links, proposal comments, proposal detail pages with split basis and a submitted/approval/change-request/comment timeline, ledger maturity for approved shares, and task-generated pending proposals. Production object storage and richer audit/file timeline events remain backlog items.
+Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, receipt upload/attachment with private signed download URLs on local disk or S3-compatible storage, proposal submission, debtor-only approve/reject/request-changes actions, disputed/rejected proposal revision/resubmit with supersedes links, proposal comments, proposal detail pages with split basis and a submitted/approval/change-request/comment timeline, ledger maturity for approved shares, and task-generated pending proposals. Richer audit/file timeline events remain backlog items.
 
 ## Epic 3 — FX
 
@@ -160,7 +160,7 @@ Current implemented subset across calendar branches: calendar/task page shell, e
 - Backup script.
 - Restore script/drill.
 
-Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, Caddy reverse proxy, migration and demo-seed profiles, authenticated `/api/v1/health`, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, and VPS deployment runbook. Remaining work requires actual server access, valid TLS for `roompire.aialra.online`, remote secret configuration, and an online smoke run against the real domain.
+Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, Caddy reverse proxy, migration and demo-seed profiles, authenticated `/api/v1/health`, S3-compatible private receipt storage wiring, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, and VPS deployment runbook. Remaining work requires actual server access, valid TLS for `roompire.aialra.online`, remote secret configuration, and an online smoke run against the real domain.
 
 ### P1
 

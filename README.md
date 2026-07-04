@@ -38,7 +38,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Owners, admins, and members can create submitted expense proposals from the dashboard.
 - Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
 - Dashboard proposal creation supports equal, exact-amount, percentage, and share-unit splits with a live split preview; proposal detail pages show the chosen method and stored split basis.
-- Proposal creation supports private receipt attachments through a local-file adapter, with short-lived signed download URLs on proposal detail.
+- Proposal creation supports private receipt attachments through local disk in development or S3-compatible storage in production, with short-lived signed download URLs on proposal detail.
 - Proposal detail pages support member comments, revision submission for disputed/rejected proposals, and a submitted/approval/rejection/change-request/comment timeline.
 - Debtors can approve, reject, or request changes only for their own pending shares from the proposal detail page.
 - Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once, with repayment due events created when the proposal has a due date.
@@ -104,16 +104,18 @@ pnpm e2e
 
 `pnpm e2e` starts the real Next.js dev server and runs Playwright against Chromium desktop and mobile projects.
 Because Phase 1 routes read PostgreSQL, run `docker compose up -d postgres redis`, `pnpm db:migrate`, and `pnpm db:seed` before local E2E runs.
+Playwright uses port `3100` by default to avoid colliding with server-level nginx or other local services, and runs one worker by default for stable database/file-flow isolation. Override with `ROOMPIRE_E2E_PORT` or `ROOMPIRE_E2E_WORKERS` only when needed.
 
 ## Deployment
 
 Docker-first deployment is the current production baseline for `roompire.aialra.online`.
 Use [`docs/14_deployment_runbook.md`](docs/14_deployment_runbook.md) for the VPS/Caddy/PostgreSQL/Redis deployment flow, backup commands, restore drill, and smoke checks.
-For public/staging deployments, configure site-level Basic Auth through deployment secrets:
+For public/staging deployments, configure site-level Basic Auth and private file storage through deployment secrets:
 
 - `ROOMPIRE_SITE_GATE_USERNAME`
 - `ROOMPIRE_SITE_GATE_PASSWORD`
 - `ROOMPIRE_SITE_GATE_SESSION_EMAIL` when the gate username is not the desired app user email
+- `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` plus `ROOMPIRE_S3_*` settings for R2/S3/MinIO private receipt storage
 
 Leave either username or password unset to disable the gate locally. In production, a verified site-gate request maps to the app user email from `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or from the gate username when the username is already an email address. Do not commit real gate credentials; set the shared deployment credentials only in the target server, CI, or hosting platform secret store.
 
