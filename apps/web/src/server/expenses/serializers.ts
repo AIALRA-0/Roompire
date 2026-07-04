@@ -71,6 +71,7 @@ export function serializeExpenseProposal(proposal: ExpenseProposal & ProposalRel
         shareCurrency: share.shareCurrency,
         settlementCurrency: share.settlementCurrency,
         status: share.status,
+        ledgerObligationId: share.ledgerObligationId,
       })) ?? [],
     approvals:
       proposal.approvals?.map((approval) => ({

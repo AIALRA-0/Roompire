@@ -106,6 +106,71 @@ async function clickExpenseProposalSubmitWithRetry(page: Page) {
   throw new Error(`POST expense proposal failed with status ${lastStatus}`);
 }
 
+async function clickShareApproveWithRetry(page: Page, shareId: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/expenses/shares/${shareId}/approve`) &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByTestId(`share-approve-${shareId}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Share approved and added to the ledger")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`POST share approve failed with status ${lastStatus}`);
+}
+
+async function clickShareRejectWithRetry(page: Page, shareId: string, reason: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/expenses/shares/${shareId}/reject`) &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByTestId(`share-reject-reason-${shareId}`).fill(reason);
+    await page.getByTestId(`share-reject-${shareId}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Share rejected")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`POST share reject failed with status ${lastStatus}`);
+}
+
+function parseProposalDetailUrl(url: string) {
+  const parsed = new URL(url);
+  const match = parsed.pathname.match(/\/households\/([^/]+)\/expenses\/proposals\/([^/]+)/);
+
+  if (!match) {
+    throw new Error(`Unexpected proposal detail URL: ${url}`);
+  }
+
+  return {
+    householdId: match[1]!,
+    proposalId: match[2]!,
+  };
+}
+
 test.describe("Roompire real browser smoke", () => {
   test.beforeEach(async ({ page }) => {
     await page.request.post("/api/v1/dev/session", {
@@ -122,13 +187,16 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: "Roompire" })).toBeVisible();
     await expect(page.getByText("No formal debt until approval")).toBeVisible();
 
-    await page
-      .getByRole("link", { name: /Open dashboard/ })
-      .first()
-      .click();
+    await Promise.all([
+      page.waitForURL("**/en-US/app"),
+      page
+        .getByRole("link", { name: /Open dashboard/ })
+        .first()
+        .click(),
+    ]);
 
-    await expect(page.getByRole("heading", { name: "USC 3B2B" })).toBeVisible();
     await expect(page.getByText("Pending proposals")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Formal balances" })).toBeVisible();
     await expect(page.getByText("No approved obligations yet")).toBeVisible();
   });
 
@@ -138,12 +206,16 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: "Roompire" })).toBeVisible();
     await expect(page.getByText("审批前不形成正式债务")).toBeVisible();
 
-    await page
-      .getByRole("link", { name: /打开工作台/ })
-      .first()
-      .click();
+    await Promise.all([
+      page.waitForURL("**/zh-CN/app"),
+      page
+        .getByRole("link", { name: /打开工作台/ })
+        .first()
+        .click(),
+    ]);
 
-    await expect(page.getByRole("heading", { name: "USC 3B2B" })).toBeVisible();
+    await expect(page.getByText("待审批提案")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "正式余额" })).toBeVisible();
     await expect(page.getByText("暂无已批准债务")).toBeVisible();
 
     await page.goto("/zh-CN/app/forbidden");
@@ -315,7 +387,7 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByText(inviteeEmail)).toBeVisible();
   });
 
-  test("owner creates a submitted expense proposal without ledger impact", async ({
+  test("owner creates a proposal and debtor approval matures one share", async ({
     page,
   }, testInfo) => {
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
@@ -388,8 +460,158 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: proposalTitle })).toBeVisible();
     await expect(page.getByText("Expense Debtor E2E")).toBeVisible();
     await expect(
-      page.getByText("No formal ledger obligation has been created for this pending proposal."),
+      page.getByText("No formal ledger obligation has been created for this proposal."),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Approve share" })).toHaveCount(0);
+
+    const detailUrl = page.url();
+    const detailIds = parseProposalDetailUrl(detailUrl);
+    const proposalResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals/${detailIds.proposalId}`,
+    );
+    expect(proposalResponse.ok()).toBeTruthy();
+    const proposalPayload = (await proposalResponse.json()) as {
+      proposal: { shares: Array<{ id: string }> };
+    };
+    const shareId = proposalPayload.proposal.shares[0]?.id;
+    expect(shareId).toBeTruthy();
+
+    const ownerApproveResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/shares/${shareId}/approve`,
+      {
+        data: {},
+        headers: {
+          "Idempotency-Key": `owner-approve-${Date.now()}`,
+        },
+      },
+    );
+    expect(ownerApproveResponse.status()).toBe(403);
+
+    await page.request.post("/api/v1/dev/session", {
+      data: {
+        email: debtorEmail,
+        displayName: "Expense Debtor E2E",
+      },
+    });
+    await page.goto(detailUrl);
+    await expect(page.getByRole("button", { name: "Approve share" })).toBeVisible();
+    await clickShareApproveWithRetry(page, shareId!);
+
+    await expect(page.getByText("In ledger").first()).toBeVisible();
+    await expect(
+      page.getByText("Approved shares have created formal ledger obligations."),
+    ).toBeVisible();
+
+    const repeatApproveResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/expenses/shares/${shareId}/approve`,
+      {
+        data: {},
+        headers: {
+          "Idempotency-Key": `repeat-approve-${Date.now()}`,
+        },
+      },
+    );
+    expect(repeatApproveResponse.ok()).toBeTruthy();
+
+    await page.goto("/en-US/app");
+    await expect(page.getByTestId("dashboard-stat-matured-obligations")).toContainText("1");
+    await expect(page.getByText("Expense Debtor E2E owes Expense Owner E2E")).toBeVisible();
+    await expect(page.getByText("CNY 324")).toBeVisible();
+  });
+
+  test("debtor rejects a submitted expense share without ledger impact", async ({
+    page,
+  }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `reject-owner+${suffix}@example.test`;
+    const debtorEmail = `reject-debtor+${suffix}@example.test`;
+    const householdName = `Reject House ${suffix}`;
+    const proposalTitle = `E2E Utilities ${suffix}`;
+
+    await page.request.post("/api/v1/dev/session", {
+      data: {
+        email: ownerEmail,
+        displayName: "Reject Owner E2E",
+      },
+    });
+    const householdResponse = await page.request.post("/api/v1/households", {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+      },
+    });
+    expect(householdResponse.ok()).toBeTruthy();
+    const householdPayload = (await householdResponse.json()) as {
+      household: { id: string };
+    };
+    const invitePayload = await createInviteWithRetry(page, householdPayload.household.id, {
+      email: debtorEmail,
+      role: "MEMBER",
+    });
+
+    await page.request.post("/api/v1/dev/session", {
+      data: {
+        email: debtorEmail,
+        displayName: "Reject Debtor E2E",
+      },
+    });
+    const acceptResponse = await page.request.post("/api/v1/invites/accept", {
+      data: {
+        token: invitePayload.token,
+      },
+    });
+    expect(acceptResponse.ok()).toBeTruthy();
+
+    await page.request.post("/api/v1/dev/session", {
+      data: {
+        email: ownerEmail,
+        displayName: "Reject Owner E2E",
+      },
+    });
+    await page.goto("/en-US/app");
+
+    await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
+    await page.getByTestId("expense-title").fill(proposalTitle);
+    await page.getByTestId("expense-merchant").fill("LADWP");
+    await page.getByTestId("expense-date").fill("2026-07-03");
+    await page.getByTestId("expense-amount").fill("80");
+    await page.getByTestId("expense-original-currency").fill("CNY");
+    await page.getByTestId(`expense-debtor-${debtorEmail}`).check();
+    await clickExpenseProposalSubmitWithRetry(page);
+
+    await page.getByRole("link", { name: "Open detail" }).first().click();
+    await expect(page.getByRole("heading", { name: proposalTitle })).toBeVisible();
+    const detailUrl = page.url();
+    const detailIds = parseProposalDetailUrl(detailUrl);
+    const proposalResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals/${detailIds.proposalId}`,
+    );
+    expect(proposalResponse.ok()).toBeTruthy();
+    const proposalPayload = (await proposalResponse.json()) as {
+      proposal: { shares: Array<{ id: string }> };
+    };
+    const shareId = proposalPayload.proposal.shares[0]?.id;
+    expect(shareId).toBeTruthy();
+
+    await page.request.post("/api/v1/dev/session", {
+      data: {
+        email: debtorEmail,
+        displayName: "Reject Debtor E2E",
+      },
+    });
+    await page.goto(detailUrl);
+    await expect(page.getByRole("button", { name: "Reject share" })).toBeVisible();
+    await clickShareRejectWithRetry(page, shareId!, "Wrong utility period");
+
+    await expect(page.getByText("Rejected").first()).toBeVisible();
+    await expect(
+      page.getByText("No formal ledger obligation has been created for this proposal."),
+    ).toBeVisible();
+
+    await page.goto("/en-US/app");
+    await expect(page.getByTestId("dashboard-stat-matured-obligations")).toContainText("0");
+    await expect(page.getByText("No approved obligations yet")).toBeVisible();
   });
 
   test("viewer cannot create household invites", async ({ page }, testInfo) => {

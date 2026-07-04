@@ -73,6 +73,8 @@
     "statTasks": "近期任务",
     "emptyBalance": "暂无已批准债务",
     "emptyBalanceHint": "创建并审批提案后，余额才会变化。",
+    "owes": "应付",
+    "openObligation": "未结清债务",
     "pendingProposal": "Costco 食品杂货",
     "pendingProposalMeta": "USD 120.00 等分，消费日期 7 月 1 日",
     "approvalNeeded": "需要 Bob 和 Chen 审批",
@@ -187,10 +189,18 @@
     "statusCancelled": "已取消",
     "detailTitle": "提案详情",
     "detailHint": "每位债务人批准前，份额保持待审批。",
+    "ledgerDetailHint": "已批准份额已经进入正式债务账本。",
     "payer": "付款人",
     "share": "份额",
     "fxLock": "汇率锁定",
-    "formalLedgerGuard": "这个待审批提案尚未创建任何正式账本债务。"
+    "approveShare": "批准份额",
+    "rejectShare": "拒绝份额",
+    "rejectionReason": "拒绝原因",
+    "shareApproved": "份额已批准并入账",
+    "shareRejected": "份额已拒绝",
+    "formalLedgerGuard": "这个提案尚未创建任何正式账本债务。",
+    "formalLedgerCreated": "已批准份额已创建正式账本债务。",
+    "errorFallback": "费用操作失败。"
   },
   "Forbidden": {
     "title": "需要访问权限",

@@ -229,6 +229,7 @@ components:
         shareCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         status: { $ref: "#/components/schemas/ShareStatus" }
+        ledgerObligationId: { type: string, format: uuid, nullable: true }
     ExpenseProposal:
       type: object
       required:
@@ -291,6 +292,15 @@ components:
       required: [proposal]
       properties:
         proposal: { $ref: "#/components/schemas/ExpenseProposal" }
+    ApproveExpenseShareRequest:
+      type: object
+      properties:
+        comment: { type: string, maxLength: 1000 }
+    RejectExpenseShareRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
     BalanceEdge:
       type: object
       required: [debtorUserId, creditorUserId, amount, currency]
@@ -637,7 +647,7 @@ paths:
         "200": { description: Submitted }
   /households/{householdId}/expenses/shares/{shareId}/approve:
     post:
-      summary: Approve own assigned expense share
+      summary: Approve own assigned expense share and mature it to the ledger
       parameters:
         - in: header
           name: Idempotency-Key
@@ -651,8 +661,37 @@ paths:
           name: shareId
           required: true
           schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveExpenseShareRequest" }
       responses:
-        "200": { description: Approved }
+        "200":
+          description: Approved and matured when eligible
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseProposalResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not the assigned debtor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or inaccessible share
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Share or proposal is no longer actionable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/expenses/shares/{shareId}/reject:
     post:
       summary: Reject own assigned expense share
@@ -673,13 +712,33 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [reason]
-              properties:
-                reason: { type: string, minLength: 1 }
+            schema: { $ref: "#/components/schemas/RejectExpenseShareRequest" }
       responses:
-        "200": { description: Rejected }
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseProposalResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not the assigned debtor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or inaccessible share
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Share or proposal is no longer actionable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/balances:
     get:
       summary: Get formal ledger balances only

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, ReceiptText, ShieldAlert, WalletCards } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import { ExpenseShareActions } from "@/components/expense-share-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/routing";
@@ -13,7 +14,9 @@ type PageProps = {
   params: Promise<{ locale: Locale; householdId: string; proposalId: string }>;
 };
 
-type ProposalStatus = ReturnType<typeof serializeExpenseProposal>["status"];
+type SerializedProposal = ReturnType<typeof serializeExpenseProposal>;
+type ProposalStatus = SerializedProposal["status"];
+type ShareStatus = SerializedProposal["shares"][number]["status"];
 
 function statusVariant(status: ProposalStatus) {
   if (status === "APPROVED" || status === "MATURED_TO_LEDGER") {
@@ -56,6 +59,42 @@ function statusLabel(
   return labels[status];
 }
 
+function shareStatusVariant(status: ShareStatus) {
+  if (status === "APPROVED" || status === "MATURED_TO_LEDGER") {
+    return "success" as const;
+  }
+
+  if (status === "REJECTED" || status === "DISPUTED") {
+    return "danger" as const;
+  }
+
+  return "warning" as const;
+}
+
+function shareStatusLabel(
+  status: ShareStatus,
+  expense: Awaited<ReturnType<typeof getTranslations>>,
+  common: Awaited<ReturnType<typeof getTranslations>>,
+) {
+  if (status === "PENDING") {
+    return common("pending");
+  }
+
+  if (status === "APPROVED") {
+    return common("approved");
+  }
+
+  if (status === "REJECTED") {
+    return common("rejected");
+  }
+
+  if (status === "MATURED_TO_LEDGER") {
+    return expense("statusMatured");
+  }
+
+  return expense("statusDisputed");
+}
+
 function ForbiddenState({
   locale,
   title,
@@ -93,7 +132,7 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
   const forbidden = await getTranslations({ locale, namespace: "Forbidden" });
   const user = await requirePageUser();
 
-  let proposal: ReturnType<typeof serializeExpenseProposal> | null = null;
+  let proposal: SerializedProposal | null = null;
   let memberNames = new Map<string, string>();
 
   try {
@@ -124,6 +163,16 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
       ? proposal.category.nameZhCn
       : proposal.category.nameEn
     : expense("uncategorized");
+  const hasLedgerObligation = proposal.shares.some((share) => share.ledgerObligationId);
+  const shareActionLabels = {
+    approveShare: expense("approveShare"),
+    rejectShare: expense("rejectShare"),
+    rejectionReason: expense("rejectionReason"),
+    shareApproved: expense("shareApproved"),
+    shareRejected: expense("shareRejected"),
+    errorFallback: expense("errorFallback"),
+    working: common("working"),
+  };
 
   return (
     <main className="min-h-svh bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
@@ -143,7 +192,9 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
                   <ReceiptText aria-hidden="true" className="h-5 w-5 text-primary" />
                   <h1 className="text-2xl font-semibold">{proposal.title}</h1>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">{expense("detailHint")}</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {hasLedgerObligation ? expense("ledgerDetailHint") : expense("detailHint")}
+                </p>
               </div>
               <Badge variant={statusVariant(proposal.status)}>
                 {statusLabel(proposal.status, expense, common)}
@@ -180,19 +231,30 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
                 <h2 className="text-sm font-semibold">{expense("debtors")}</h2>
                 <div className="mt-3 divide-y divide-border">
                   {proposal.shares.map((share) => (
-                    <div
-                      className="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto]"
-                      key={share.id}
-                    >
+                    <div className="grid gap-3 py-3" key={share.id}>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {memberNames.get(share.debtorUserId) ?? share.debtorUserId}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {share.shareCurrency} {share.shareOriginalAmount}
-                        </p>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">
+                              {memberNames.get(share.debtorUserId) ?? share.debtorUserId}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {share.shareCurrency} {share.shareOriginalAmount} ·{" "}
+                              {share.settlementCurrency} {share.shareSettlementAmount}
+                            </p>
+                          </div>
+                          <Badge variant={shareStatusVariant(share.status)}>
+                            {shareStatusLabel(share.status, expense, common)}
+                          </Badge>
+                        </div>
                       </div>
-                      <Badge variant="warning">{common("pending")}</Badge>
+                      {share.debtorUserId === user.id && share.status === "PENDING" ? (
+                        <ExpenseShareActions
+                          householdId={householdId}
+                          labels={shareActionLabels}
+                          shareId={share.id}
+                        />
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -229,7 +291,11 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
                 <div className="flex gap-2">
                   <WalletCards aria-hidden="true" className="mt-0.5 h-4 w-4" />
-                  <p className="text-sm font-medium">{expense("formalLedgerGuard")}</p>
+                  <p className="text-sm font-medium">
+                    {hasLedgerObligation
+                      ? expense("formalLedgerCreated")
+                      : expense("formalLedgerGuard")}
+                  </p>
                 </div>
               </div>
             </div>

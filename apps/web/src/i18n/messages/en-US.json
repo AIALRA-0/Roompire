@@ -73,6 +73,8 @@
     "statTasks": "Upcoming tasks",
     "emptyBalance": "No approved obligations yet",
     "emptyBalanceHint": "Create and approve a proposal before balances change.",
+    "owes": "owes",
+    "openObligation": "Open obligation",
     "pendingProposal": "Costco groceries",
     "pendingProposalMeta": "USD 120.00 split equally, expense date Jul 1",
     "approvalNeeded": "Bob and Chen approval needed",
@@ -187,10 +189,18 @@
     "statusCancelled": "Cancelled",
     "detailTitle": "Proposal detail",
     "detailHint": "Shares are pending until each debtor approves.",
+    "ledgerDetailHint": "Approved shares have matured into formal ledger obligations.",
     "payer": "Payer",
     "share": "Share",
     "fxLock": "FX lock",
-    "formalLedgerGuard": "No formal ledger obligation has been created for this pending proposal."
+    "approveShare": "Approve share",
+    "rejectShare": "Reject share",
+    "rejectionReason": "Rejection reason",
+    "shareApproved": "Share approved and added to the ledger",
+    "shareRejected": "Share rejected",
+    "formalLedgerGuard": "No formal ledger obligation has been created for this proposal.",
+    "formalLedgerCreated": "Approved shares have created formal ledger obligations.",
+    "errorFallback": "Expense action failed."
   },
   "Forbidden": {
     "title": "Access request needed",

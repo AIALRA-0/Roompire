@@ -33,13 +33,16 @@ Phase 1 identity/RBAC slice is implemented:
 - Non-members cannot view member directory pages before accepting an invite.
 - OpenAPI covers the current Phase 1 household, member, invite, and settings endpoints.
 
-Phase 2 expense proposal creation slice is implemented:
+Phase 2 expense proposal approval/ledger slice is implemented:
 
 - Owners, admins, and members can create submitted expense proposals from the dashboard.
 - Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
-- Pending proposals do not create `DebtObligation` or `LedgerTransaction` records and do not affect formal balances.
+- Debtors can approve or reject only their own pending shares from the proposal detail page.
+- Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once.
+- Rejected shares and pending proposals do not affect formal balances.
+- Dashboard formal balances render from open `DebtObligation` rows, not proposal totals.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current list/create/detail expense proposal endpoints.
+- OpenAPI covers the current list/create/detail proposal and share approve/reject endpoints.
 
 ## Development
 

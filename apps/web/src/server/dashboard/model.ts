@@ -23,6 +23,7 @@ export async function getDashboardModel() {
       members: [],
       categories: [],
       expenseProposals: [],
+      debtObligations: [],
       pendingProposalCount: 0,
       maturedObligationCount: 0,
       upcomingTaskCount: 0,
@@ -37,6 +38,7 @@ export async function getDashboardModel() {
     members,
     categories,
     expenseProposals,
+    debtObligations,
     pendingProposalCount,
     maturedObligationCount,
     upcomingTaskCount,
@@ -52,6 +54,16 @@ export async function getDashboardModel() {
     }),
     listExpenseCategoriesForHousehold(user.id, activeHousehold.id),
     listExpenseProposalsForHousehold(user.id, activeHousehold.id),
+    prisma.debtObligation.findMany({
+      where: {
+        householdId: activeHousehold.id,
+        status: "OPEN",
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 20,
+    }),
     prisma.expenseProposal.count({
       where: {
         householdId: activeHousehold.id,
@@ -94,6 +106,7 @@ export async function getDashboardModel() {
     members,
     categories,
     expenseProposals,
+    debtObligations,
     pendingProposalCount,
     maturedObligationCount,
     upcomingTaskCount,

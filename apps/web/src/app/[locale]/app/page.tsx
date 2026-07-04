@@ -200,6 +200,12 @@ export default async function AppPage({ params }: PageProps) {
       CANCELLED: expense("statusCancelled"),
     },
   };
+  const memberNamesByUserId = new Map(
+    model.members.map((member) => [
+      member.userId,
+      member.displayNameOverride ?? member.user.displayName,
+    ]),
+  );
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -389,13 +395,42 @@ export default async function AppPage({ params }: PageProps) {
                     <h2 className="text-lg font-semibold">{t("formalBalances")}</h2>
                     <p className="mt-1 text-sm text-muted-foreground">{t("formalBalancesHint")}</p>
                   </div>
-                  <div className="flex min-h-44 flex-col items-center justify-center px-6 py-10 text-center">
-                    <WalletCards aria-hidden="true" className="h-8 w-8 text-muted-foreground" />
-                    <p className="mt-3 font-medium">{t("emptyBalance")}</p>
-                    <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
-                      {t("emptyBalanceHint")}
-                    </p>
-                  </div>
+                  {model.debtObligations.length > 0 ? (
+                    <div className="divide-y divide-border">
+                      {model.debtObligations.map((obligation) => (
+                        <div
+                          className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                          data-testid={`formal-obligation-${obligation.id}`}
+                          key={obligation.id}
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">
+                              {memberNamesByUserId.get(obligation.debtorUserId) ??
+                                obligation.debtorUserId}{" "}
+                              {t("owes")}{" "}
+                              {memberNamesByUserId.get(obligation.creditorUserId) ??
+                                obligation.creditorUserId}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {t("openObligation")} · {obligation.originalCurrency}{" "}
+                              {obligation.originalAmount.toString()}
+                            </p>
+                          </div>
+                          <p className="text-sm font-semibold">
+                            {obligation.settlementCurrency} {obligation.remainingAmount.toString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex min-h-44 flex-col items-center justify-center px-6 py-10 text-center">
+                      <WalletCards aria-hidden="true" className="h-8 w-8 text-muted-foreground" />
+                      <p className="mt-3 font-medium">{t("emptyBalance")}</p>
+                      <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
+                        {t("emptyBalanceHint")}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -30,13 +30,14 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Docker Compose defines Postgres 18 and Redis 8 with overrideable host ports.
 - Deterministic seed script creates `USC 3B2B`, Alice/Bob/Chen/Dana, 11 categories, one submitted grocery proposal, two pending shares, and one audit event.
 - Vitest covers decimal equal split behavior using `decimal.js`.
-- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, household settings update, owner invite code/link creation, non-member isolation before invite acceptance, invite code/link acceptance, member role update/removal, viewer invite denial, and submitted expense proposal creation without formal ledger impact.
+- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, household settings update, owner invite code/link creation, non-member isolation before invite acceptance, invite code/link acceptance, member role update/removal, viewer invite denial, submitted expense proposal creation without formal ledger impact, debtor approval maturity, duplicate approval safety, and debtor rejection without ledger impact.
 - Phase 1 identity/RBAC slice implemented on branch `feat/phase-1-identity-rbac`: dev session cookie, Prisma-backed session/household/member/invite APIs, household settings API, member role/removal API, RBAC helpers, database-backed dashboard, member directory page, tokenized invite page, localized identity management UI, and updated OpenAPI contract.
 - Phase 2 expense proposal creation slice implemented on branch `feat/expense-proposals`: dashboard proposal form, proposal queue, proposal detail page, list/create/detail proposal APIs, expense proposal service/serializers, RBAC creator guard, locked FX metadata, audit event emission, localized en-US/zh-CN copy, and updated OpenAPI contract.
+- Phase 2 approval/ledger slice implemented on branch `feat/expense-approvals-ledger`: debtor-only approve/reject share APIs, proposal detail share actions, approved-share maturity into append-only `LedgerTransaction` + `DebtObligation`, duplicate maturity guard through unique `sourceShareId`, formal balance list from open obligations, localized copy, OpenAPI updates, and real-browser E2E coverage.
 
 ## Current phase
 
-Phase 2: expense proposals. The submitted-proposal creation path is implemented and verified locally. Current scope creates `ExpenseProposal`, `ExpensePayer`, pending `ExpenseShare` rows, locked FX fields, and an audit event, while preserving the invariant that pending proposals do not create formal `DebtObligation` or `LedgerTransaction` records. Remaining Phase 2 work should add debtor approval/rejection, partial maturation into append-only ledger obligations, idempotency persistence, and production auth/session hardening.
+Phase 2: expense proposals and formal ledger. Proposal creation plus debtor approval/rejection are implemented and verified locally. Current scope creates submitted proposals, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, and keeps rejected/pending shares out of formal balances. Remaining Phase 2 work should persist idempotency keys, add formal balance/ledger APIs and pages, add settlement/reversal flows, broaden split methods, and harden production auth/session semantics.
 
 ## Decisions log
 
@@ -52,6 +53,8 @@ Phase 2: expense proposals. The submitted-proposal creation path is implemented 
 | 2026-07-04 | Use dev-session cookie for MVP auth foundation        | Keeps Phase 1 browser-testable while leaving production auth provider selection open.                                                 |
 | 2026-07-04 | Obscure inaccessible household APIs with 404          | Avoids leaking household existence to non-members.                                                                                    |
 | 2026-07-04 | Ship submitted proposal creation before approvals     | Gives users a real expense intake loop while preserving the proposal/ledger split until approval logic is implemented.                |
+| 2026-07-04 | Enable partial share maturity by default              | Current MVP has no household partial-maturity flag, so each debtor-approved share can create its own formal obligation immediately.   |
+| 2026-07-04 | Treat payer submission as payer confirmation          | Proposal creation creates the primary payer record; debtor approval then satisfies the current maturity gate for that share.          |
 
 ## Open questions for later human review
 
@@ -62,15 +65,28 @@ Phase 2: expense proposals. The submitted-proposal creation path is implemented 
 
 ## Next recommended tasks
 
-1. Implement debtor approval/rejection APIs and UI for each pending `ExpenseShare`.
-2. Implement partial maturation from approved shares into append-only `DebtObligation` and `LedgerTransaction` records.
-3. Persist and enforce `Idempotency-Key` semantics for proposal and approval mutations.
+1. Persist and enforce `Idempotency-Key` semantics for proposal, approval, maturity, and later settlement mutations.
+2. Add formal ledger/balance API endpoints and a dedicated ledger page derived from `DebtObligation` and settlement allocations.
+3. Implement settlement submission/confirmation, settlement allocation, and reversal/adjustment flows.
 4. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
 5. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
 6. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
+7. Add exact, percentage, and share-unit split methods plus receipt upload/revision/comment flows.
 
 ## Last session verification
 
+- 2026-07-04 Phase 2 approval and ledger maturity:
+  - `pnpm format:check` passed.
+  - `pnpm lint` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm test` passed: 2 test files, 5 tests.
+  - `pnpm build` passed with share approve/reject API routes in the Next route manifest.
+  - `pnpm db:validate` passed.
+  - `pnpm db:migrate` passed with no pending migrations.
+  - `pnpm db:seed` passed.
+  - Targeted Playwright passed for approval maturity and rejection paths across Chromium desktop/mobile.
+  - `pnpm e2e` passed from a clean `.next` cache: 16 Playwright tests across Chromium desktop and mobile, including debtor-only approval, duplicate approval safety, ledger maturity, and rejection without ledger impact.
+  - Local note still applies: if dynamic App Router API child routes return 404 after branch/cache churn, remove generated `apps/web/.next` and rerun; clean-cache E2E passes.
 - 2026-07-04 Phase 2 expense proposal creation:
   - `pnpm format:check` passed.
   - `pnpm lint` passed.
