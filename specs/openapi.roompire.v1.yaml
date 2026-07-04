@@ -89,6 +89,24 @@ components:
         timezone: { type: string, example: America/Los_Angeles }
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
+    HouseholdMembershipSummary:
+      type: object
+      required: [id, name, timezone, settlementCurrency, fxPolicy, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        timezone: { type: string, example: America/Los_Angeles }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
+        role: { $ref: "#/components/schemas/Role" }
+    CreateHouseholdRequest:
+      type: object
+      required: [name, timezone, settlementCurrency]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        timezone: { type: string, example: America/Los_Angeles }
+        settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        defaultLocale: { type: string, enum: [zh-CN, en-US] }
     Member:
       type: object
       required: [id, userId, role, displayName]
@@ -96,6 +114,32 @@ components:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
         role: { $ref: "#/components/schemas/Role" }
+        displayName: { type: string }
+        email: { type: string, format: email }
+    CreateInviteRequest:
+      type: object
+      required: [role]
+      properties:
+        email: { type: string, format: email }
+        role: { type: string, enum: [ADMIN, MEMBER, VIEWER] }
+    Invite:
+      type: object
+      required: [id, role, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email, nullable: true }
+        role: { type: string, enum: [ADMIN, MEMBER, VIEWER] }
+        expiresAt: { type: string, format: date-time }
+    AcceptInviteRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
+    DevSessionRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
         displayName: { type: string }
     ExpensePayerInput:
       type: object
@@ -203,15 +247,47 @@ paths:
       responses:
         "200":
           description: Current session or null user
+  /dev/session:
+    post:
+      summary: Set local developer session user
+      description: Dev-only endpoint for local MVP testing. Disabled in production unless explicitly enabled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DevSessionRequest" }
+      responses:
+        "200": { description: Developer session set }
   /households:
     get:
       summary: List current user's households
       responses:
-        "200": { description: OK }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [households]
+                properties:
+                  households:
+                    type: array
+                    items: { $ref: "#/components/schemas/HouseholdMembershipSummary" }
     post:
       summary: Create household
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateHouseholdRequest" }
       responses:
-        "201": { description: Created }
+        "201":
+          description: Created
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/members:
     get:
       summary: List household members
@@ -221,7 +297,71 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
-        "200": { description: OK }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [members]
+                properties:
+                  members:
+                    type: array
+                    items: { $ref: "#/components/schemas/Member" }
+        "404":
+          description: Not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/invites:
+    post:
+      summary: Create household invite
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateInviteRequest" }
+      responses:
+        "201":
+          description: Invite created; token is returned once.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invite, token]
+                properties:
+                  invite: { $ref: "#/components/schemas/Invite" }
+                  token: { type: string }
+        "403":
+          description: Caller is not owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /invites/accept:
+    post:
+      summary: Accept an invite code as the current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AcceptInviteRequest" }
+      responses:
+        "200": { description: Invite accepted }
+        "404":
+          description: Invalid or expired invite
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/expenses/proposals:
     get:
       summary: List expense proposals

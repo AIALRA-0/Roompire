@@ -30,11 +30,12 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Docker Compose defines Postgres 18 and Redis 8 with overrideable host ports.
 - Deterministic seed script creates `USC 3B2B`, Alice/Bob/Chen/Dana, 11 categories, one submitted grocery proposal, two pending shares, and one audit event.
 - Vitest covers decimal equal split behavior using `decimal.js`.
-- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation plus zh-CN protected-route failure state.
+- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, owner invite creation, non-member isolation before invite acceptance, invite acceptance, and viewer invite denial.
+- Phase 1 identity/RBAC slice implemented on branch `feat/phase-1-identity-rbac`: dev session cookie, Prisma-backed session/household/member/invite APIs, RBAC helpers, database-backed dashboard, member directory page, and localized identity management UI.
 
 ## Current phase
 
-Phase 0: repository bootstrap. Baseline is implemented and verified locally; next work should start Phase 1 identity/household/RBAC unless Phase 0 CI/push housekeeping is requested first.
+Phase 1: identity, household, membership, and RBAC. A functional dev-auth/RBAC slice is implemented and verified locally; remaining Phase 1 work should harden auth/session semantics, household settings, role management, and invite acceptance UX before starting Phase 2 expense proposal forms.
 
 ## Decisions log
 
@@ -47,6 +48,8 @@ Phase 0: repository bootstrap. Baseline is implemented and verified locally; nex
 | 2026-07-04 | Pin Prisma to 6.x                                     | The supplied schema uses the stable Prisma datasource URL style; Prisma 7 requires a config migration that is not needed for Phase 0. |
 | 2026-07-04 | Pin TypeScript to 5.x and ESLint to 9.x               | Current Next.js ecosystem is stable on these major versions; TS 6 and ESLint 10 introduced avoidable bootstrap friction.              |
 | 2026-07-04 | Use Postgres 18 volume mount at `/var/lib/postgresql` | Postgres 18 Docker image expects the newer major-version-specific data layout.                                                        |
+| 2026-07-04 | Use dev-session cookie for MVP auth foundation        | Keeps Phase 1 browser-testable while leaving production auth provider selection open.                                                 |
+| 2026-07-04 | Obscure inaccessible household APIs with 404          | Avoids leaking household existence to non-members.                                                                                    |
 
 ## Open questions for later human review
 
@@ -57,15 +60,26 @@ Phase 0: repository bootstrap. Baseline is implemented and verified locally; nex
 
 ## Next recommended tasks
 
-1. Push `feat/phase-0-bootstrap` and open/merge a Phase 0 PR after CI confirms.
-2. Implement Phase 1 auth/session foundation, household CRUD, membership list, invites, and RBAC middleware.
-3. Replace static dashboard sample data with server-loaded seeded household data.
-4. Add API route handlers for `/api/v1/session`, households, members, and permission errors aligned with OpenAPI.
-5. Add Playwright flows for create household, invite/accept member, viewer forbidden mutation, and URL-guess isolation.
+1. Push `feat/phase-1-identity-rbac` and open/merge a stacked PR after CI confirms.
+2. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
+3. Add household settings edit UI/API for locale, timezone, settlement currency, FX policy, and approval policy.
+4. Add role management UI/API for owner/admin changing member roles and removing members.
+5. Add invite acceptance page from tokenized link, not only manual token paste.
 6. Begin Phase 2 expense proposal form only after household/RBAC invariants are enforced server-side.
 
 ## Last session verification
 
+- 2026-07-04 Phase 1 continuation:
+  - `pnpm format:check` passed.
+  - `pnpm lint` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm test` passed: 2 test files, 5 tests.
+  - `pnpm build` passed with the new API/page routes.
+  - `pnpm db:validate` passed.
+  - `pnpm db:migrate` passed with no pending migrations.
+  - `pnpm db:seed` passed.
+  - `pnpm e2e` passed: 10 Playwright tests across Chromium desktop and mobile, including Phase 1 invite/RBAC flows.
+- 2026-07-04 Phase 0 bootstrap:
 - `pnpm install` passed with pnpm 11 build-script approvals recorded in `pnpm-workspace.yaml`.
 - `pnpm format:check` passed.
 - `pnpm db:validate` passed.

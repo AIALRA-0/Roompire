@@ -22,6 +22,16 @@ Phase 0 bootstrap is implemented:
 - Playwright desktop and mobile real-browser smoke tests.
 - GitHub Actions CI/E2E workflow templates.
 
+Phase 1 identity/RBAC slice is in progress:
+
+- Dev-session auth for local MVP testing through the `roompire_session` cookie.
+- Prisma-backed current session, household list, household creation, member list, invite creation, and invite acceptance APIs.
+- Server-side membership and role checks for every implemented household-scoped route.
+- Dashboard now loads seeded household/user/member data from PostgreSQL instead of static fixtures.
+- Browser UI can switch dev users, create households, create invite codes, accept invite codes, and open member directory pages.
+- Viewer invite attempts are rejected by the API and verified in browser.
+- Non-members cannot view member directory pages before accepting an invite.
+
 ## Development
 
 ```bash
@@ -70,6 +80,7 @@ pnpm e2e
 ```
 
 `pnpm e2e` starts the real Next.js dev server and runs Playwright against Chromium desktop and mobile projects.
+Because Phase 1 routes read PostgreSQL, run `docker compose up -d postgres redis`, `pnpm db:migrate`, and `pnpm db:seed` before local E2E runs.
 
 ## Document Map
 

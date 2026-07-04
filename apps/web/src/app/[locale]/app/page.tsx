@@ -16,11 +16,13 @@ import {
   WalletCards,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import { IdentityWorkspace } from "@/components/identity-workspace";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
+import { getDashboardModel } from "@/server/dashboard/model";
 
 type PageProps = {
   params: Promise<{ locale: Locale }>;
@@ -31,6 +33,9 @@ export default async function AppPage({ params }: PageProps) {
   const nav = await getTranslations({ locale, namespace: "Nav" });
   const t = await getTranslations({ locale, namespace: "Dashboard" });
   const common = await getTranslations({ locale, namespace: "Common" });
+  const identity = await getTranslations({ locale, namespace: "Identity" });
+  const model = await getDashboardModel();
+  const activeHouseholdName = model.activeHousehold?.name ?? t("title");
 
   const navItems = [
     { label: nav("dashboard"), icon: Home, active: true },
@@ -43,10 +48,30 @@ export default async function AppPage({ params }: PageProps) {
   ];
 
   const stats = [
-    { label: t("statPending"), value: "3", icon: FileClock, tone: "text-amber-700" },
-    { label: t("statMatured"), value: "0", icon: CircleDollarSign, tone: "text-emerald-700" },
-    { label: t("statFx"), value: "USD/CNY", icon: ShieldCheck, tone: "text-sky-700" },
-    { label: t("statTasks"), value: "4", icon: Clock3, tone: "text-rose-700" },
+    {
+      label: t("statPending"),
+      value: String(model.pendingProposalCount),
+      icon: FileClock,
+      tone: "text-amber-700",
+    },
+    {
+      label: t("statMatured"),
+      value: String(model.maturedObligationCount),
+      icon: CircleDollarSign,
+      tone: "text-emerald-700",
+    },
+    {
+      label: t("statFx"),
+      value: model.activeHousehold?.settlementCurrency ?? "—",
+      icon: ShieldCheck,
+      tone: "text-sky-700",
+    },
+    {
+      label: t("statTasks"),
+      value: String(model.upcomingTaskCount),
+      icon: Clock3,
+      tone: "text-rose-700",
+    },
   ];
 
   const calendarItems = [
@@ -55,7 +80,55 @@ export default async function AppPage({ params }: PageProps) {
     { title: t("groceryEvent"), meta: "Jul 7", status: common("submitted") },
   ];
 
-  const auditItems = [t("auditCreated"), t("auditFx"), t("auditGuard")];
+  const auditItems =
+    model.auditItems.length > 0
+      ? model.auditItems.map((item) => item.action)
+      : [t("auditCreated"), t("auditFx"), t("auditGuard")];
+
+  const identityLabels = {
+    devSession: identity("devSession"),
+    devSessionHint: identity("devSessionHint"),
+    devUser: identity("devUser"),
+    useDevUser: identity("useDevUser"),
+    householdAccess: identity("householdAccess"),
+    householdAccessHint: identity("householdAccessHint"),
+    createHousehold: identity("createHousehold"),
+    createHouseholdHint: identity("createHouseholdHint"),
+    householdName: identity("householdName"),
+    timezone: identity("timezone"),
+    settlementCurrency: identity("settlementCurrency"),
+    createHouseholdButton: identity("createHouseholdButton"),
+    householdCreated: identity("householdCreated"),
+    householdList: identity("householdList"),
+    activeHousehold: identity("activeHousehold"),
+    memberDirectory: identity("memberDirectory"),
+    memberDirectoryHint: identity("memberDirectoryHint"),
+    inviteMember: identity("inviteMember"),
+    inviteMemberHint: identity("inviteMemberHint"),
+    inviteEmail: identity("inviteEmail"),
+    inviteRole: identity("inviteRole"),
+    createInvite: identity("createInvite"),
+    inviteCreated: identity("inviteCreated"),
+    inviteCode: identity("inviteCode"),
+    acceptInvite: identity("acceptInvite"),
+    acceptInviteHint: identity("acceptInviteHint"),
+    inviteToken: identity("inviteToken"),
+    acceptInviteButton: identity("acceptInviteButton"),
+    inviteAccepted: identity("inviteAccepted"),
+    noHousehold: identity("noHousehold"),
+    openMembers: identity("openMembers"),
+    cannotInvite: identity("cannotInvite"),
+    apiBoundary: identity("apiBoundary"),
+    apiBoundaryHint: identity("apiBoundaryHint"),
+    errorFallback: identity("errorFallback"),
+    working: common("working"),
+    roles: {
+      OWNER: common("owner"),
+      ADMIN: common("admin"),
+      MEMBER: common("roleMember"),
+      VIEWER: common("viewer"),
+    },
+  };
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -103,7 +176,12 @@ export default async function AppPage({ params }: PageProps) {
                 <p className="text-xs font-medium uppercase text-muted-foreground">
                   {common("product")}
                 </p>
-                <h1 className="truncate text-xl font-semibold sm:text-2xl">{t("title")}</h1>
+                <h1 className="truncate text-xl font-semibold sm:text-2xl">
+                  {activeHouseholdName}
+                </h1>
+                <p className="truncate text-xs text-muted-foreground">
+                  {identity("signedInAs", { name: model.user.displayName })}
+                </p>
               </div>
               <div className="hidden items-center gap-2 sm:flex">
                 <Button variant="outline">
@@ -153,6 +231,36 @@ export default async function AppPage({ params }: PageProps) {
                 </div>
               ))}
             </section>
+
+            <div className="mt-6">
+              <IdentityWorkspace
+                activeHouseholdId={model.activeHousehold?.id ?? null}
+                canInviteMembers={model.canInviteMembers}
+                currentUserEmail={model.user.email}
+                devUsers={[
+                  { displayName: "Alice", email: "alice@example.test" },
+                  { displayName: "Bob", email: "bob@example.test" },
+                  { displayName: "Chen", email: "chen@example.test" },
+                  { displayName: "Dana", email: "dana@example.test" },
+                  { displayName: "Mia", email: "mia@example.test" },
+                ]}
+                households={model.householdMemberships.map((membership) => ({
+                  id: membership.household.id,
+                  name: membership.household.name,
+                  role: membership.role,
+                  timezone: membership.household.timezone,
+                  settlementCurrency: membership.household.settlementCurrency,
+                }))}
+                labels={identityLabels}
+                locale={locale}
+                members={model.members.map((member) => ({
+                  id: member.id,
+                  displayName: member.displayNameOverride ?? member.user.displayName,
+                  email: member.user.email,
+                  role: member.role,
+                }))}
+              />
+            </div>
 
             <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
               <div className="grid gap-6">
@@ -227,8 +335,8 @@ export default async function AppPage({ params }: PageProps) {
                     <p className="mt-1 text-sm text-muted-foreground">{t("auditHint")}</p>
                   </div>
                   <ol className="grid gap-3 p-5">
-                    {auditItems.map((item) => (
-                      <li className="flex gap-3 text-sm" key={item}>
+                    {auditItems.map((item, index) => (
+                      <li className="flex gap-3 text-sm" key={`${item}-${index}`}>
                         <span className="mt-1 h-2 w-2 rounded-full bg-primary" />
                         <span>{item}</span>
                       </li>
