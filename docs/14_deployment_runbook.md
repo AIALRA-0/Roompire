@@ -153,6 +153,29 @@ systemctl enable --now roompire-backup.timer
 systemctl list-timers roompire-backup.timer
 ```
 
+## Ops Automation
+
+The ops dashboard reads generated JSON snapshots from `ops/status/`. Install the timer units to keep those snapshots fresh without running host commands from the web request path:
+
+```bash
+cp ops/systemd/roompire-ops-status.service /etc/systemd/system/
+cp ops/systemd/roompire-ops-status.timer /etc/systemd/system/
+cp ops/systemd/roompire-smoke.service /etc/systemd/system/
+cp ops/systemd/roompire-smoke.timer /etc/systemd/system/
+```
+
+Adjust each copied service `WorkingDirectory` to the live checkout path, then verify and enable:
+
+```bash
+systemd-analyze verify /etc/systemd/system/roompire-ops-status.service /etc/systemd/system/roompire-ops-status.timer /etc/systemd/system/roompire-smoke.service /etc/systemd/system/roompire-smoke.timer
+systemctl daemon-reload
+systemctl enable --now roompire-ops-status.timer roompire-smoke.timer
+systemctl start roompire-ops-status.service roompire-smoke.service
+systemctl list-timers 'roompire-*'
+```
+
+`roompire-ops-status.timer` refreshes disk, backup, and latest smoke state every 15 minutes. `roompire-smoke.timer` runs authenticated real-domain checks hourly at minute 7, updates `ops/status/latest-smoke.json`, then refreshes the ops snapshot.
+
 ## Restore Drill
 
 Restores are destructive and require an explicit confirmation variable:

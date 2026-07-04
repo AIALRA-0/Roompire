@@ -68,6 +68,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Owner transfer governance slice implemented on branch `feat/owner-transfer-policy`: owners can explicitly transfer ownership to another active member through a dedicated API/UI action, the previous owner is demoted to admin, self-removal/self-role changes remain forbidden, transfer attempts by admins are rejected, and the ownership transfer emits an audit event.
 - Ops health dashboard slice implemented on branch `feat/ops-health-dashboard`: host-generated `ops/status` JSON exposes disk headroom, `roompire-backup.timer`/service state, and the latest real-domain smoke result through owner/admin-gated `/api/v1/ops/status` and localized `/[locale]/app/ops`; the web container reads the status directory through a read-only bind mount and never executes host system commands during web requests.
 - Server disk housekeeping slice implemented on branch `ops/disk-headroom-housekeeping`: `scripts/server_housekeeping.sh` provides dry-run-by-default cleanup for Roompire build artifacts, targeted `/tmp` leftovers, dangling Docker/build cache, journal vacuuming, optional `uv` caches, and optional generated artifacts from old Codex browser workspaces; root headroom recovered from about 2GB/100% usage to about 6.5GB free/97% usage after cleaning old generated workspaces and Docker build cache.
+- Automated ops refresh slice implemented on branch `ops/automated-health-refresh`: systemd units now refresh `ops/status/ops-status.json` every 15 minutes and run authenticated real-domain smoke tests hourly at minute 7, folding the result into the ops dashboard without requiring web-request-time host commands.
 
 ## Current phase
 
@@ -121,6 +122,7 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 | 2026-07-05 | Transfer ownership explicitly, not through role edit        | Owner handoff changes two memberships atomically, keeps a clear audit event, and avoids hidden self-demotion/removal edge cases.                                                                    |
 | 2026-07-05 | Read ops health from host-generated JSON                    | The web container should not need systemd or host command privileges; a local script can collect disk, backup, and smoke status, then mount a read-only snapshot into production.                   |
 | 2026-07-05 | Keep server housekeeping dry-run by default                 | Disk cleanup may touch shared server areas, so generated artifacts can be reported safely first and only removed after explicit confirmation/env switches.                                          |
+| 2026-07-05 | Automate ops snapshots with host timers                     | The ops page should stay current even when nobody manually runs smoke/status scripts; systemd timers can refresh host status and real-domain smoke artifacts outside the web request path.          |
 
 ## Open questions for later human review
 
@@ -138,6 +140,15 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 ## Last session verification
 
+- 2026-07-05 Automated ops refresh:
+  - Added `ops/systemd/roompire-ops-status.service` and `.timer`; the timer refreshes host ops status every 15 minutes.
+  - Added `ops/systemd/roompire-smoke.service` and `.timer`; the timer runs authenticated real-domain smoke checks hourly at minute 7, then refreshes the ops snapshot.
+  - `systemd-analyze verify` passed for the new units and existing backup units using the live checkout path.
+  - Installed the new units on the local production server under `/etc/systemd/system`, replacing the template `WorkingDirectory` with `/srv/aialra/apps/codexapp/state/browser-workspaces/2026-07-04-roompire`.
+  - `systemctl enable --now roompire-ops-status.timer roompire-smoke.timer` passed; `systemctl list-timers 'roompire*'` showed `roompire-ops-status.timer`, `roompire-smoke.timer`, and `roompire-backup.timer`.
+  - Manual `systemctl start roompire-ops-status.service` and `systemctl start roompire-smoke.service` passed; journald showed `ok ops/status/ops-status.json`, `ok /en-US`, `ok /api/v1/health`, and `ok /manifest.webmanifest`.
+  - Authenticated `GET https://roompire.aialra.online/api/v1/ops/status` returned a systemd-refreshed snapshot with `latestSmoke.status=passed`, real-domain check HTTP 200s, and `warnings=["disk_high_usage"]`.
+  - `pnpm format:check` passed.
 - 2026-07-05 Server disk housekeeping:
   - Root disk was audited on the local production server; `docker system df` showed most image size belonged to active running workloads, while old Codex browser workspaces contained reclaimable generated artifacts.
   - Conservative cleanup removed old `/tmp` readlayer/playwright/codex-pack leftovers, `uv` package caches, excess journal archives, and generated artifacts from old non-Roompire browser workspaces (`node_modules`, `.next`, `.turbo`, Playwright output, and one old readlayer tmp sqlite copy); source directories, git history, Docker volumes, production backups, and running service data were preserved.

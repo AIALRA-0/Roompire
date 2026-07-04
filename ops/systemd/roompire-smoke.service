@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Roompire production smoke test and refresh ops status
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/roompire/current
+Environment=ENV_FILE=.env.production
+Environment=BASE_URL=https://roompire.aialra.online
+Environment=ROOMPIRE_SMOKE_STATUS_FILE=ops/status/latest-smoke.json
+Environment=ROOMPIRE_OPS_STATUS_FILE_HOST=ops/status/ops-status.json
+ExecStart=/usr/bin/env bash -lc './scripts/smoke_production.sh && ./scripts/collect_ops_status.sh'

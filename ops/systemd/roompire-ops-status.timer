@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Roompire ops status snapshot every 15 minutes
+
+[Timer]
+OnBootSec=2m
+OnCalendar=*-*-* *:0/15:00
+Persistent=true
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

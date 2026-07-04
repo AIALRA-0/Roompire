@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Roompire production smoke test hourly at minute 7
+
+[Timer]
+OnBootSec=5m
+OnCalendar=*-*-* *:07:00
+Persistent=true
+RandomizedDelaySec=2m
+
+[Install]
+WantedBy=timers.target

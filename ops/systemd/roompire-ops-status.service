@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh Roompire ops status snapshot
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/roompire/current
+Environment=ROOMPIRE_OPS_STATUS_FILE_HOST=ops/status/ops-status.json
+Environment=ROOMPIRE_SMOKE_STATUS_FILE=ops/status/latest-smoke.json
+ExecStart=/usr/bin/env bash ./scripts/collect_ops_status.sh
