@@ -1724,6 +1724,123 @@ test.describe("Roompire real browser smoke", () => {
     });
   });
 
+  test("owner attaches a receipt to a proposal and downloads it", async ({ page }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `receipt-owner+${suffix}@example.test`;
+    const debtorEmail = `receipt-debtor+${suffix}@example.test`;
+    const householdName = `Receipt House ${suffix}`;
+    const proposalTitle = `E2E Receipt ${suffix}`;
+    const receiptFileName = `receipt-${suffix}.pdf`;
+    const receiptBuffer = Buffer.from(`%PDF-1.4\nRoompire receipt ${suffix}\n%%EOF`);
+
+    await setDevSessionWithRetry(page, ownerEmail, "Receipt Owner E2E");
+    const householdResponse = await page.request.post("/api/v1/households", {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+      },
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(householdResponse.ok()).toBeTruthy();
+    const householdPayload = (await householdResponse.json()) as {
+      household: { id: string };
+    };
+    const invitePayload = await createInviteWithRetry(
+      page,
+      householdPayload.household.id,
+      {
+        email: debtorEmail,
+        role: "MEMBER",
+      },
+      ownerEmail,
+    );
+
+    await setDevSessionWithRetry(page, debtorEmail, "Receipt Debtor E2E");
+    const acceptResponse = await page.request.post("/api/v1/invites/accept", {
+      data: {
+        token: invitePayload.token,
+      },
+      headers: {
+        "x-roompire-dev-user-email": debtorEmail,
+      },
+    });
+    expect(acceptResponse.ok()).toBeTruthy();
+
+    await setDevSessionWithRetry(page, ownerEmail, "Receipt Owner E2E");
+    await page.goto("/en-US/app");
+    await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
+    await page.getByTestId("expense-title").fill(proposalTitle);
+    await page.getByTestId("expense-date").fill("2026-07-04");
+    await page.getByTestId("expense-amount").fill("60");
+    await page.getByTestId("expense-original-currency").fill("CNY");
+    await page.getByTestId(`expense-debtor-${debtorEmail}`).check();
+    await page.getByTestId("expense-receipt-file").setInputFiles({
+      name: receiptFileName,
+      mimeType: "application/pdf",
+      buffer: receiptBuffer,
+    });
+    await clickExpenseProposalSubmitWithRetry(page);
+    await expect(page.getByText("Proposal submitted")).toBeVisible();
+
+    await Promise.all([
+      page.waitForURL("**/expenses/proposals/**"),
+      page.getByRole("link", { name: `Open detail: ${proposalTitle}` }).click(),
+    ]);
+    await expect(page.getByTestId("proposal-files")).toContainText(receiptFileName);
+    await expect(page.getByRole("link", { name: "Download receipt" })).toBeVisible();
+
+    const detailIds = parseProposalDetailUrl(page.url());
+    const proposalResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/expenses/proposals/${detailIds.proposalId}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(proposalResponse.ok()).toBeTruthy();
+    const proposalPayload = (await proposalResponse.json()) as {
+      proposal: {
+        files: Array<{
+          id: string;
+          originalFilename: string;
+          mimeType: string;
+          sizeBytes: number;
+          sha256: string | null;
+        }>;
+      };
+    };
+    expect(proposalPayload.proposal.files).toHaveLength(1);
+    expect(proposalPayload.proposal.files[0]).toMatchObject({
+      originalFilename: receiptFileName,
+      mimeType: "application/pdf",
+      sizeBytes: receiptBuffer.length,
+    });
+    expect(proposalPayload.proposal.files[0]!.sha256).toMatch(/^[a-f0-9]{64}$/);
+
+    const receiptFileId = proposalPayload.proposal.files[0]!.id;
+    const downloadUrlResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/files/${receiptFileId}/download-url`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(downloadUrlResponse.ok()).toBeTruthy();
+    const downloadUrlPayload = (await downloadUrlResponse.json()) as {
+      downloadUrl: string;
+      expiresAt: string;
+    };
+    expect(new Date(downloadUrlPayload.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    const downloadResponse = await page.request.get(downloadUrlPayload.downloadUrl);
+    expect(downloadResponse.ok()).toBeTruthy();
+    expect(Buffer.from(await downloadResponse.body()).equals(receiptBuffer)).toBeTruthy();
+  });
+
   test("debtor settles a suggested transfer across multiple obligations", async ({
     page,
   }, testInfo) => {

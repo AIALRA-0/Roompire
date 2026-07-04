@@ -97,17 +97,17 @@ enum CalendarEventType {
 }
 
 model User {
-  id              String   @id @default(uuid()) @db.Uuid
-  email           String   @unique
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
   displayName     String
   avatarUrl       String?
-  preferredLocale String   @default("en-US")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  preferredLocale String    @default("en-US")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  memberships HouseholdMembership[]
-  createdHouseholds Household[] @relation("HouseholdCreator")
+  memberships        HouseholdMembership[]
+  createdHouseholds  Household[]           @relation("HouseholdCreator")
   idempotencyRecords IdempotencyRecord[]
 }
 
@@ -124,12 +124,13 @@ model Household {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  createdBy User @relation("HouseholdCreator", fields: [createdByUserId], references: [id])
-  memberships HouseholdMembership[]
-  categories ExpenseCategory[]
-  proposals ExpenseProposal[]
+  createdBy          User                  @relation("HouseholdCreator", fields: [createdByUserId], references: [id])
+  memberships        HouseholdMembership[]
+  categories         ExpenseCategory[]
+  proposals          ExpenseProposal[]
+  files              File[]
   ledgerTransactions LedgerTransaction[]
-  auditEvents AuditEvent[]
+  auditEvents        AuditEvent[]
   idempotencyRecords IdempotencyRecord[]
 
   @@index([createdByUserId])
@@ -137,14 +138,14 @@ model Household {
 
 model HouseholdMembership {
   id                  String           @id @default(uuid()) @db.Uuid
-  householdId          String           @db.Uuid
-  userId               String           @db.Uuid
-  role                 Role             @default(MEMBER)
-  status               MembershipStatus @default(ACTIVE)
-  displayNameOverride  String?
-  joinedAt             DateTime?
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  householdId         String           @db.Uuid
+  userId              String           @db.Uuid
+  role                Role             @default(MEMBER)
+  status              MembershipStatus @default(ACTIVE)
+  displayNameOverride String?
+  joinedAt            DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -154,15 +155,15 @@ model HouseholdMembership {
 }
 
 model HouseholdInvite {
-  id              String   @id @default(uuid()) @db.Uuid
-  householdId      String   @db.Uuid
-  email            String?
-  tokenHash        String   @unique
-  role             Role     @default(MEMBER)
-  expiresAt        DateTime
-  acceptedAt       DateTime?
-  createdByUserId  String   @db.Uuid
-  createdAt        DateTime @default(now())
+  id              String    @id @default(uuid()) @db.Uuid
+  householdId     String    @db.Uuid
+  email           String?
+  tokenHash       String    @unique
+  role            Role      @default(MEMBER)
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  createdByUserId String    @db.Uuid
+  createdAt       DateTime  @default(now())
 
   @@index([householdId])
 }
@@ -180,7 +181,7 @@ model ExpenseCategory {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  household Household?        @relation(fields: [householdId], references: [id], onDelete: Cascade)
   proposals ExpenseProposal[]
 
   @@unique([householdId, key])
@@ -191,7 +192,7 @@ model IdempotencyRecord {
   id                 String    @id @default(uuid()) @db.Uuid
   key                String    @db.VarChar(160)
   userId             String    @db.Uuid
-  householdId         String?   @db.Uuid
+  householdId        String?   @db.Uuid
   method             String    @db.VarChar(12)
   routeKey           String
   requestHash        String    @db.Char(64)
@@ -202,7 +203,7 @@ model IdempotencyRecord {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   @@unique([userId, key])
@@ -211,39 +212,40 @@ model IdempotencyRecord {
 }
 
 model ExpenseProposal {
-  id                 String                @id @default(uuid()) @db.Uuid
-  householdId         String                @db.Uuid
-  createdByUserId     String                @db.Uuid
-  title              String
-  description        String?
-  merchant           String?
-  categoryId         String?               @db.Uuid
-  expenseDate        DateTime              @db.Date
-  dueDate            DateTime?             @db.Date
-  originalAmount     Decimal               @db.Decimal(20, 6)
-  originalCurrency   String                @db.Char(3)
-  settlementCurrency String                @db.Char(3)
-  settlementAmount   Decimal               @db.Decimal(20, 6)
-  splitMethod        SplitMethod
-  fxPolicy           FxPolicy
-  fxRate             Decimal?              @db.Decimal(24, 12)
-  fxRateDate         DateTime?             @db.Date
-  fxProvider         String?
-  fxLockedAt         DateTime?
-  status             ExpenseProposalStatus @default(DRAFT)
-  revisionNumber     Int                   @default(1)
-  supersedesProposalId String?              @db.Uuid
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-  cancelledAt        DateTime?
+  id                   String                @id @default(uuid()) @db.Uuid
+  householdId          String                @db.Uuid
+  createdByUserId      String                @db.Uuid
+  title                String
+  description          String?
+  merchant             String?
+  categoryId           String?               @db.Uuid
+  expenseDate          DateTime              @db.Date
+  dueDate              DateTime?             @db.Date
+  originalAmount       Decimal               @db.Decimal(20, 6)
+  originalCurrency     String                @db.Char(3)
+  settlementCurrency   String                @db.Char(3)
+  settlementAmount     Decimal               @db.Decimal(20, 6)
+  splitMethod          SplitMethod
+  fxPolicy             FxPolicy
+  fxRate               Decimal?              @db.Decimal(24, 12)
+  fxRateDate           DateTime?             @db.Date
+  fxProvider           String?
+  fxLockedAt           DateTime?
+  status               ExpenseProposalStatus @default(DRAFT)
+  revisionNumber       Int                   @default(1)
+  supersedesProposalId String?               @db.Uuid
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  cancelledAt          DateTime?
 
-  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  category ExpenseCategory? @relation(fields: [categoryId], references: [id])
-  payers ExpensePayer[]
-  shares ExpenseShare[]
-  approvals ProposalApproval[]
-  comments ProposalComment[]
-  taskLinks TaskExpenseProposalLink[]
+  household     Household                 @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category      ExpenseCategory?          @relation(fields: [categoryId], references: [id])
+  payers        ExpensePayer[]
+  shares        ExpenseShare[]
+  approvals     ProposalApproval[]
+  comments      ProposalComment[]
+  proposalFiles ProposalFile[]
+  taskLinks     TaskExpenseProposalLink[]
 
   @@index([householdId, status])
   @@index([householdId, expenseDate])
@@ -251,12 +253,12 @@ model ExpenseProposal {
 }
 
 model ExpensePayer {
-  id                 String  @id @default(uuid()) @db.Uuid
-  proposalId          String  @db.Uuid
-  userId              String  @db.Uuid
-  amountOriginal      Decimal @db.Decimal(20, 6)
-  amountSettlement    Decimal @db.Decimal(20, 6)
-  isPrimary           Boolean @default(false)
+  id               String  @id @default(uuid()) @db.Uuid
+  proposalId       String  @db.Uuid
+  userId           String  @db.Uuid
+  amountOriginal   Decimal @db.Decimal(20, 6)
+  amountSettlement Decimal @db.Decimal(20, 6)
+  isPrimary        Boolean @default(false)
 
   proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
 
@@ -266,21 +268,21 @@ model ExpensePayer {
 
 model ExpenseShare {
   id                    String      @id @default(uuid()) @db.Uuid
-  proposalId             String      @db.Uuid
-  debtorUserId           String      @db.Uuid
-  creditorUserId         String      @db.Uuid
-  shareOriginalAmount    Decimal     @db.Decimal(20, 6)
-  shareSettlementAmount  Decimal     @db.Decimal(20, 6)
-  shareCurrency          String      @db.Char(3)
-  settlementCurrency     String      @db.Char(3)
-  percentage             Decimal?    @db.Decimal(10, 6)
-  shareUnits             Decimal?    @db.Decimal(20, 6)
-  status                 ShareStatus @default(PENDING)
-  ledgerObligationId     String?     @unique @db.Uuid
-  createdAt              DateTime    @default(now())
-  updatedAt              DateTime    @updatedAt
+  proposalId            String      @db.Uuid
+  debtorUserId          String      @db.Uuid
+  creditorUserId        String      @db.Uuid
+  shareOriginalAmount   Decimal     @db.Decimal(20, 6)
+  shareSettlementAmount Decimal     @db.Decimal(20, 6)
+  shareCurrency         String      @db.Char(3)
+  settlementCurrency    String      @db.Char(3)
+  percentage            Decimal?    @db.Decimal(10, 6)
+  shareUnits            Decimal?    @db.Decimal(20, 6)
+  status                ShareStatus @default(PENDING)
+  ledgerObligationId    String?     @unique @db.Uuid
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
 
-  proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  proposal  ExpenseProposal    @relation(fields: [proposalId], references: [id], onDelete: Cascade)
   approvals ProposalApproval[]
 
   @@index([proposalId])
@@ -290,15 +292,15 @@ model ExpenseShare {
 
 model ProposalApproval {
   id             String           @id @default(uuid()) @db.Uuid
-  proposalId      String           @db.Uuid
-  shareId         String?          @db.Uuid
-  approverUserId  String           @db.Uuid
-  decision        ApprovalDecision
-  comment         String?
-  createdAt       DateTime         @default(now())
+  proposalId     String           @db.Uuid
+  shareId        String?          @db.Uuid
+  approverUserId String           @db.Uuid
+  decision       ApprovalDecision
+  comment        String?
+  createdAt      DateTime         @default(now())
 
   proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-  share ExpenseShare? @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  share    ExpenseShare?   @relation(fields: [shareId], references: [id], onDelete: Cascade)
 
   @@index([proposalId])
   @@index([shareId])
@@ -306,16 +308,52 @@ model ProposalApproval {
 }
 
 model ProposalComment {
-  id             String   @id @default(uuid()) @db.Uuid
-  proposalId      String   @db.Uuid
-  shareId         String?  @db.Uuid
-  authorUserId    String   @db.Uuid
-  body            String
-  createdAt       DateTime @default(now())
+  id           String   @id @default(uuid()) @db.Uuid
+  proposalId   String   @db.Uuid
+  shareId      String?  @db.Uuid
+  authorUserId String   @db.Uuid
+  body         String
+  createdAt    DateTime @default(now())
 
   proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
 
   @@index([proposalId])
+}
+
+model File {
+  id               String   @id @default(uuid()) @db.Uuid
+  householdId      String   @db.Uuid
+  uploadedByUserId String   @db.Uuid
+  storageProvider  String   @default("local")
+  bucket           String?
+  objectKey        String   @unique
+  originalFilename String
+  mimeType         String
+  sizeBytes        Int
+  sha256           String
+  createdAt        DateTime @default(now())
+
+  household     Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  proposalFiles ProposalFile[]
+
+  @@index([householdId])
+  @@index([uploadedByUserId])
+  @@index([createdAt])
+}
+
+model ProposalFile {
+  proposalId      String   @db.Uuid
+  fileId          String   @db.Uuid
+  purpose         String   @default("receipt")
+  createdByUserId String   @db.Uuid
+  createdAt       DateTime @default(now())
+
+  proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  file     File            @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@id([proposalId, fileId])
+  @@index([fileId])
+  @@index([createdByUserId])
 }
 
 model FxRate {
@@ -332,18 +370,18 @@ model FxRate {
 }
 
 model LedgerTransaction {
-  id                     String                @id @default(uuid()) @db.Uuid
-  householdId             String                @db.Uuid
-  type                   LedgerTransactionType
-  description            String?
-  sourceType             String?
-  sourceId               String?               @db.Uuid
-  createdByUserId         String?               @db.Uuid
-  occurredAt             DateTime
-  createdAt              DateTime              @default(now())
-  reversesTransactionId   String?               @db.Uuid
+  id                    String                @id @default(uuid()) @db.Uuid
+  householdId           String                @db.Uuid
+  type                  LedgerTransactionType
+  description           String?
+  sourceType            String?
+  sourceId              String?               @db.Uuid
+  createdByUserId       String?               @db.Uuid
+  occurredAt            DateTime
+  createdAt             DateTime              @default(now())
+  reversesTransactionId String?               @db.Uuid
 
-  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  household   Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
   obligations DebtObligation[]
   settlements Settlement[]
 
@@ -352,23 +390,23 @@ model LedgerTransaction {
 }
 
 model DebtObligation {
-  id                   String     @id @default(uuid()) @db.Uuid
-  householdId           String     @db.Uuid
-  ledgerTransactionId   String     @db.Uuid
-  sourceShareId         String?    @unique @db.Uuid
-  debtorUserId          String     @db.Uuid
-  creditorUserId        String     @db.Uuid
-  originalAmount        Decimal    @db.Decimal(20, 6)
-  originalCurrency      String     @db.Char(3)
-  settlementAmount      Decimal    @db.Decimal(20, 6)
-  settlementCurrency    String     @db.Char(3)
-  remainingAmount       Decimal    @db.Decimal(20, 6)
-  status                DebtStatus @default(OPEN)
-  dueDate               DateTime?  @db.Date
-  createdAt             DateTime   @default(now())
-  settledAt             DateTime?
+  id                  String     @id @default(uuid()) @db.Uuid
+  householdId         String     @db.Uuid
+  ledgerTransactionId String     @db.Uuid
+  sourceShareId       String?    @unique @db.Uuid
+  debtorUserId        String     @db.Uuid
+  creditorUserId      String     @db.Uuid
+  originalAmount      Decimal    @db.Decimal(20, 6)
+  originalCurrency    String     @db.Char(3)
+  settlementAmount    Decimal    @db.Decimal(20, 6)
+  settlementCurrency  String     @db.Char(3)
+  remainingAmount     Decimal    @db.Decimal(20, 6)
+  status              DebtStatus @default(OPEN)
+  dueDate             DateTime?  @db.Date
+  createdAt           DateTime   @default(now())
+  settledAt           DateTime?
 
-  transaction LedgerTransaction @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
+  transaction LedgerTransaction      @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
   allocations SettlementAllocation[]
 
   @@index([householdId, debtorUserId])
@@ -377,21 +415,21 @@ model DebtObligation {
 }
 
 model Settlement {
-  id                    String           @id @default(uuid()) @db.Uuid
-  householdId            String           @db.Uuid
-  ledgerTransactionId    String           @db.Uuid
-  payerUserId            String           @db.Uuid
-  payeeUserId            String           @db.Uuid
-  amount                Decimal          @db.Decimal(20, 6)
-  currency              String           @db.Char(3)
-  settlementDate        DateTime         @db.Date
-  method                String
-  status                SettlementStatus @default(SUBMITTED)
-  note                  String?
-  createdByUserId        String           @db.Uuid
-  createdAt             DateTime         @default(now())
+  id                  String           @id @default(uuid()) @db.Uuid
+  householdId         String           @db.Uuid
+  ledgerTransactionId String           @db.Uuid
+  payerUserId         String           @db.Uuid
+  payeeUserId         String           @db.Uuid
+  amount              Decimal          @db.Decimal(20, 6)
+  currency            String           @db.Char(3)
+  settlementDate      DateTime         @db.Date
+  method              String
+  status              SettlementStatus @default(SUBMITTED)
+  note                String?
+  createdByUserId     String           @db.Uuid
+  createdAt           DateTime         @default(now())
 
-  transaction LedgerTransaction @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
+  transaction LedgerTransaction      @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
   allocations SettlementAllocation[]
 
   @@index([householdId, payerUserId])
@@ -399,18 +437,18 @@ model Settlement {
 }
 
 model SettlementAllocation {
-  id                String  @id @default(uuid()) @db.Uuid
-  settlementId       String  @db.Uuid
-  debtObligationId   String  @db.Uuid
-  amountApplied      Decimal @db.Decimal(20, 6)
+  id               String  @id @default(uuid()) @db.Uuid
+  settlementId     String  @db.Uuid
+  debtObligationId String  @db.Uuid
+  amountApplied    Decimal @db.Decimal(20, 6)
 
-  settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  settlement Settlement     @relation(fields: [settlementId], references: [id], onDelete: Cascade)
   obligation DebtObligation @relation(fields: [debtObligationId], references: [id], onDelete: Restrict)
 }
 
 model CalendarEvent {
   id              String            @id @default(uuid()) @db.Uuid
-  householdId      String            @db.Uuid
+  householdId     String            @db.Uuid
   type            CalendarEventType
   title           String
   description     String?
@@ -428,36 +466,36 @@ model CalendarEvent {
 }
 
 model RecurrenceRule {
-  id          String   @id @default(uuid()) @db.Uuid
-  householdId String   @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
+  householdId String    @db.Uuid
   ownerType   String
-  ownerId     String   @db.Uuid
+  ownerId     String    @db.Uuid
   rruleText   String
   dtstart     DateTime
   timezone    String
   until       DateTime?
   count       Int?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([householdId, ownerType, ownerId])
 }
 
 model Task {
-  id                 String   @id @default(uuid()) @db.Uuid
-  householdId         String   @db.Uuid
-  title              String
-  description        String?
-  status             String   @default("OPEN")
-  priority           String   @default("NORMAL")
-  categoryId         String?  @db.Uuid
-  dueAt              DateTime?
-  createdByUserId     String   @db.Uuid
-  completedByUserId   String?  @db.Uuid
-  completedAt        DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String    @id @default(uuid()) @db.Uuid
+  householdId       String    @db.Uuid
+  title             String
+  description       String?
+  status            String    @default("OPEN")
+  priority          String    @default("NORMAL")
+  categoryId        String?   @db.Uuid
+  dueAt             DateTime?
+  createdByUserId   String    @db.Uuid
+  completedByUserId String?   @db.Uuid
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  assignments TaskAssignment[]
+  assignments          TaskAssignment[]
   expenseProposalLinks TaskExpenseProposalLink[]
 
   @@index([householdId, status])
@@ -466,8 +504,8 @@ model Task {
 
 model TaskAssignment {
   id             String @id @default(uuid()) @db.Uuid
-  taskId          String @db.Uuid
-  assignedUserId  String @db.Uuid
+  taskId         String @db.Uuid
+  assignedUserId String @db.Uuid
   role           String @default("OWNER")
   status         String @default("ASSIGNED")
 
@@ -484,7 +522,7 @@ model TaskExpenseProposalLink {
   createdByUserId String   @db.Uuid
   createdAt       DateTime @default(now())
 
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task     Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
   proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
 
   @@index([proposalId])
@@ -492,43 +530,43 @@ model TaskExpenseProposalLink {
 }
 
 model EventLink {
-  id          String   @id @default(uuid()) @db.Uuid
-  eventId     String   @db.Uuid
-  linkedType  String
-  linkedId    String   @db.Uuid
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid()) @db.Uuid
+  eventId    String   @db.Uuid
+  linkedType String
+  linkedId   String   @db.Uuid
+  createdAt  DateTime @default(now())
 
   @@index([eventId])
   @@index([linkedType, linkedId])
 }
 
 model Notification {
-  id          String   @id @default(uuid()) @db.Uuid
-  householdId String   @db.Uuid
-  userId      String   @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
+  householdId String    @db.Uuid
+  userId      String    @db.Uuid
   type        String
   titleKey    String
   bodyKey     String
   payload     Json?
   readAt      DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([householdId, userId, readAt])
 }
 
 model AuditEvent {
-  id           String   @id @default(uuid()) @db.Uuid
-  householdId   String   @db.Uuid
-  actorUserId   String?  @db.Uuid
-  action       String
-  entityType   String
-  entityId     String   @db.Uuid
-  before       Json?
-  after        Json?
-  metadata     Json?
-  prevHash     String?
-  eventHash    String?
-  occurredAt   DateTime @default(now())
+  id          String   @id @default(uuid()) @db.Uuid
+  householdId String   @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String
+  entityType  String
+  entityId    String   @db.Uuid
+  before      Json?
+  after       Json?
+  metadata    Json?
+  prevHash    String?
+  eventHash   String?
+  occurredAt  DateTime @default(now())
 
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 

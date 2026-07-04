@@ -13,6 +13,7 @@ import { z } from "zod";
 import { splitByWeights, splitEqual } from "@/lib/money/split";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
+import { assertFilesReadyForProposal } from "@/server/files/service";
 import { requireActiveMembership, requireExpenseProposalCreator } from "@/server/permissions/rbac";
 
 const currencySchema = z
@@ -66,6 +67,7 @@ const createExpenseProposalBaseSchema = z.object({
   ),
   participantUserIds: z.array(z.string().uuid()).min(1).max(20).optional(),
   participantShares: z.array(participantShareSchema).min(1).max(20).optional(),
+  fileIds: z.array(z.string().uuid()).max(10).optional(),
   splitMethod: z.enum(supportedSplitMethods).default("EQUAL"),
 });
 
@@ -164,6 +166,7 @@ type PreparedExpenseProposalCreate = {
   fxRate: Decimal;
   expenseDate: Date;
   dueDate?: Date;
+  fileIds: string[];
   shareRows: Array<{
     debtorUserId: string;
     creditorUserId: string;
@@ -381,6 +384,11 @@ export async function listExpenseProposalsForHousehold(
       category: true,
       payers: true,
       shares: true,
+      proposalFiles: {
+        include: {
+          file: true,
+        },
+      },
     },
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
     take: 20,
@@ -409,6 +417,14 @@ export async function getExpenseProposalForUser(
         },
       },
       comments: {
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
+      proposalFiles: {
+        include: {
+          file: true,
+        },
         orderBy: {
           createdAt: "asc",
         },
@@ -447,6 +463,14 @@ async function prepareExpenseProposalCreate(
   if (data.categoryId) {
     await assertCategoryBelongsToHousehold(data.categoryId, householdId);
   }
+
+  const fileIds = data.fileIds ?? [];
+
+  await assertFilesReadyForProposal({
+    userId,
+    householdId,
+    fileIds,
+  });
 
   const debtorMemberships = await getParticipantMemberships(householdId, debtorUserIds);
   const originalAmount = new Decimal(data.originalAmount);
@@ -596,6 +620,7 @@ async function prepareExpenseProposalCreate(
     fxRate,
     expenseDate,
     dueDate,
+    fileIds,
     shareRows,
     sourceTaskId,
   };
@@ -647,6 +672,17 @@ async function createExpenseProposalRecord(
     },
   });
 
+  if (prepared.fileIds.length > 0) {
+    await tx.proposalFile.createMany({
+      data: prepared.fileIds.map((fileId) => ({
+        proposalId: proposal.id,
+        fileId,
+        purpose: "receipt",
+        createdByUserId: prepared.userId,
+      })),
+    });
+  }
+
   await tx.auditEvent.create({
     data: {
       householdId: prepared.householdId,
@@ -664,12 +700,30 @@ async function createExpenseProposalRecord(
         splitMethod: proposal.splitMethod,
         shareStatus: ShareStatus.PENDING,
         debtorUserIds: prepared.debtorUserIds,
+        fileIds: prepared.fileIds,
         sourceTaskId: prepared.sourceTaskId ?? null,
       },
     },
   });
 
-  return proposal;
+  return tx.expenseProposal.findUniqueOrThrow({
+    where: {
+      id: proposal.id,
+    },
+    include: {
+      category: true,
+      payers: true,
+      shares: true,
+      proposalFiles: {
+        include: {
+          file: true,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
+    },
+  });
 }
 
 export async function createExpenseProposalForHousehold(
@@ -766,6 +820,14 @@ export async function createExpenseProposalCommentForHousehold(
         category: true,
         payers: true,
         shares: true,
+        proposalFiles: {
+          include: {
+            file: true,
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
         approvals: {
           orderBy: {
             createdAt: "asc",

@@ -3,9 +3,15 @@ import type {
   ExpensePayer,
   ExpenseProposal,
   ExpenseShare,
+  File as UploadedFile,
   ProposalApproval,
   ProposalComment,
+  ProposalFile,
 } from "@prisma/client";
+
+type ProposalFileWithFile = ProposalFile & {
+  file: UploadedFile;
+};
 
 type ProposalRelations = {
   category?: ExpenseCategory | null;
@@ -13,6 +19,7 @@ type ProposalRelations = {
   shares?: ExpenseShare[];
   approvals?: ProposalApproval[];
   comments?: ProposalComment[];
+  proposalFiles?: ProposalFileWithFile[];
 };
 
 function dateToDateOnly(value: Date | null | undefined) {
@@ -91,6 +98,17 @@ export function serializeExpenseProposal(proposal: ExpenseProposal & ProposalRel
         authorUserId: comment.authorUserId,
         body: comment.body,
         createdAt: comment.createdAt.toISOString(),
+      })) ?? [],
+    files:
+      proposal.proposalFiles?.map((proposalFile) => ({
+        id: proposalFile.file.id,
+        purpose: proposalFile.purpose,
+        uploadedByUserId: proposalFile.file.uploadedByUserId,
+        originalFilename: proposalFile.file.originalFilename,
+        mimeType: proposalFile.file.mimeType,
+        sizeBytes: proposalFile.file.sizeBytes,
+        sha256: proposalFile.file.sha256 === "pending" ? null : proposalFile.file.sha256,
+        createdAt: proposalFile.createdAt.toISOString(),
       })) ?? [],
   };
 }

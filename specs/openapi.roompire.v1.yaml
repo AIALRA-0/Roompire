@@ -247,6 +247,11 @@ components:
           minItems: 1
           maxItems: 20
           items: { $ref: "#/components/schemas/ExpenseParticipantInput" }
+        fileIds:
+          type: array
+          description: Uploaded receipt/evidence files to attach as receipts at proposal creation.
+          maxItems: 10
+          items: { type: string, format: uuid }
         splitMethod:
           allOf:
             - { $ref: "#/components/schemas/CreateExpenseSplitMethod" }
@@ -287,6 +292,11 @@ components:
           minItems: 1
           maxItems: 20
           items: { $ref: "#/components/schemas/ExpenseParticipantInput" }
+        fileIds:
+          type: array
+          description: Uploaded receipt/evidence files to attach as receipts at proposal creation.
+          maxItems: 10
+          items: { type: string, format: uuid }
         splitMethod:
           allOf:
             - { $ref: "#/components/schemas/CreateExpenseSplitMethod" }
@@ -361,6 +371,89 @@ components:
           type: string
           format: uuid
           description: Optional share-specific comment target. Must belong to this proposal.
+    File:
+      type: object
+      required:
+        [
+          id,
+          householdId,
+          uploadedByUserId,
+          storageProvider,
+          originalFilename,
+          mimeType,
+          sizeBytes,
+          sha256,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        uploadedByUserId: { type: string, format: uuid }
+        storageProvider: { type: string, examples: [local] }
+        originalFilename: { type: string }
+        mimeType: { type: string, examples: [application/pdf, image/png] }
+        sizeBytes: { type: integer, minimum: 1, maximum: 5242880 }
+        sha256: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    ProposalFile:
+      type: object
+      required:
+        [id, purpose, uploadedByUserId, originalFilename, mimeType, sizeBytes, sha256, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        purpose: { type: string, enum: [receipt, evidence, other] }
+        uploadedByUserId: { type: string, format: uuid }
+        originalFilename: { type: string }
+        mimeType: { type: string }
+        sizeBytes: { type: integer }
+        sha256: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    PresignFileUploadRequest:
+      type: object
+      required: [originalFilename, mimeType, sizeBytes]
+      properties:
+        originalFilename: { type: string, minLength: 1, maxLength: 180 }
+        mimeType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp, application/pdf]
+        sizeBytes: { type: integer, minimum: 1, maximum: 5242880 }
+    PresignFileUploadResponse:
+      type: object
+      required: [file, upload]
+      properties:
+        file: { $ref: "#/components/schemas/File" }
+        upload:
+          type: object
+          required: [fileId, method, uploadUrl, headers]
+          properties:
+            fileId: { type: string, format: uuid }
+            method: { type: string, enum: [PUT] }
+            uploadUrl: { type: string }
+            headers:
+              type: object
+              additionalProperties: { type: string }
+    CompleteFileUploadRequest:
+      type: object
+      required: [fileId]
+      properties:
+        fileId: { type: string, format: uuid }
+        proposalId:
+          type: string
+          format: uuid
+          description: Optional proposal to attach this uploaded file to.
+        purpose: { type: string, enum: [receipt, evidence, other], default: receipt }
+    FileResponse:
+      type: object
+      required: [file]
+      properties:
+        file: { $ref: "#/components/schemas/File" }
+    FileDownloadUrlResponse:
+      type: object
+      required: [file, downloadUrl, expiresAt]
+      properties:
+        file: { $ref: "#/components/schemas/File" }
+        downloadUrl: { type: string }
+        expiresAt: { type: string, format: date-time }
     ExpenseProposal:
       type: object
       required:
@@ -378,6 +471,7 @@ components:
           payers,
           approvals,
           comments,
+          files,
         ]
       properties:
         id: { type: string, format: uuid }
@@ -419,6 +513,9 @@ components:
         comments:
           type: array
           items: { $ref: "#/components/schemas/ProposalComment" }
+        files:
+          type: array
+          items: { $ref: "#/components/schemas/ProposalFile" }
     ExpenseProposalListResponse:
       type: object
       required: [proposals]
@@ -1373,6 +1470,147 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
           description: Share/proposal is no longer actionable, the idempotent request is in progress, or the Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/files/presign-upload:
+    post:
+      summary: Create a private file upload intent
+      description: Owners, admins, and members can request a local/private upload URL for receipt or evidence files. Current MVP accepts PDF and common image types up to 5 MB.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PresignFileUploadRequest" }
+      responses:
+        "201":
+          description: Upload intent created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PresignFileUploadResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer or otherwise cannot upload files
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/files/{fileId}/upload:
+    put:
+      summary: Upload file bytes for a private file intent
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: fileId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/pdf:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+          image/jpeg:
+            schema: { type: string, format: binary }
+          image/webp:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: File bytes stored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileResponse" }
+        "400":
+          description: MIME type or size mismatch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not the uploader or cannot upload files
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: File intent not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/files/complete-upload:
+    post:
+      summary: Finalize a private upload and optionally attach it to a proposal
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompleteFileUploadRequest" }
+      responses:
+        "200":
+          description: File upload completed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not the uploader or cannot complete files
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: File or proposal not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: File bytes are not uploaded yet or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/files/{fileId}/download-url:
+    get:
+      summary: Get a short-lived private file download URL
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: fileId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Signed download URL
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileDownloadUrlResponse" }
+        "404":
+          description: File not found or inaccessible
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

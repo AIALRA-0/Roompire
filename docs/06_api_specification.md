@@ -126,6 +126,8 @@ Current implementation supports list/create calendar event, list/create task, as
 - `POST /households/{householdId}/files/complete-upload`
 - `GET /households/{householdId}/files/{fileId}/download-url`
 
+Current MVP implements a private local-file storage adapter for development: presign creates a file intent, clients upload bytes to the returned private `PUT` URL, proposal creation can attach uploaded `fileIds` as receipt files, and download-url returns a short-lived signed URL. Supported receipt MIME types are PDF, PNG, JPG, and WebP up to 5 MB. Production object storage can replace the local adapter without changing the API shape.
+
 ### Stats/export/audit
 
 - `GET /households/{householdId}/stats/summary`
@@ -150,7 +152,8 @@ Current implementation supports list/create calendar event, list/create task, as
   "settlementCurrency": "CNY",
   "fxRate": "7.200000",
   "splitMethod": "EQUAL",
-  "participantUserIds": ["bob", "chen"]
+  "participantUserIds": ["bob", "chen"],
+  "fileIds": ["uploaded_receipt_file_id"]
 }
 ```
 

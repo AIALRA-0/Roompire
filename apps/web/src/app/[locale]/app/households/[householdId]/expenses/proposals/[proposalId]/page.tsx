@@ -9,6 +9,7 @@ import type { Locale } from "@/i18n/routing";
 import { requirePageUser } from "@/server/auth/session";
 import { getExpenseProposalForUser } from "@/server/expenses/service";
 import { serializeExpenseProposal } from "@/server/expenses/serializers";
+import { createFileDownloadPath } from "@/server/files/service";
 import { listMembersForHousehold } from "@/server/households/service";
 
 type PageProps = {
@@ -391,6 +392,33 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
             </div>
 
             <div className="grid gap-4 content-start">
+              <div className="rounded-lg border border-border bg-background p-4">
+                <h2 className="text-sm font-semibold">{expense("receipts")}</h2>
+                <div className="mt-3 divide-y divide-border" data-testid="proposal-files">
+                  {proposal.files.length > 0 ? (
+                    proposal.files.map((file) => {
+                      const { downloadUrl } = createFileDownloadPath(householdId, file.id);
+
+                      return (
+                        <div className="py-3 first:pt-0 last:pb-0" key={file.id}>
+                          <p className="truncate text-sm font-medium">{file.originalFilename}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {file.mimeType} · {Math.ceil(file.sizeBytes / 1024)} KB
+                          </p>
+                          <Button asChild className="mt-2" size="sm" variant="outline">
+                            <a data-testid={`proposal-file-download-${file.id}`} href={downloadUrl}>
+                              {expense("receiptDownload")}
+                            </a>
+                          </Button>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{expense("noReceipts")}</p>
+                  )}
+                </div>
+              </div>
+
               <div className="rounded-lg border border-border bg-background p-4">
                 <h2 className="text-sm font-semibold">{expense("comments")}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">{expense("commentHint")}</p>

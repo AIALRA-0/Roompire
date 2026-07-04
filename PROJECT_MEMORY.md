@@ -47,10 +47,11 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Phase 2 task-to-expense proposal slice implemented on branch `feat/task-expense-proposals`: added `TaskExpenseProposalLink` with migration `20260704020000_add_task_expense_proposal_links`, a persisted-idempotency `POST /tasks/{taskId}/create-expense-proposal` API, task/event/proposal linking, row-level calendar UI for creating linked pending proposals from tasks, viewer and member/manager guards, docs/OpenAPI/i18n updates, and real-browser desktop/mobile E2E coverage proving task-generated proposals stay out of formal balances until approval.
 - Phase 2 expense split methods slice implemented on branch `feat/expense-split-methods`: proposal creation now supports `EQUAL`, `EXACT`, `PERCENTAGE`, and `SHARES` split methods, stores debtor `percentage`/`shareUnits` basis values, treats the payer's share as implicit remainder or one share unit, exposes split method/detail serialization in API and proposal detail UI, updates docs/OpenAPI/i18n, and real-browser desktop/mobile E2E covers exact UI creation plus percentage/share-unit API creation.
 - Phase 2 proposal comments/timeline slice implemented on branch `feat/proposal-comments-timeline`: added persisted-idempotency proposal comment API, viewer read-only guard for comments, audit events for comment creation, proposal detail comment form/list, submitted/approval/rejection/comment timeline, docs/OpenAPI/i18n updates, and real-browser desktop/mobile E2E coverage for UI comments plus API replay/conflict behavior.
+- Phase 2 proposal receipt attachment slice implemented on branch `feat/proposal-receipts`: added private file metadata/storage tables, a local private file adapter with upload intent/byte upload/complete/download-url APIs, proposal `fileIds` attachment support, signed short-lived receipt download links on proposal detail, docs/OpenAPI/i18n updates, and real-browser desktop/mobile E2E coverage for uploading and downloading an attached receipt.
 
 ## Current phase
 
-Phase 2: expense proposals, formal ledger, and first calendar/task shell. Current scope creates submitted proposals with equal/exact/percentage/share-unit split methods, supports proposal comments and a basic submitted/approval/rejection/comment timeline, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, creates repayment due calendar events for matured obligations with due dates, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides one-off and finite recurring calendar event/task creation plus task completion with task-event links, offers list/week/month calendar views over loaded events, lets eligible users create one linked pending expense proposal from a task, and keeps rejected/pending proposals out of formal balances. Remaining Phase 2 work should add receipt/revision flows, richer timeline/audit surfaces, event-to-expense creation beyond task links, and production auth/session semantics.
+Phase 2: expense proposals, formal ledger, and first calendar/task shell. Current scope creates submitted proposals with equal/exact/percentage/share-unit split methods, supports private receipt attachments, supports proposal comments and a basic submitted/approval/rejection/comment timeline, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, creates repayment due calendar events for matured obligations with due dates, suggests optimized transfers by currency from open obligations, lets debtors submit settlements against one open obligation or a direct suggested-transfer pair, lets creditors confirm or reject those settlements, lets confirmed suggested transfers allocate across multiple matching open obligations, lets owners/admins create manual adjustments or reverse unallocated open obligations, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement/suggestion/correction APIs and page, provides one-off and finite recurring calendar event/task creation plus task completion with task-event links, offers list/week/month calendar views over loaded events, lets eligible users create one linked pending expense proposal from a task, and keeps rejected/pending proposals out of formal balances. Remaining Phase 2 work should add revision/resubmit flows, production object storage, richer timeline/audit/file surfaces, event-to-expense creation beyond task links, and production auth/session semantics.
 
 ## Decisions log
 
@@ -79,6 +80,7 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 | 2026-07-04 | Derive calendar views client-side from loaded events       | Week/month/list views add useful planning affordances without expanding the API surface before filtering/windowed event queries are needed.                                                       |
 | 2026-07-04 | Link tasks to proposals with a dedicated table             | Task reimbursement should work even without a due-date calendar event, while linked TASK events can still point to the generated pending proposal for calendar context.                           |
 | 2026-07-04 | Treat payer share as implicit for advanced splits          | Debtor rows are the only pending approval/debt rows; exact and percentage splits keep the payer's remainder implicit, while share-unit splits give the payer one implicit unit.                   |
+| 2026-07-04 | Start receipt files with a local private storage adapter   | The MVP needs browser-testable private attachments now; keeping metadata and signed download APIs stable lets production object storage replace local disk later without changing clients.        |
 
 ## Open questions for later human review
 
@@ -89,15 +91,27 @@ Phase 2: expense proposals, formal ledger, and first calendar/task shell. Curren
 
 ## Next recommended tasks
 
-1. Add receipt upload and revision/resubmit flows.
+1. Add proposal revision/resubmit flows and dispute state.
 2. Decide whether fully netted suggestions without matching direct obligations should stay guidance-only or gain a separate clearing policy.
 3. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
 4. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
 5. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
-6. Add event-to-expense creation beyond task-linked reimbursement proposals.
+6. Add production object storage for private files and event-to-expense creation beyond task-linked reimbursement proposals.
 
 ## Last session verification
 
+- 2026-07-04 Phase 2 proposal receipt attachments:
+  - `pnpm format:check` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed.
+  - `pnpm test` passed: 3 test files, 10 tests.
+  - `pnpm db:validate` passed.
+  - `pnpm db:generate` passed.
+  - `pnpm db:migrate` passed with no pending migrations after applying `20260704030000_add_proposal_files`.
+  - `pnpm db:seed` passed.
+  - `pnpm build` passed with `/api/v1/households/[householdId]/files/presign-upload`, `/files/[fileId]/upload`, `/files/complete-upload`, `/files/[fileId]/download-url`, and `/files/[fileId]/download` in the Next route manifest and no Turbopack NFT warnings.
+  - Targeted Playwright passed for uploading a proposal receipt, rendering it on proposal detail, fetching a signed download URL, and downloading matching bytes on Chromium desktop and mobile.
+  - `pnpm e2e` passed from a clean `.next`/`.turbo`/Playwright cache: 22 Playwright tests across Chromium desktop and mobile, including the new receipt attachment flow plus existing proposal, split, comment/timeline, ledger, settlement, calendar/task, invite, viewer, and rejection flows.
 - 2026-07-04 Phase 2 proposal comments/timeline:
   - `pnpm format:check` passed.
   - `pnpm typecheck` passed.

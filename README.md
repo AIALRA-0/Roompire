@@ -38,6 +38,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Owners, admins, and members can create submitted expense proposals from the dashboard.
 - Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
 - Dashboard proposal creation supports equal, exact-amount, percentage, and share-unit splits with a live split preview; proposal detail pages show the chosen method and stored split basis.
+- Proposal creation supports private receipt attachments through a local-file adapter, with short-lived signed download URLs on proposal detail.
 - Proposal detail pages support member comments and a submitted/approval/rejection/comment timeline.
 - Debtors can approve or reject only their own pending shares from the proposal detail page.
 - Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once, with repayment due events created when the proposal has a due date.
@@ -52,7 +53,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Owner/admin ledger correction APIs support manual adjustments and reversal of unallocated open obligations with append-only ledger transactions.
 - Calendar/task APIs and `/[locale]/app/calendar` page let owners/admins/members create one-off or finite recurring calendar events, switch event list/week/month views, create/assign one-off or recurring tasks, auto-link due tasks to `TASK` calendar events, complete tasks with linked event status updates, and create linked pending expense proposals from tasks.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current list/create/detail proposal, advanced proposal split inputs, proposal comments, share approve/reject idempotency, balance, obligation, ledger transaction, settlement, settlement suggestion, ledger correction, calendar event, task, and task-to-expense proposal endpoints.
+- OpenAPI covers the current list/create/detail proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject idempotency, balance, obligation, ledger transaction, settlement, settlement suggestion, ledger correction, calendar event, task, and task-to-expense proposal endpoints.
 
 ## Development
 

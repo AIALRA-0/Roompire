@@ -76,6 +76,9 @@ type ExpenseLabels = {
   splitPreview: string;
   splitPreviewEmpty: string;
   splitPreviewInvalid: string;
+  receipt: string;
+  receiptHint: string;
+  selectedReceipt: string;
   submitProposal: string;
   proposalSubmitted: string;
   noProposals: string;
@@ -107,6 +110,16 @@ type ApiErrorPayload = {
   };
 };
 
+type FileUploadIntentResponse = {
+  file: {
+    id: string;
+  };
+  upload: {
+    uploadUrl: string;
+    headers: Record<string, string>;
+  };
+};
+
 async function postProposal<T>(url: string, body: unknown, errorFallback: string): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
@@ -127,6 +140,38 @@ async function postProposal<T>(url: string, body: unknown, errorFallback: string
   }
 
   return payload as T;
+}
+
+async function uploadReceiptFile(
+  householdId: string,
+  file: File,
+  errorFallback: string,
+): Promise<string> {
+  const intent = await postProposal<FileUploadIntentResponse>(
+    `/api/v1/households/${householdId}/files/presign-upload`,
+    {
+      originalFilename: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    },
+    errorFallback,
+  );
+  const uploadResponse = await fetch(intent.upload.uploadUrl, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: intent.upload.headers,
+    body: file,
+  });
+  const isJson = uploadResponse.headers.get("content-type")?.includes("application/json");
+  const payload: unknown = isJson ? await uploadResponse.json() : null;
+
+  if (!uploadResponse.ok) {
+    const errorPayload =
+      payload && typeof payload === "object" ? (payload as ApiErrorPayload) : null;
+    throw new Error(errorPayload?.error?.message ?? errorFallback);
+  }
+
+  return intent.file.id;
 }
 
 function Field({
@@ -192,6 +237,7 @@ export function ExpenseWorkspace({
   const [originalAmountInput, setOriginalAmountInput] = useState("");
   const [originalCurrencyInput, setOriginalCurrencyInput] = useState("USD");
   const [fxRateInput, setFxRateInput] = useState(settlementCurrency === "USD" ? "1" : "");
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const debtorOptions = useMemo(
     () => members.filter((member) => member.role !== "VIEWER" && member.email !== currentUserEmail),
     [currentUserEmail, members],
@@ -405,6 +451,10 @@ export function ExpenseWorkspace({
     }));
 
     try {
+      const fileIds = receiptFile
+        ? [await uploadReceiptFile(activeHouseholdId, receiptFile, labels.errorFallback)]
+        : undefined;
+
       await postProposal(
         `/api/v1/households/${activeHouseholdId}/expenses/proposals`,
         {
@@ -418,6 +468,7 @@ export function ExpenseWorkspace({
           fxRate: fxRateInput,
           participantUserIds,
           participantShares: splitMethod === "EQUAL" ? undefined : participantShares,
+          fileIds,
           splitMethod,
         },
         labels.errorFallback,
@@ -429,6 +480,7 @@ export function ExpenseWorkspace({
       setOriginalAmountInput("");
       setOriginalCurrencyInput("USD");
       setFxRateInput(settlementCurrency === "USD" ? "1" : "");
+      setReceiptFile(null);
       setMessage(labels.proposalSubmitted);
       startTransition(() => router.refresh());
     } catch (error) {
@@ -653,6 +705,21 @@ export function ExpenseWorkspace({
               )}
             </div>
           </fieldset>
+
+          <Field label={labels.receipt}>
+            <input
+              accept="image/png,image/jpeg,image/webp,application/pdf"
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground"
+              data-testid="expense-receipt-file"
+              disabled={isDisabled}
+              name="receipt"
+              onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)}
+              type="file"
+            />
+            <span className="text-xs text-muted-foreground">
+              {receiptFile ? `${labels.selectedReceipt}: ${receiptFile.name}` : labels.receiptHint}
+            </span>
+          </Field>
 
           <Button disabled={isPending || isDisabled} type="submit">
             {isPending ? labels.working : labels.submitProposal}

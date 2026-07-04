@@ -61,7 +61,7 @@
 - Revision flow.
 - Dispute state.
 
-Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, proposal submission, debtor-only approve/reject actions, proposal comments, proposal detail pages with split basis and a submitted/approval/comment timeline, ledger maturity for approved shares, and task-generated pending proposals. Receipt upload, revision/resubmit, dispute state, and richer audit/file timeline events remain backlog items.
+Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, receipt upload/attachment with private signed download URLs, proposal submission, debtor-only approve/reject actions, proposal comments, proposal detail pages with split basis and a submitted/approval/comment timeline, ledger maturity for approved shares, and task-generated pending proposals. Revision/resubmit, dispute state, production object storage, and richer audit/file timeline events remain backlog items.
 
 ## Epic 3 — FX
 
