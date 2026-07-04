@@ -1,0 +1,320 @@
+"use client";
+
+import { Check, SendHorizontal, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import type { SerializedLedgerObligation } from "@/server/ledger/serializers";
+import type { SerializedSettlement } from "@/server/settlements/serializers";
+
+type SettlementLabels = {
+  settlementActions: string;
+  settlementActionsHint: string;
+  recordSettlement: string;
+  amount: string;
+  date: string;
+  method: string;
+  note: string;
+  submitSettlement: string;
+  settlementSubmitted: string;
+  pendingSettlements: string;
+  pendingSettlementsHint: string;
+  confirmSettlement: string;
+  rejectSettlement: string;
+  settlementConfirmed: string;
+  settlementRejected: string;
+  noSettlementActions: string;
+  noPendingSettlements: string;
+  manualMethod: string;
+  payer: string;
+  payee: string;
+  remaining: string;
+  working: string;
+  errorFallback: string;
+};
+
+type SettlementActionsProps = {
+  householdId: string;
+  currentUserId: string;
+  memberNamesByUserId: Record<string, string>;
+  obligations: SerializedLedgerObligation[];
+  settlements: SerializedSettlement[];
+  labels: SettlementLabels;
+};
+
+type ApiErrorPayload = {
+  error?: {
+    message?: string;
+  };
+};
+
+async function postSettlementMutation<T>(
+  url: string,
+  body: unknown,
+  errorFallback: string,
+): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": crypto.randomUUID(),
+    },
+    body: JSON.stringify(body),
+  });
+  const isJson = response.headers.get("content-type")?.includes("application/json");
+  const payload: unknown = isJson ? await response.json() : null;
+
+  if (!response.ok) {
+    const errorPayload =
+      payload && typeof payload === "object" ? (payload as ApiErrorPayload) : null;
+    throw new Error(errorPayload?.error?.message ?? errorFallback);
+  }
+
+  return payload as T;
+}
+
+function memberName(memberNamesByUserId: Record<string, string>, userId: string) {
+  return memberNamesByUserId[userId] ?? userId;
+}
+
+export function SettlementActions({
+  householdId,
+  currentUserId,
+  memberNamesByUserId,
+  obligations,
+  settlements,
+  labels,
+}: SettlementActionsProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const recordableObligations = obligations.filter(
+    (obligation) => obligation.status === "OPEN" && obligation.debtorUserId === currentUserId,
+  );
+  const pendingSettlements = settlements.filter(
+    (settlement) => settlement.status === "SUBMITTED" && settlement.payeeUserId === currentUserId,
+  );
+  const obligationsById = new Map(obligations.map((obligation) => [obligation.id, obligation]));
+
+  async function submitSettlement(event: FormEvent<HTMLFormElement>, obligationId: string) {
+    event.preventDefault();
+    setMessage(null);
+    setBusyActionId(`submit-${obligationId}`);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      await postSettlementMutation(
+        `/api/v1/households/${householdId}/settlements`,
+        {
+          debtObligationId: obligationId,
+          amount: String(formData.get("amount") ?? ""),
+          settlementDate: String(formData.get("settlementDate") ?? ""),
+          method: String(formData.get("method") ?? ""),
+          note: String(formData.get("note") ?? ""),
+        },
+        labels.errorFallback,
+      );
+      form.reset();
+      setMessage(labels.settlementSubmitted);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : labels.errorFallback);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
+
+  async function decideSettlement(settlementId: string, decision: "confirm" | "reject") {
+    setMessage(null);
+    setBusyActionId(`${decision}-${settlementId}`);
+
+    try {
+      await postSettlementMutation(
+        `/api/v1/households/${householdId}/settlements/${settlementId}/${decision}`,
+        {},
+        labels.errorFallback,
+      );
+      setMessage(decision === "confirm" ? labels.settlementConfirmed : labels.settlementRejected);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : labels.errorFallback);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
+
+  return (
+    <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="rounded-lg border border-border bg-card">
+        <div className="border-b border-border p-5">
+          <h2 className="text-lg font-semibold">{labels.settlementActions}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{labels.settlementActionsHint}</p>
+        </div>
+        {recordableObligations.length > 0 ? (
+          <div className="divide-y divide-border">
+            {recordableObligations.map((obligation) => (
+              <form
+                className="grid gap-3 p-4"
+                data-testid={`settlement-form-${obligation.id}`}
+                key={obligation.id}
+                onSubmit={(event) => submitSettlement(event, obligation.id)}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {memberName(memberNamesByUserId, obligation.debtorUserId)} {labels.payer} ·{" "}
+                      {memberName(memberNamesByUserId, obligation.creditorUserId)} {labels.payee}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {labels.remaining}: {obligation.settlementCurrency}{" "}
+                      {obligation.remainingAmount}
+                    </p>
+                  </div>
+                  <Badge variant="warning">{obligation.status}</Badge>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_150px]">
+                  <label className="grid gap-1.5 text-sm font-medium">
+                    <span>{labels.amount}</span>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`settlement-amount-${obligation.id}`}
+                      defaultValue={obligation.remainingAmount}
+                      max={obligation.remainingAmount}
+                      min="0.000001"
+                      name="amount"
+                      required
+                      step="0.000001"
+                      type="number"
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-medium">
+                    <span>{labels.date}</span>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`settlement-date-${obligation.id}`}
+                      defaultValue={today}
+                      name="settlementDate"
+                      required
+                      type="date"
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-medium">
+                    <span>{labels.method}</span>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`settlement-method-${obligation.id}`}
+                      defaultValue={labels.manualMethod}
+                      maxLength={60}
+                      name="method"
+                      required
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <label className="grid gap-1.5 text-sm font-medium">
+                    <span>{labels.note}</span>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`settlement-note-${obligation.id}`}
+                      maxLength={500}
+                      name="note"
+                    />
+                  </label>
+                  <Button
+                    data-testid={`settlement-submit-${obligation.id}`}
+                    disabled={isPending || busyActionId === `submit-${obligation.id}`}
+                    type="submit"
+                  >
+                    <SendHorizontal aria-hidden="true" className="h-4 w-4" />
+                    {busyActionId === `submit-${obligation.id}`
+                      ? labels.working
+                      : labels.submitSettlement}
+                  </Button>
+                </div>
+              </form>
+            ))}
+          </div>
+        ) : (
+          <p className="p-5 text-sm text-muted-foreground">{labels.noSettlementActions}</p>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-border bg-card">
+        <div className="border-b border-border p-5">
+          <h2 className="text-lg font-semibold">{labels.pendingSettlements}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{labels.pendingSettlementsHint}</p>
+        </div>
+        {pendingSettlements.length > 0 ? (
+          <div className="divide-y divide-border">
+            {pendingSettlements.map((settlement) => {
+              const sourceObligation = settlement.sourceTransaction.sourceId
+                ? obligationsById.get(settlement.sourceTransaction.sourceId)
+                : null;
+
+              return (
+                <div
+                  className="grid gap-3 p-4"
+                  data-testid={`pending-settlement-${settlement.id}`}
+                  key={settlement.id}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {settlement.currency} {settlement.amount}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {memberName(memberNamesByUserId, settlement.payerUserId)} {labels.payer}
+                        {sourceObligation
+                          ? ` · ${labels.remaining}: ${sourceObligation.settlementCurrency} ${sourceObligation.remainingAmount}`
+                          : ""}
+                      </p>
+                    </div>
+                    <Badge variant="warning">{settlement.status}</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      data-testid={`settlement-confirm-${settlement.id}`}
+                      disabled={isPending || busyActionId === `confirm-${settlement.id}`}
+                      onClick={() => decideSettlement(settlement.id, "confirm")}
+                      size="sm"
+                      type="button"
+                    >
+                      <Check aria-hidden="true" className="h-4 w-4" />
+                      {busyActionId === `confirm-${settlement.id}`
+                        ? labels.working
+                        : labels.confirmSettlement}
+                    </Button>
+                    <Button
+                      data-testid={`settlement-reject-${settlement.id}`}
+                      disabled={isPending || busyActionId === `reject-${settlement.id}`}
+                      onClick={() => decideSettlement(settlement.id, "reject")}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <X aria-hidden="true" className="h-4 w-4" />
+                      {labels.rejectSettlement}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="p-5 text-sm text-muted-foreground">{labels.noPendingSettlements}</p>
+        )}
+      </div>
+      {message ? (
+        <p className="text-sm text-muted-foreground xl:col-span-2" role="status">
+          {message}
+        </p>
+      ) : null}
+    </section>
+  );
+}

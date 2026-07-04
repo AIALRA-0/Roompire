@@ -42,10 +42,12 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Proposal creation and share approve/reject persist `Idempotency-Key` records, replay matching duplicate requests, and reject key reuse with changed request bodies.
 - Rejected shares and pending proposals do not affect formal balances.
 - Dashboard formal balances render from open `DebtObligation` rows, not proposal totals.
-- Dedicated formal ledger page lists net balances, open obligations, and append-only ledger transactions.
+- Dedicated formal ledger page lists net balances, open obligations, settlement actions, pending settlement confirmations, and append-only ledger transactions.
 - Read-only formal ledger APIs expose balances, obligations, and transactions derived from `DebtObligation` and settlement allocations.
+- Settlement APIs let debtors submit payments against open obligations; creditor confirmation creates settlement allocations and reduces remaining balances.
+- Settlement create/confirm/reject mutations persist `Idempotency-Key` records with replay/conflict behavior.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current list/create/detail proposal, share approve/reject idempotency, balance, obligation, and ledger transaction endpoints.
+- OpenAPI covers the current list/create/detail proposal, share approve/reject idempotency, balance, obligation, ledger transaction, and settlement endpoints.
 
 ## Development
 

@@ -79,3 +79,6 @@ export function serializeLedgerTransaction(transaction: LedgerTransactionWithRel
     })),
   };
 }
+
+export type SerializedLedgerObligation = ReturnType<typeof serializeLedgerObligation>;
+export type SerializedLedgerTransaction = ReturnType<typeof serializeLedgerTransaction>;

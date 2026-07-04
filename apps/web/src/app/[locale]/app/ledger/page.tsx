@@ -13,6 +13,7 @@ import { getTranslations } from "next-intl/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { SettlementActions } from "@/components/settlement-actions";
 import type { Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
 import { getDashboardModel } from "@/server/dashboard/model";
@@ -26,6 +27,8 @@ import {
   listLedgerObligationsForHousehold,
   listLedgerTransactionsForHousehold,
 } from "@/server/ledger/service";
+import { serializeSettlement } from "@/server/settlements/serializers";
+import { listSettlementsForHousehold } from "@/server/settlements/service";
 
 type PageProps = {
   params: Promise<{ locale: Locale }>;
@@ -60,16 +63,22 @@ export default async function LedgerPage({ params }: PageProps) {
       member.displayNameOverride ?? member.user.displayName,
     ]),
   );
-  const [balances, obligations, transactions] = activeHouseholdId
+  const memberNamesByUserIdRecord = Object.fromEntries(memberNamesByUserId);
+  const [balances, obligations, transactions, settlements] = activeHouseholdId
     ? await Promise.all([
         listBalanceEdgesForHousehold(model.user.id, activeHouseholdId),
         listLedgerObligationsForHousehold(model.user.id, activeHouseholdId),
         listLedgerTransactionsForHousehold(model.user.id, activeHouseholdId),
+        listSettlementsForHousehold(model.user.id, activeHouseholdId),
       ])
-    : [[], [], []];
+    : [[], [], [], []];
   const serializedBalances = balances.map(serializeBalanceEdge);
   const serializedObligations = obligations.map(serializeLedgerObligation);
+  const serializedOpenObligations = serializedObligations.filter(
+    (obligation) => obligation.status === "OPEN",
+  );
   const serializedTransactions = transactions.map(serializeLedgerTransaction);
+  const serializedSettlements = settlements.map(serializeSettlement);
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -152,13 +161,48 @@ export default async function LedgerPage({ params }: PageProps) {
               </div>
               <div className="rounded-lg border border-border bg-card p-4">
                 <p className="text-sm text-muted-foreground">{ledger("openObligations")}</p>
-                <p className="mt-3 text-2xl font-semibold">{serializedObligations.length}</p>
+                <p className="mt-3 text-2xl font-semibold">{serializedOpenObligations.length}</p>
               </div>
               <div className="rounded-lg border border-border bg-card p-4">
                 <p className="text-sm text-muted-foreground">{ledger("transactions")}</p>
                 <p className="mt-3 text-2xl font-semibold">{serializedTransactions.length}</p>
               </div>
             </section>
+
+            {activeHouseholdId ? (
+              <SettlementActions
+                currentUserId={model.user.id}
+                householdId={activeHouseholdId}
+                labels={{
+                  settlementActions: ledger("settlementActions"),
+                  settlementActionsHint: ledger("settlementActionsHint"),
+                  recordSettlement: ledger("recordSettlement"),
+                  amount: ledger("amount"),
+                  date: ledger("date"),
+                  method: ledger("method"),
+                  note: ledger("note"),
+                  submitSettlement: ledger("submitSettlement"),
+                  settlementSubmitted: ledger("settlementSubmitted"),
+                  pendingSettlements: ledger("pendingSettlements"),
+                  pendingSettlementsHint: ledger("pendingSettlementsHint"),
+                  confirmSettlement: ledger("confirmSettlement"),
+                  rejectSettlement: ledger("rejectSettlement"),
+                  settlementConfirmed: ledger("settlementConfirmed"),
+                  settlementRejected: ledger("settlementRejected"),
+                  noSettlementActions: ledger("noSettlementActions"),
+                  noPendingSettlements: ledger("noPendingSettlements"),
+                  manualMethod: ledger("manualMethod"),
+                  payer: ledger("payer"),
+                  payee: ledger("payee"),
+                  remaining: ledger("remaining"),
+                  working: common("working"),
+                  errorFallback: ledger("settlementErrorFallback"),
+                }}
+                memberNamesByUserId={memberNamesByUserIdRecord}
+                obligations={serializedObligations}
+                settlements={serializedSettlements}
+              />
+            ) : null}
 
             <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
               <div className="grid gap-6">
@@ -211,9 +255,9 @@ export default async function LedgerPage({ params }: PageProps) {
                       {ledger("openObligationsHint")}
                     </p>
                   </div>
-                  {serializedObligations.length > 0 ? (
+                  {serializedOpenObligations.length > 0 ? (
                     <div className="divide-y divide-border">
-                      {serializedObligations.map((obligation) => (
+                      {serializedOpenObligations.map((obligation) => (
                         <div
                           className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                           data-testid={`ledger-obligation-${obligation.id}`}

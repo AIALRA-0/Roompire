@@ -451,6 +451,75 @@ components:
         transactions:
           type: array
           items: { $ref: "#/components/schemas/LedgerTransaction" }
+    SettlementAllocation:
+      type: object
+      required: [id, settlementId, debtObligationId, amountApplied]
+      properties:
+        id: { type: string, format: uuid }
+        settlementId: { type: string, format: uuid }
+        debtObligationId: { type: string, format: uuid }
+        amountApplied: { $ref: "#/components/schemas/DecimalString" }
+    Settlement:
+      type: object
+      required:
+        [
+          id,
+          householdId,
+          ledgerTransactionId,
+          payerUserId,
+          payeeUserId,
+          amount,
+          currency,
+          settlementDate,
+          method,
+          status,
+          createdByUserId,
+          createdAt,
+          sourceTransaction,
+          allocations,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        ledgerTransactionId: { type: string, format: uuid }
+        payerUserId: { type: string, format: uuid }
+        payeeUserId: { type: string, format: uuid }
+        amount: { $ref: "#/components/schemas/DecimalString" }
+        currency: { $ref: "#/components/schemas/CurrencyCode" }
+        settlementDate: { type: string, format: date }
+        method: { type: string }
+        status: { $ref: "#/components/schemas/SettlementStatus" }
+        note: { type: string, nullable: true }
+        createdByUserId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        sourceTransaction: { $ref: "#/components/schemas/LedgerObligationSourceTransaction" }
+        allocations:
+          type: array
+          items: { $ref: "#/components/schemas/SettlementAllocation" }
+    CreateSettlementRequest:
+      type: object
+      required: [debtObligationId, amount, settlementDate]
+      properties:
+        debtObligationId: { type: string, format: uuid }
+        amount:
+          allOf:
+            - { $ref: "#/components/schemas/DecimalString" }
+          description: Positive amount, up to six decimal places, not exceeding the obligation remaining amount.
+        settlementDate: { type: string, format: date }
+        method: { type: string, minLength: 1, maxLength: 60, default: manual }
+        note: { type: string, maxLength: 500 }
+    SettlementResponse:
+      type: object
+      required: [settlement]
+      properties:
+        settlement: { $ref: "#/components/schemas/Settlement" }
+    SettlementListResponse:
+      type: object
+      required: [settlements]
+      properties:
+        settlements:
+          type: array
+          items: { $ref: "#/components/schemas/Settlement" }
 paths:
   /session:
     get:
@@ -946,6 +1015,170 @@ paths:
               schema: { $ref: "#/components/schemas/LedgerTransactionListResponse" }
         "404":
           description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/settlements:
+    get:
+      summary: List settlement records
+      description: Returns submitted, confirmed, rejected, and cancelled settlements for the household.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettlementListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      summary: Submit a settlement against an open obligation
+      description: The debtor records a payment. Balances are reduced only after creditor confirmation.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSettlementRequest" }
+      responses:
+        "201":
+          description: Settlement submitted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettlementResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer or is not the debtor for the obligation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Obligation not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Obligation is not open, settlement overpays, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/settlements/{settlementId}/confirm:
+    post:
+      summary: Confirm a submitted settlement
+      description: The creditor confirms payment, creates an allocation, and reduces the open obligation balance.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: settlementId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Settlement confirmed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettlementResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer or is not the creditor for the settlement
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Settlement not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Settlement is not confirmable, obligation is not open, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/settlements/{settlementId}/reject:
+    post:
+      summary: Reject a submitted settlement
+      description: The creditor rejects a pending settlement without changing obligation balances.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: settlementId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Settlement rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettlementResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer or is not the creditor for the settlement
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Settlement not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Settlement is not rejectable, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

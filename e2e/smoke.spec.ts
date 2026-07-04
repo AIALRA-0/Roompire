@@ -214,6 +214,56 @@ async function clickShareRejectWithRetry(page: Page, shareId: string, reason: st
   throw new Error(`POST share reject failed with status ${lastStatus}`);
 }
 
+async function clickSettlementSubmitWithRetry(page: Page, obligationId: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const responsePromise = page.waitForResponse((response) => {
+      const pathname = new URL(response.url()).pathname;
+
+      return pathname.endsWith("/settlements") && response.request().method() === "POST";
+    });
+
+    await page.getByTestId(`settlement-submit-${obligationId}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Settlement submitted")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`POST settlement failed with status ${lastStatus}`);
+}
+
+async function clickSettlementConfirmWithRetry(page: Page, settlementId: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/settlements/${settlementId}/confirm`) &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByTestId(`settlement-confirm-${settlementId}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Settlement confirmed")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`POST settlement confirm failed with status ${lastStatus}`);
+}
+
 function parseProposalDetailUrl(url: string) {
   const parsed = new URL(url);
   const match = parsed.pathname.match(/\/households\/([^/]+)\/expenses\/proposals\/([^/]+)/);
@@ -585,6 +635,7 @@ test.describe("Roompire real browser smoke", () => {
     expect(obligationsResponse.ok()).toBeTruthy();
     const obligationsPayload = (await obligationsResponse.json()) as {
       obligations: Array<{
+        id: string;
         sourceShareId: string;
         remainingAmount: string;
         settlementCurrency: string;
@@ -598,6 +649,8 @@ test.describe("Roompire real browser smoke", () => {
       settlementCurrency: "CNY",
       status: "OPEN",
     });
+    const primaryObligationId = obligationsPayload.obligations[0]?.id;
+    expect(primaryObligationId).toBeTruthy();
 
     const transactionsResponse = await page.request.get(
       `/api/v1/households/${detailIds.householdId}/ledger/transactions`,
@@ -632,6 +685,77 @@ test.describe("Roompire real browser smoke", () => {
     );
     await expect(balanceRow).toContainText("Expense Debtor E2E owes Expense Owner E2E");
     await expect(balanceRow).toContainText("CNY 324");
+
+    await page.getByTestId(`settlement-amount-${primaryObligationId}`).fill("324");
+    await page.getByTestId(`settlement-date-${primaryObligationId}`).fill("2026-07-04");
+    await clickSettlementSubmitWithRetry(page, primaryObligationId!);
+
+    const submittedSettlementsResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/settlements`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(submittedSettlementsResponse.ok()).toBeTruthy();
+    const submittedSettlementsPayload = (await submittedSettlementsResponse.json()) as {
+      settlements: Array<{
+        id: string;
+        amount: string;
+        status: string;
+        allocations: unknown[];
+      }>;
+    };
+    expect(submittedSettlementsPayload.settlements).toHaveLength(1);
+    expect(submittedSettlementsPayload.settlements[0]).toMatchObject({
+      amount: "324",
+      status: "SUBMITTED",
+      allocations: [],
+    });
+    const submittedSettlementId = submittedSettlementsPayload.settlements[0]?.id;
+    expect(submittedSettlementId).toBeTruthy();
+
+    await setDevSessionWithRetry(page, ownerEmail, "Expense Owner E2E");
+    await page.goto("/en-US/app/ledger");
+    const pendingSettlementRow = page.getByTestId(`pending-settlement-${submittedSettlementId}`);
+    await expect(pendingSettlementRow).toContainText("CNY 324");
+    await clickSettlementConfirmWithRetry(page, submittedSettlementId!);
+
+    const settledBalancesResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/balances`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(settledBalancesResponse.ok()).toBeTruthy();
+    const settledBalancesPayload = (await settledBalancesResponse.json()) as {
+      balances: unknown[];
+    };
+    expect(settledBalancesPayload.balances).toEqual([]);
+
+    const settledObligationsResponse = await page.request.get(
+      `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(settledObligationsResponse.ok()).toBeTruthy();
+    const settledObligationsPayload = (await settledObligationsResponse.json()) as {
+      obligations: Array<{ id: string; remainingAmount: string; status: string }>;
+    };
+    expect(
+      settledObligationsPayload.obligations.find(
+        (obligation) => obligation.id === primaryObligationId,
+      ),
+    ).toMatchObject({
+      remainingAmount: "0",
+      status: "SETTLED",
+    });
 
     const idempotentProposalBody = {
       title: `E2E Idempotent ${suffix}`,
@@ -746,13 +870,130 @@ test.describe("Roompire real browser smoke", () => {
     expect(obligationsAfterIdempotentApprovalResponse.ok()).toBeTruthy();
     const obligationsAfterIdempotentApproval =
       (await obligationsAfterIdempotentApprovalResponse.json()) as {
-        obligations: Array<{ sourceShareId: string }>;
+        obligations: Array<{
+          id: string;
+          sourceShareId: string;
+          remainingAmount: string;
+          status: string;
+        }>;
       };
     expect(
       obligationsAfterIdempotentApproval.obligations.filter(
         (obligation) => obligation.sourceShareId === idempotentShareId,
       ),
     ).toHaveLength(1);
+    const idempotentObligation = obligationsAfterIdempotentApproval.obligations.find(
+      (obligation) => obligation.sourceShareId === idempotentShareId,
+    );
+    expect(idempotentObligation).toMatchObject({
+      remainingAmount: "10",
+      status: "OPEN",
+    });
+
+    const settlementIdempotencyKey = `settlement-idempotency-${Date.now()}`;
+    const idempotentSettlementBody = {
+      debtObligationId: idempotentObligation!.id,
+      amount: idempotentObligation!.remainingAmount,
+      settlementDate: "2026-07-04",
+      method: "manual",
+      note: "API replay",
+    };
+    const idempotentSettlementResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/settlements`,
+      {
+        data: idempotentSettlementBody,
+        headers: {
+          "Idempotency-Key": settlementIdempotencyKey,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(idempotentSettlementResponse.status()).toBe(201);
+    const idempotentSettlementPayload = (await idempotentSettlementResponse.json()) as {
+      settlement: { id: string };
+    };
+
+    const idempotentSettlementReplayResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/settlements`,
+      {
+        data: idempotentSettlementBody,
+        headers: {
+          "Idempotency-Key": settlementIdempotencyKey,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(idempotentSettlementReplayResponse.status()).toBe(201);
+    const idempotentSettlementReplayPayload =
+      (await idempotentSettlementReplayResponse.json()) as typeof idempotentSettlementPayload;
+    expect(idempotentSettlementReplayPayload.settlement.id).toBe(
+      idempotentSettlementPayload.settlement.id,
+    );
+
+    const idempotentSettlementConflictResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/settlements`,
+      {
+        data: {
+          ...idempotentSettlementBody,
+          note: "Changed settlement note",
+        },
+        headers: {
+          "Idempotency-Key": settlementIdempotencyKey,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(idempotentSettlementConflictResponse.status()).toBe(409);
+
+    const confirmSettlementIdempotencyKey = `settlement-confirm-idempotency-${Date.now()}`;
+    const confirmSettlementResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/settlements/${idempotentSettlementPayload.settlement.id}/confirm`,
+      {
+        data: {},
+        headers: {
+          "Idempotency-Key": confirmSettlementIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(confirmSettlementResponse.ok()).toBeTruthy();
+    const confirmSettlementPayload = (await confirmSettlementResponse.json()) as {
+      settlement: { id: string; status: string; allocations: Array<{ amountApplied: string }> };
+    };
+    expect(confirmSettlementPayload.settlement).toMatchObject({
+      id: idempotentSettlementPayload.settlement.id,
+      status: "CONFIRMED",
+      allocations: [{ amountApplied: "10" }],
+    });
+
+    const confirmSettlementReplayResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/settlements/${idempotentSettlementPayload.settlement.id}/confirm`,
+      {
+        data: {},
+        headers: {
+          "Idempotency-Key": confirmSettlementIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(confirmSettlementReplayResponse.ok()).toBeTruthy();
+    const confirmSettlementReplayPayload =
+      (await confirmSettlementReplayResponse.json()) as typeof confirmSettlementPayload;
+    expect(confirmSettlementReplayPayload.settlement.id).toBe(
+      confirmSettlementPayload.settlement.id,
+    );
+
+    const confirmSettlementConflictResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/settlements/${idempotentSettlementPayload.settlement.id}/confirm`,
+      {
+        data: { changed: true },
+        headers: {
+          "Idempotency-Key": confirmSettlementIdempotencyKey,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(confirmSettlementConflictResponse.status()).toBe(409);
   });
 
   test("debtor rejects a submitted expense share without ledger impact", async ({

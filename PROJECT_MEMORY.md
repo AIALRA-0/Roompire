@@ -30,34 +30,36 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Docker Compose defines Postgres 18 and Redis 8 with overrideable host ports.
 - Deterministic seed script creates `USC 3B2B`, Alice/Bob/Chen/Dana, 11 categories, one submitted grocery proposal, two pending shares, and one audit event.
 - Vitest covers decimal equal split behavior using `decimal.js`.
-- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, household settings update, owner invite code/link creation, non-member isolation before invite acceptance, invite code/link acceptance, member role update/removal, viewer invite denial, submitted expense proposal creation without formal ledger impact, debtor approval maturity, duplicate approval safety, formal ledger API/page visibility, persisted idempotency replay/conflict checks for proposal/approval/rejection, and debtor rejection without ledger impact.
+- Playwright E2E covers real browser desktop and mobile landing/dashboard navigation, zh-CN protected-route failure state, owner household creation, household settings update, owner invite code/link creation, non-member isolation before invite acceptance, invite code/link acceptance, member role update/removal, viewer invite denial, submitted expense proposal creation without formal ledger impact, debtor approval maturity, duplicate approval safety, formal ledger API/page visibility, debtor settlement submission, creditor settlement confirmation, persisted idempotency replay/conflict checks for proposal/approval/rejection/settlement mutations, and debtor rejection without ledger impact.
 - Phase 1 identity/RBAC slice implemented on branch `feat/phase-1-identity-rbac`: dev session cookie, Prisma-backed session/household/member/invite APIs, household settings API, member role/removal API, RBAC helpers, database-backed dashboard, member directory page, tokenized invite page, localized identity management UI, and updated OpenAPI contract.
 - Phase 2 expense proposal creation slice implemented on branch `feat/expense-proposals`: dashboard proposal form, proposal queue, proposal detail page, list/create/detail proposal APIs, expense proposal service/serializers, RBAC creator guard, locked FX metadata, audit event emission, localized en-US/zh-CN copy, and updated OpenAPI contract.
 - Phase 2 approval/ledger slice implemented on branch `feat/expense-approvals-ledger`: debtor-only approve/reject share APIs, proposal detail share actions, approved-share maturity into append-only `LedgerTransaction` + `DebtObligation`, duplicate maturity guard through unique `sourceShareId`, formal balance list from open obligations, localized copy, OpenAPI updates, and real-browser E2E coverage.
 - Phase 2 ledger balances slice implemented on branch `feat/ledger-balances`: read-only `/balances`, `/ledger/obligations`, and `/ledger/transactions` APIs, formal ledger service/serializers, dedicated localized ledger page, dashboard navigation to the ledger page, OpenAPI updates, and real-browser E2E/API coverage.
 - Phase 2 idempotency slice implemented on branch `feat/idempotency-keys`: `IdempotencyRecord` schema/migration, persisted user/key request hashing and replayable responses, 409 conflicts for key reuse with changed endpoint/body, proposal create idempotency, share approve/reject idempotency, OpenAPI/docs updates, and real-browser E2E/API coverage.
+- Phase 2 settlements slice implemented on branch `feat/settlements`: debtor settlement submission, creditor confirmation/rejection, allocation rows that reduce `DebtObligation.remainingAmount`, localized ledger-page settlement workbench, settlement APIs with persisted idempotency, OpenAPI/docs updates, and real-browser E2E/API coverage.
 
 ## Current phase
 
-Phase 2: expense proposals and formal ledger. Proposal creation plus debtor approval/rejection are implemented and verified locally. Current scope creates submitted proposals, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, persists idempotency keys for current financial mutations, exposes read-only formal ledger/balance APIs and page, and keeps rejected/pending shares out of formal balances. Remaining Phase 2 work should add settlement/reversal flows, broaden split methods, and harden production auth/session semantics.
+Phase 2: expense proposals and formal ledger. Proposal creation plus debtor approval/rejection are implemented and verified locally. Current scope creates submitted proposals, lets debtors decide only their own shares, matures approved shares into append-only ledger obligations exactly once, lets debtors submit settlements against open obligations, lets creditors confirm or reject those settlements, persists idempotency keys for current financial mutations, exposes formal ledger/balance/settlement APIs and page, and keeps rejected/pending proposals out of formal balances. Remaining Phase 2 work should add reversal/adjustment flows, settlement suggestions, broader split methods, and production auth/session semantics.
 
 ## Decisions log
 
-| Date       | Decision                                              | Rationale                                                                                                                             |
-| ---------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-07-03 | Choose custom PWA-first system                        | Existing tools do not satisfy approval-gated ledger + locked FX + calendar-linked tasks + bilingual self-hosting.                     |
-| 2026-07-03 | Use proposal/ledger split                             | Pending expenses must be auditable but must not affect debt balances.                                                                 |
-| 2026-07-03 | Use expense-date FX lock by default                   | More predictable for RMB repayment and avoids repayment-date FX disputes.                                                             |
-| 2026-07-03 | Use Playwright as primary E2E gate                    | User explicitly requires real webpage interaction testing.                                                                            |
-| 2026-07-04 | Pin Prisma to 6.x                                     | The supplied schema uses the stable Prisma datasource URL style; Prisma 7 requires a config migration that is not needed for Phase 0. |
-| 2026-07-04 | Pin TypeScript to 5.x and ESLint to 9.x               | Current Next.js ecosystem is stable on these major versions; TS 6 and ESLint 10 introduced avoidable bootstrap friction.              |
-| 2026-07-04 | Use Postgres 18 volume mount at `/var/lib/postgresql` | Postgres 18 Docker image expects the newer major-version-specific data layout.                                                        |
-| 2026-07-04 | Use dev-session cookie for MVP auth foundation        | Keeps Phase 1 browser-testable while leaving production auth provider selection open.                                                 |
-| 2026-07-04 | Obscure inaccessible household APIs with 404          | Avoids leaking household existence to non-members.                                                                                    |
-| 2026-07-04 | Ship submitted proposal creation before approvals     | Gives users a real expense intake loop while preserving the proposal/ledger split until approval logic is implemented.                |
-| 2026-07-04 | Enable partial share maturity by default              | Current MVP has no household partial-maturity flag, so each debtor-approved share can create its own formal obligation immediately.   |
-| 2026-07-04 | Treat payer submission as payer confirmation          | Proposal creation creates the primary payer record; debtor approval then satisfies the current maturity gate for that share.          |
-| 2026-07-04 | Persist idempotency per user and key                  | Duplicate-prone financial mutations must replay identical requests and reject key reuse with changed endpoint/body.                   |
+| Date       | Decision                                                   | Rationale                                                                                                                             |
+| ---------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-03 | Choose custom PWA-first system                             | Existing tools do not satisfy approval-gated ledger + locked FX + calendar-linked tasks + bilingual self-hosting.                     |
+| 2026-07-03 | Use proposal/ledger split                                  | Pending expenses must be auditable but must not affect debt balances.                                                                 |
+| 2026-07-03 | Use expense-date FX lock by default                        | More predictable for RMB repayment and avoids repayment-date FX disputes.                                                             |
+| 2026-07-03 | Use Playwright as primary E2E gate                         | User explicitly requires real webpage interaction testing.                                                                            |
+| 2026-07-04 | Pin Prisma to 6.x                                          | The supplied schema uses the stable Prisma datasource URL style; Prisma 7 requires a config migration that is not needed for Phase 0. |
+| 2026-07-04 | Pin TypeScript to 5.x and ESLint to 9.x                    | Current Next.js ecosystem is stable on these major versions; TS 6 and ESLint 10 introduced avoidable bootstrap friction.              |
+| 2026-07-04 | Use Postgres 18 volume mount at `/var/lib/postgresql`      | Postgres 18 Docker image expects the newer major-version-specific data layout.                                                        |
+| 2026-07-04 | Use dev-session cookie for MVP auth foundation             | Keeps Phase 1 browser-testable while leaving production auth provider selection open.                                                 |
+| 2026-07-04 | Obscure inaccessible household APIs with 404               | Avoids leaking household existence to non-members.                                                                                    |
+| 2026-07-04 | Ship submitted proposal creation before approvals          | Gives users a real expense intake loop while preserving the proposal/ledger split until approval logic is implemented.                |
+| 2026-07-04 | Enable partial share maturity by default                   | Current MVP has no household partial-maturity flag, so each debtor-approved share can create its own formal obligation immediately.   |
+| 2026-07-04 | Treat payer submission as payer confirmation               | Proposal creation creates the primary payer record; debtor approval then satisfies the current maturity gate for that share.          |
+| 2026-07-04 | Persist idempotency per user and key                       | Duplicate-prone financial mutations must replay identical requests and reject key reuse with changed endpoint/body.                   |
+| 2026-07-04 | Require creditor confirmation before settlement allocation | A debtor-submitted payment should be auditable immediately but should not reduce formal balances until the creditor confirms receipt. |
 
 ## Open questions for later human review
 
@@ -68,15 +70,26 @@ Phase 2: expense proposals and formal ledger. Proposal creation plus debtor appr
 
 ## Next recommended tasks
 
-1. Implement settlement submission/confirmation, settlement allocation, and reversal/adjustment flows.
-2. Extend persisted idempotency to settlement/reversal/adjustment mutations as those endpoints are added.
-3. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
-4. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
-5. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
-6. Add exact, percentage, and share-unit split methods plus receipt upload/revision/comment flows.
+1. Implement reversal/adjustment flows for append-only corrections.
+2. Add settlement suggestions and optional multi-obligation settlement allocation policy.
+3. Extend persisted idempotency to reversal/adjustment mutations as those endpoints are added.
+4. Add CI-friendly database reset/fixture isolation for E2E so repeated local runs do not accumulate test households.
+5. Add production-ready auth provider decision and session persistence plan; dev auth must remain disabled by default in production.
+6. Decide owner transfer and self-removal semantics; current UI disables self mutation and owner-row mutation while server preserves last-owner guard.
+7. Add exact, percentage, and share-unit split methods plus receipt upload/revision/comment flows.
 
 ## Last session verification
 
+- 2026-07-04 Phase 2 settlements:
+  - `pnpm format:check` passed.
+  - `pnpm lint` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm test` passed: 2 test files, 5 tests.
+  - `pnpm build` passed with `/api/v1/households/[householdId]/settlements`, `/settlements/[settlementId]/confirm`, and `/settlements/[settlementId]/reject` in the Next route manifest.
+  - `pnpm db:validate` passed.
+  - `pnpm db:migrate` passed with no pending migrations.
+  - `pnpm db:seed` passed.
+  - `pnpm e2e` passed from a clean `.next` cache: 16 Playwright tests across Chromium desktop and mobile, including debtor settlement submission, creditor confirmation, confirmed settlement balance reduction, and settlement create/confirm idempotency replay/conflict assertions.
 - 2026-07-04 Phase 2 persisted idempotency:
   - `pnpm format:check` passed.
   - `pnpm lint` passed.

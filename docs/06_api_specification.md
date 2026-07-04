@@ -173,15 +173,16 @@ Mutation headers:
 
 ```json
 {
-  "payeeUserId": "alice",
+  "debtObligationId": "obl_123",
   "amount": "287.20",
-  "currency": "CNY",
   "settlementDate": "2026-07-08",
   "method": "WECHAT",
-  "obligationIds": ["obl_123"],
   "note": "Paid via WeChat."
 }
 ```
+
+Current implementation records one submitted settlement against one open debt obligation.
+Only the debtor for that obligation can submit it. The creditor must confirm it before the service creates a settlement allocation and reduces the obligation remaining amount. Rejection leaves obligation balances unchanged.
 
 ## Authorization matrix
 
