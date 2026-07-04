@@ -144,12 +144,23 @@ export const rejectExpenseShareSchema = z.object({
   reason: z.string().trim().min(1).max(1000),
 });
 
+export const requestChangesExpenseShareSchema = z.object({
+  reason: z.string().trim().min(1).max(1000),
+});
+
 export const createExpenseProposalCommentSchema = z.object({
   body: z.string().trim().min(1).max(1000),
   shareId: nullableUuidSchema,
 });
 
+export const reviseExpenseProposalSchema = createExpenseProposalBaseSchema
+  .extend({
+    revisionReason: z.string().trim().min(1).max(1000).optional(),
+  })
+  .superRefine(validateSplitInputs);
+
 type CreateExpenseProposalData = z.infer<typeof createExpenseProposalSchema>;
+type ReviseExpenseProposalData = z.infer<typeof reviseExpenseProposalSchema>;
 type ExpenseCreatorMembership = Awaited<ReturnType<typeof requireExpenseProposalCreator>>;
 
 type PreparedExpenseProposalCreate = {
@@ -167,6 +178,8 @@ type PreparedExpenseProposalCreate = {
   expenseDate: Date;
   dueDate?: Date;
   fileIds: string[];
+  revisionNumber?: number;
+  supersedesProposalId?: string;
   shareRows: Array<{
     debtorUserId: string;
     creditorUserId: string;
@@ -179,6 +192,30 @@ type PreparedExpenseProposalCreate = {
   }>;
   sourceTaskId?: string;
 };
+
+const expenseProposalDetailInclude = {
+  category: true,
+  payers: true,
+  shares: true,
+  approvals: {
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
+  comments: {
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
+  proposalFiles: {
+    include: {
+      file: true,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
+} satisfies Prisma.ExpenseProposalInclude;
 
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
@@ -253,6 +290,10 @@ function proposalStatusFromShares(shares: Array<{ status: ShareStatus }>) {
     return ExpenseProposalStatus.PARTIALLY_MATURED;
   }
 
+  if (shares.some((share) => share.status === ShareStatus.DISPUTED)) {
+    return ExpenseProposalStatus.DISPUTED;
+  }
+
   if (shares.every((share) => share.status === ShareStatus.REJECTED)) {
     return ExpenseProposalStatus.REJECTED;
   }
@@ -275,6 +316,7 @@ function proposalStatusFromShares(shares: Array<{ status: ShareStatus }>) {
 function assertProposalCanReceiveShareDecision(status: ExpenseProposalStatus) {
   if (
     status === ExpenseProposalStatus.CANCELLED ||
+    status === ExpenseProposalStatus.DISPUTED ||
     status === ExpenseProposalStatus.REJECTED ||
     status === ExpenseProposalStatus.MATURED_TO_LEDGER
   ) {
@@ -407,29 +449,7 @@ export async function getExpenseProposalForUser(
       id: proposalId,
       householdId,
     },
-    include: {
-      category: true,
-      payers: true,
-      shares: true,
-      approvals: {
-        orderBy: {
-          createdAt: "asc",
-        },
-      },
-      comments: {
-        orderBy: {
-          createdAt: "asc",
-        },
-      },
-      proposalFiles: {
-        include: {
-          file: true,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-      },
-    },
+    include: expenseProposalDetailInclude,
   });
 
   if (!proposal) {
@@ -445,6 +465,10 @@ async function prepareExpenseProposalCreate(
   creatorMembership: ExpenseCreatorMembership,
   data: CreateExpenseProposalData,
   sourceTaskId?: string,
+  revision?: {
+    supersedesProposalId: string;
+    revisionNumber: number;
+  },
 ) {
   const household = creatorMembership.household;
   const participantShares = participantSharesForInput(data);
@@ -621,6 +645,8 @@ async function prepareExpenseProposalCreate(
     expenseDate,
     dueDate,
     fileIds,
+    revisionNumber: revision?.revisionNumber,
+    supersedesProposalId: revision?.supersedesProposalId,
     shareRows,
     sourceTaskId,
   };
@@ -651,6 +677,8 @@ async function createExpenseProposalRecord(
       fxProvider: prepared.sameCurrency ? "same-currency" : "manual-entry",
       fxLockedAt: new Date(),
       status: ExpenseProposalStatus.SUBMITTED,
+      revisionNumber: prepared.revisionNumber ?? 1,
+      supersedesProposalId: prepared.supersedesProposalId,
       payers: {
         create: [
           {
@@ -701,6 +729,8 @@ async function createExpenseProposalRecord(
         shareStatus: ShareStatus.PENDING,
         debtorUserIds: prepared.debtorUserIds,
         fileIds: prepared.fileIds,
+        revisionNumber: prepared.revisionNumber ?? 1,
+        supersedesProposalId: prepared.supersedesProposalId ?? null,
         sourceTaskId: prepared.sourceTaskId ?? null,
       },
     },
@@ -710,19 +740,7 @@ async function createExpenseProposalRecord(
     where: {
       id: proposal.id,
     },
-    include: {
-      category: true,
-      payers: true,
-      shares: true,
-      proposalFiles: {
-        include: {
-          file: true,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-      },
-    },
+    include: expenseProposalDetailInclude,
   });
 }
 
@@ -816,29 +834,7 @@ export async function createExpenseProposalCommentForHousehold(
       where: {
         id: proposalId,
       },
-      include: {
-        category: true,
-        payers: true,
-        shares: true,
-        proposalFiles: {
-          include: {
-            file: true,
-          },
-          orderBy: {
-            createdAt: "asc",
-          },
-        },
-        approvals: {
-          orderBy: {
-            createdAt: "asc",
-          },
-        },
-        comments: {
-          orderBy: {
-            createdAt: "asc",
-          },
-        },
-      },
+      include: expenseProposalDetailInclude,
     });
   });
 }
@@ -1035,13 +1031,7 @@ export async function approveExpenseShareForHousehold(
     if (share.status === ShareStatus.MATURED_TO_LEDGER) {
       return tx.expenseProposal.findUniqueOrThrow({
         where: { id: share.proposalId },
-        include: {
-          category: true,
-          payers: true,
-          shares: true,
-          approvals: true,
-          comments: true,
-        },
+        include: expenseProposalDetailInclude,
       });
     }
 
@@ -1201,11 +1191,7 @@ export async function approveExpenseShareForHousehold(
         status: proposalStatusFromShares(refreshedShares),
       },
       include: {
-        category: true,
-        payers: true,
-        shares: true,
-        approvals: true,
-        comments: true,
+        ...expenseProposalDetailInclude,
       },
     });
   });
@@ -1257,13 +1243,7 @@ export async function rejectExpenseShareForHousehold(
     if (share.status === ShareStatus.REJECTED) {
       return tx.expenseProposal.findUniqueOrThrow({
         where: { id: share.proposalId },
-        include: {
-          category: true,
-          payers: true,
-          shares: true,
-          approvals: true,
-          comments: true,
-        },
+        include: expenseProposalDetailInclude,
       });
     }
 
@@ -1318,13 +1298,262 @@ export async function rejectExpenseShareForHousehold(
         status: proposalStatusFromShares(refreshedShares),
       },
       include: {
-        category: true,
-        payers: true,
-        shares: true,
-        approvals: true,
-        comments: true,
+        ...expenseProposalDetailInclude,
       },
     });
+  });
+}
+
+export async function requestChangesExpenseShareForHousehold(
+  userId: string,
+  householdId: string,
+  shareId: string,
+  input: unknown,
+) {
+  const membership = await requireActiveMembership(userId, householdId);
+
+  if (!assertCanParticipate(membership.role)) {
+    throw new ApiError(403, "FORBIDDEN", "Viewers cannot request expense share changes.");
+  }
+
+  const parsed = requestChangesExpenseShareSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Expense share change request input is invalid.", parsed.error.flatten());
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const share = await tx.expenseShare.findFirst({
+      where: {
+        id: shareId,
+        proposal: {
+          householdId,
+        },
+      },
+      include: {
+        proposal: {
+          include: {
+            shares: true,
+          },
+        },
+      },
+    });
+
+    if (!share) {
+      throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+    }
+
+    if (share.debtorUserId !== userId) {
+      throw new ApiError(403, "FORBIDDEN", "Users can only request changes for their own shares.");
+    }
+
+    if (share.status === ShareStatus.DISPUTED) {
+      return tx.expenseProposal.findUniqueOrThrow({
+        where: { id: share.proposalId },
+        include: expenseProposalDetailInclude,
+      });
+    }
+
+    assertProposalCanReceiveShareDecision(share.proposal.status);
+
+    if (share.status !== ShareStatus.PENDING) {
+      throw new ApiError(409, "SHARE_NOT_ACTIONABLE", "Only pending shares can request changes.");
+    }
+
+    await tx.proposalApproval.create({
+      data: {
+        proposalId: share.proposalId,
+        shareId: share.id,
+        approverUserId: userId,
+        decision: ApprovalDecision.REQUEST_CHANGES,
+        comment: parsed.data.reason,
+      },
+    });
+
+    await tx.expenseShare.update({
+      where: { id: share.id },
+      data: {
+        status: ShareStatus.DISPUTED,
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "expense_share.changes_requested",
+        entityType: "ExpenseShare",
+        entityId: share.id,
+        after: {
+          proposalId: share.proposalId,
+          debtorUserId: share.debtorUserId,
+          creditorUserId: share.creditorUserId,
+          status: ShareStatus.DISPUTED,
+          reason: parsed.data.reason,
+        },
+      },
+    });
+
+    return tx.expenseProposal.update({
+      where: { id: share.proposalId },
+      data: {
+        status: ExpenseProposalStatus.DISPUTED,
+      },
+      include: {
+        ...expenseProposalDetailInclude,
+      },
+    });
+  });
+}
+
+export async function reviseExpenseProposalForHousehold(
+  userId: string,
+  householdId: string,
+  proposalId: string,
+  input: unknown,
+) {
+  const creatorMembership = await requireExpenseProposalCreator(userId, householdId);
+  const parsed = reviseExpenseProposalSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Expense proposal revision input is invalid.", parsed.error.flatten());
+  }
+
+  const existingProposal = await prisma.expenseProposal.findFirst({
+    where: {
+      id: proposalId,
+      householdId,
+    },
+    include: {
+      shares: true,
+      proposalFiles: true,
+      taskLinks: true,
+    },
+  });
+
+  if (!existingProposal) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  if (existingProposal.createdByUserId !== userId) {
+    throw new ApiError(403, "FORBIDDEN", "Only the original proposal creator can revise it.");
+  }
+
+  if (
+    existingProposal.status !== ExpenseProposalStatus.DISPUTED &&
+    existingProposal.status !== ExpenseProposalStatus.REJECTED
+  ) {
+    throw new ApiError(
+      409,
+      "PROPOSAL_NOT_REVISIONABLE",
+      "Only disputed or rejected proposals can be revised.",
+    );
+  }
+
+  if (
+    existingProposal.shares.some(
+      (share) => share.status === ShareStatus.MATURED_TO_LEDGER || share.ledgerObligationId,
+    )
+  ) {
+    throw new ApiError(
+      409,
+      "PROPOSAL_LEDGER_IMMUTABLE",
+      "Proposals with ledger obligations cannot be revised.",
+    );
+  }
+
+  const revisionData: ReviseExpenseProposalData = {
+    ...parsed.data,
+    fileIds: parsed.data.fileIds ?? existingProposal.proposalFiles.map((file) => file.fileId),
+  };
+  const prepared = await prepareExpenseProposalCreate(
+    userId,
+    householdId,
+    creatorMembership,
+    revisionData,
+    undefined,
+    {
+      supersedesProposalId: existingProposal.id,
+      revisionNumber: existingProposal.revisionNumber + 1,
+    },
+  );
+
+  return prisma.$transaction(async (tx) => {
+    const alreadyRevised = await tx.expenseProposal.findFirst({
+      where: {
+        householdId,
+        supersedesProposalId: existingProposal.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (alreadyRevised) {
+      throw new ApiError(
+        409,
+        "PROPOSAL_ALREADY_REVISED",
+        "This proposal already has a newer revision.",
+        { proposalId: alreadyRevised.id },
+      );
+    }
+
+    const revision = await createExpenseProposalRecord(tx, prepared);
+
+    await tx.expenseProposal.update({
+      where: {
+        id: existingProposal.id,
+      },
+      data: {
+        status: ExpenseProposalStatus.CANCELLED,
+        cancelledAt: new Date(),
+      },
+    });
+
+    if (existingProposal.taskLinks.length > 0) {
+      await tx.taskExpenseProposalLink.updateMany({
+        where: {
+          proposalId: existingProposal.id,
+        },
+        data: {
+          proposalId: revision.id,
+        },
+      });
+    }
+
+    await tx.eventLink.updateMany({
+      where: {
+        linkedType: "expense_proposal",
+        linkedId: existingProposal.id,
+      },
+      data: {
+        linkedId: revision.id,
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "expense_proposal.revised",
+        entityType: "ExpenseProposal",
+        entityId: revision.id,
+        before: {
+          proposalId: existingProposal.id,
+          status: existingProposal.status,
+          revisionNumber: existingProposal.revisionNumber,
+        },
+        after: {
+          proposalId: revision.id,
+          status: revision.status,
+          revisionNumber: revision.revisionNumber,
+          supersedesProposalId: existingProposal.id,
+          reason: parsed.data.revisionReason ?? null,
+        },
+      },
+    });
+
+    return revision;
   });
 }
 

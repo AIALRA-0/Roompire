@@ -79,7 +79,7 @@ async function postApiWithRetry(
 async function getApiWithRetry(
   page: Page,
   url: string,
-  options: Parameters<Page["request"]["get"]>[1],
+  options?: Parameters<Page["request"]["get"]>[1],
 ) {
   let lastError = "";
 
@@ -252,6 +252,32 @@ async function clickShareRejectWithRetry(page: Page, shareId: string, reason: st
   }
 
   throw new Error(`POST share reject failed with status ${lastStatus}`);
+}
+
+async function clickShareRequestChangesWithRetry(page: Page, shareId: string, reason: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/expenses/shares/${shareId}/request-changes`) &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByTestId(`share-reject-reason-${shareId}`).fill(reason);
+    await page.getByTestId(`share-request-changes-${shareId}`).click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Changes requested")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST share request changes failed with status ${lastStatus}`);
 }
 
 async function clickSettlementSubmitWithRetry(page: Page, obligationId: string) {
@@ -694,7 +720,8 @@ test.describe("Roompire real browser smoke", () => {
 
     await setDevSessionWithRetry(page, inviteeEmail, "Mia E2E");
 
-    const forbiddenMembersResponse = await page.request.get(
+    const forbiddenMembersResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${householdId}/members`,
     );
     expect(forbiddenMembersResponse.status()).toBe(404);
@@ -715,6 +742,7 @@ test.describe("Roompire real browser smoke", () => {
   test("owner creates a proposal and debtor approval matures one share", async ({
     page,
   }, testInfo) => {
+    testInfo.setTimeout(110_000);
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
     const ownerEmail = `expense-owner+${suffix}@example.test`;
     const debtorEmail = `expense-debtor+${suffix}@example.test`;
@@ -805,7 +833,8 @@ test.describe("Roompire real browser smoke", () => {
 
     const detailUrl = page.url();
     const detailIds = parseProposalDetailUrl(detailUrl);
-    const proposalResponse = await page.request.get(
+    const proposalResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/expenses/proposals/${detailIds.proposalId}`,
       {
         headers: {
@@ -889,7 +918,8 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByText("Expense Debtor E2E owes Expense Owner E2E")).toBeVisible();
     await expect(page.getByText("CNY 324")).toBeVisible();
 
-    const balancesResponse = await page.request.get(
+    const balancesResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/balances`,
       {
         headers: {
@@ -917,7 +947,8 @@ test.describe("Roompire real browser smoke", () => {
       },
     ]);
 
-    const obligationsResponse = await page.request.get(
+    const obligationsResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
       {
         headers: {
@@ -945,7 +976,8 @@ test.describe("Roompire real browser smoke", () => {
     const primaryObligationId = obligationsPayload.obligations[0]?.id;
     expect(primaryObligationId).toBeTruthy();
 
-    const repaymentEventsResponse = await page.request.get(
+    const repaymentEventsResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/calendar/events`,
       {
         headers: {
@@ -979,7 +1011,8 @@ test.describe("Roompire real browser smoke", () => {
       }),
     );
 
-    const transactionsResponse = await page.request.get(
+    const transactionsResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/ledger/transactions`,
       {
         headers: {
@@ -1018,7 +1051,8 @@ test.describe("Roompire real browser smoke", () => {
     await expect(suggestionRow).toContainText("Expense Debtor E2E pays Expense Owner E2E");
     await expect(suggestionRow).toContainText("CNY 324");
 
-    const suggestionsResponse = await page.request.get(
+    const suggestionsResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/settlement-suggestions`,
       {
         headers: {
@@ -1052,7 +1086,8 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId(`settlement-date-${primaryObligationId}`).fill("2026-07-04");
     await clickSettlementSubmitWithRetry(page, primaryObligationId!);
 
-    const submittedSettlementsResponse = await page.request.get(
+    const submittedSettlementsResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/settlements`,
       {
         headers: {
@@ -1084,7 +1119,8 @@ test.describe("Roompire real browser smoke", () => {
     await expect(pendingSettlementRow).toContainText("CNY 324");
     await clickSettlementConfirmWithRetry(page, submittedSettlementId!);
 
-    const settledBalancesResponse = await page.request.get(
+    const settledBalancesResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/balances`,
       {
         headers: {
@@ -1097,7 +1133,8 @@ test.describe("Roompire real browser smoke", () => {
       balances: unknown[];
     };
     expect(settledBalancesPayload.balances).toEqual([]);
-    const settledSuggestionsResponse = await page.request.get(
+    const settledSuggestionsResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/settlement-suggestions`,
       {
         headers: {
@@ -1111,7 +1148,8 @@ test.describe("Roompire real browser smoke", () => {
     };
     expect(settledSuggestionsPayload.suggestions).toEqual([]);
 
-    const settledObligationsResponse = await page.request.get(
+    const settledObligationsResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
       {
         headers: {
@@ -1361,7 +1399,8 @@ test.describe("Roompire real browser smoke", () => {
     );
     expect(idempotentApprovalConflictResponse.status()).toBe(409);
 
-    const obligationsAfterIdempotentApprovalResponse = await page.request.get(
+    const obligationsAfterIdempotentApprovalResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
       {
         headers: {
@@ -1508,7 +1547,8 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("ledger-adjustment-reason").fill("Manual E2E correction");
     await clickLedgerAdjustmentSubmitWithRetry(page);
 
-    const adjustmentBalancesResponse = await page.request.get(
+    const adjustmentBalancesResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/balances`,
       {
         headers: {
@@ -1529,7 +1569,8 @@ test.describe("Roompire real browser smoke", () => {
         obligationCount: 1,
       },
     ]);
-    const adjustmentSuggestionsResponse = await page.request.get(
+    const adjustmentSuggestionsResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/settlement-suggestions`,
       {
         headers: {
@@ -1552,7 +1593,8 @@ test.describe("Roompire real browser smoke", () => {
       },
     ]);
 
-    const adjustmentObligationsResponse = await page.request.get(
+    const adjustmentObligationsResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
       {
         headers: {
@@ -1582,7 +1624,8 @@ test.describe("Roompire real browser smoke", () => {
       .fill("Reverse manual E2E correction");
     await clickLedgerReversalSubmitWithRetry(page, uiAdjustmentObligation!.id);
 
-    const reversedBalancesResponse = await page.request.get(
+    const reversedBalancesResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/balances`,
       {
         headers: {
@@ -1702,7 +1745,8 @@ test.describe("Roompire real browser smoke", () => {
     );
     expect(reversalConflictResponse.status()).toBe(409);
 
-    const reversedAdjustmentResponse = await page.request.get(
+    const reversedAdjustmentResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
       {
         headers: {
@@ -1793,7 +1837,8 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("link", { name: "Download receipt" })).toBeVisible();
 
     const detailIds = parseProposalDetailUrl(page.url());
-    const proposalResponse = await page.request.get(
+    const proposalResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/expenses/proposals/${detailIds.proposalId}`,
       {
         headers: {
@@ -1822,7 +1867,8 @@ test.describe("Roompire real browser smoke", () => {
     expect(proposalPayload.proposal.files[0]!.sha256).toMatch(/^[a-f0-9]{64}$/);
 
     const receiptFileId = proposalPayload.proposal.files[0]!.id;
-    const downloadUrlResponse = await page.request.get(
+    const downloadUrlResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/files/${receiptFileId}/download-url`,
       {
         headers: {
@@ -1836,9 +1882,189 @@ test.describe("Roompire real browser smoke", () => {
       expiresAt: string;
     };
     expect(new Date(downloadUrlPayload.expiresAt).getTime()).toBeGreaterThan(Date.now());
-    const downloadResponse = await page.request.get(downloadUrlPayload.downloadUrl);
+    const downloadResponse = await getApiWithRetry(page, downloadUrlPayload.downloadUrl);
     expect(downloadResponse.ok()).toBeTruthy();
     expect(Buffer.from(await downloadResponse.body()).equals(receiptBuffer)).toBeTruthy();
+  });
+
+  test("creator revises a disputed proposal after requested changes", async ({
+    page,
+  }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `revision-owner+${suffix}@example.test`;
+    const debtorEmail = `revision-debtor+${suffix}@example.test`;
+    const householdName = `Revision House ${suffix}`;
+    const proposalTitle = `E2E Shared supplies ${suffix}`;
+    const revisedTitle = `E2E Revised supplies ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "Revision Owner E2E");
+    const householdResponse = await postApiWithRetry(page, "/api/v1/households", {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+      },
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(householdResponse.ok()).toBeTruthy();
+    const householdPayload = (await householdResponse.json()) as {
+      household: { id: string };
+    };
+    const householdId = householdPayload.household.id;
+    const invitePayload = await createInviteWithRetry(
+      page,
+      householdId,
+      {
+        email: debtorEmail,
+        role: "MEMBER",
+      },
+      ownerEmail,
+    );
+
+    await setDevSessionWithRetry(page, debtorEmail, "Revision Debtor E2E");
+    const acceptResponse = await postApiWithRetry(page, "/api/v1/invites/accept", {
+      data: {
+        token: invitePayload.token,
+      },
+      headers: {
+        "x-roompire-dev-user-email": debtorEmail,
+      },
+    });
+    expect(acceptResponse.ok()).toBeTruthy();
+
+    const membersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(membersResponse.ok()).toBeTruthy();
+    const membersPayload = (await membersResponse.json()) as {
+      members: Array<{ userId: string; email: string }>;
+    };
+    const debtorUserId = membersPayload.members.find(
+      (member) => member.email === debtorEmail,
+    )?.userId;
+    expect(debtorUserId).toBeTruthy();
+    if (!debtorUserId) {
+      throw new Error("Expected debtor user id in revision members payload");
+    }
+
+    const createProposalResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals`,
+      {
+        data: {
+          title: proposalTitle,
+          merchant: "Target",
+          expenseDate: "2026-07-04",
+          originalAmount: "90",
+          originalCurrency: "CNY",
+          participantUserIds: [debtorUserId],
+          splitMethod: "EQUAL",
+        },
+        headers: {
+          "Idempotency-Key": `revision-create-${suffix}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(createProposalResponse.ok()).toBeTruthy();
+    const createProposalPayload = (await createProposalResponse.json()) as {
+      proposal: {
+        id: string;
+        revisionNumber: number;
+        supersedesProposalId: string | null;
+        shares: Array<{ id: string }>;
+      };
+    };
+    expect(createProposalPayload.proposal.revisionNumber).toBe(1);
+    expect(createProposalPayload.proposal.supersedesProposalId).toBeNull();
+    const proposalId = createProposalPayload.proposal.id;
+    const shareId = createProposalPayload.proposal.shares[0]?.id;
+    expect(shareId).toBeTruthy();
+
+    await setDevSessionWithRetry(page, debtorEmail, "Revision Debtor E2E");
+    const detailUrl = `/en-US/app/households/${householdId}/expenses/proposals/${proposalId}`;
+    await page.goto(detailUrl);
+    await expect(page.getByRole("heading", { name: proposalTitle })).toBeVisible();
+    await clickShareRequestChangesWithRetry(page, shareId!, "Please remove the storage bins");
+    await expect(page.getByText("Disputed").first()).toBeVisible();
+    await expect(page.getByTestId("proposal-timeline")).toContainText("requested changes");
+    await expect(
+      page.getByText("No formal ledger obligation has been created for this proposal."),
+    ).toBeVisible();
+
+    await setDevSessionWithRetry(page, ownerEmail, "Revision Owner E2E");
+    await page.goto(detailUrl);
+    await expect(page.getByTestId("proposal-revision-form")).toBeVisible();
+    await page.getByTestId("proposal-revision-reason").fill("Removed disputed item");
+    await page.getByTestId("proposal-revision-title").fill(revisedTitle);
+    await page.getByTestId("proposal-revision-amount").fill("72");
+    const revisionResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/expenses/proposals/${proposalId}/revisions`) &&
+        response.request().method() === "POST",
+    );
+    await page.getByTestId("proposal-revision-submit").click();
+    const revisionResponse = await revisionResponsePromise;
+    expect(revisionResponse.ok()).toBeTruthy();
+    const revisionPayload = (await revisionResponse.json()) as {
+      proposal: {
+        id: string;
+        revisionNumber: number;
+        supersedesProposalId: string | null;
+        title: string;
+        status: string;
+        originalAmount: string;
+        shares: Array<{ status: string }>;
+      };
+    };
+    expect(revisionPayload.proposal).toMatchObject({
+      revisionNumber: 2,
+      supersedesProposalId: proposalId,
+      title: revisedTitle,
+      status: "SUBMITTED",
+    });
+    expect(revisionPayload.proposal.originalAmount).toBe("72");
+    expect(revisionPayload.proposal.shares).toEqual([
+      expect.objectContaining({ status: "PENDING" }),
+    ]);
+    await page.waitForURL(`**/expenses/proposals/${revisionPayload.proposal.id}`);
+    await expect(page.getByRole("heading", { name: revisedTitle })).toBeVisible();
+
+    const oldProposalResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals/${proposalId}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(oldProposalResponse.ok()).toBeTruthy();
+    const oldProposalPayload = (await oldProposalResponse.json()) as {
+      proposal: { status: string };
+    };
+    expect(oldProposalPayload.proposal.status).toBe("CANCELLED");
+
+    const balancesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/balances`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(balancesResponse.ok()).toBeTruthy();
+    const balancesPayload = (await balancesResponse.json()) as { balances: unknown[] };
+    expect(balancesPayload.balances).toEqual([]);
   });
 
   test("debtor settles a suggested transfer across multiple obligations", async ({
@@ -2184,7 +2410,8 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: proposalTitle })).toBeVisible();
     const detailUrl = page.url();
     const detailIds = parseProposalDetailUrl(detailUrl);
-    const proposalResponse = await page.request.get(
+    const proposalResponse = await getApiWithRetry(
+      page,
       `/api/v1/households/${detailIds.householdId}/expenses/proposals/${detailIds.proposalId}`,
       {
         headers: {

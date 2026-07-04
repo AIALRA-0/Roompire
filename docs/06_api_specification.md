@@ -174,6 +174,18 @@ Current implementation also accepts advanced split inputs through `participantSh
 }
 ```
 
+### Request changes and submit a revision
+
+`POST /households/{householdId}/expenses/shares/{shareId}/request-changes` lets the assigned debtor move a pending share and its proposal into `DISPUTED` without creating ledger obligations:
+
+```json
+{
+  "reason": "Please split the paper towels separately."
+}
+```
+
+The original creator can then call `POST /households/{householdId}/expenses/proposals/{proposalId}/revisions` with the same create-proposal shape plus an optional `revisionReason`. The old proposal is marked `CANCELLED`; the new proposal is `SUBMITTED`, has `revisionNumber + 1`, and stores `supersedesProposalId`.
+
 ### Add proposal comment
 
 ```json

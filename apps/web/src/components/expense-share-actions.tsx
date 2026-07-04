@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 type ExpenseShareActionLabels = {
   approveShare: string;
   rejectShare: string;
+  requestChanges: string;
   rejectionReason: string;
   shareApproved: string;
   shareRejected: string;
+  changesRequested: string;
   errorFallback: string;
   working: string;
 };
@@ -68,17 +70,19 @@ export function ExpenseShareActions({ householdId, shareId, labels }: ExpenseSha
     }
   }
 
-  async function rejectShare(event: React.FormEvent<HTMLFormElement>) {
+  async function submitShareFeedback(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
 
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const isChangeRequest = submitter?.value === "request-changes";
+    const url = `/api/v1/households/${householdId}/expenses/shares/${shareId}/${
+      isChangeRequest ? "request-changes" : "reject"
+    }`;
+
     try {
-      await postShareDecision(
-        `/api/v1/households/${householdId}/expenses/shares/${shareId}/reject`,
-        { reason },
-        labels.errorFallback,
-      );
-      setMessage(labels.shareRejected);
+      await postShareDecision(url, { reason }, labels.errorFallback);
+      setMessage(isChangeRequest ? labels.changesRequested : labels.shareRejected);
       setReason("");
       startTransition(() => router.refresh());
     } catch (error) {
@@ -99,7 +103,10 @@ export function ExpenseShareActions({ householdId, shareId, labels }: ExpenseSha
           {isPending ? labels.working : labels.approveShare}
         </Button>
       </div>
-      <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={rejectShare}>
+      <form
+        className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+        onSubmit={submitShareFeedback}
+      >
         <input
           className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-ring"
           data-testid={`share-reject-reason-${shareId}`}
@@ -114,8 +121,19 @@ export function ExpenseShareActions({ householdId, shareId, labels }: ExpenseSha
           size="sm"
           type="submit"
           variant="outline"
+          value="reject"
         >
           {labels.rejectShare}
+        </Button>
+        <Button
+          data-testid={`share-request-changes-${shareId}`}
+          disabled={isPending || reason.trim().length === 0}
+          size="sm"
+          type="submit"
+          variant="outline"
+          value="request-changes"
+        >
+          {labels.requestChanges}
         </Button>
       </form>
       {message ? (

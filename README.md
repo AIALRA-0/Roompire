@@ -39,8 +39,8 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
 - Dashboard proposal creation supports equal, exact-amount, percentage, and share-unit splits with a live split preview; proposal detail pages show the chosen method and stored split basis.
 - Proposal creation supports private receipt attachments through a local-file adapter, with short-lived signed download URLs on proposal detail.
-- Proposal detail pages support member comments and a submitted/approval/rejection/comment timeline.
-- Debtors can approve or reject only their own pending shares from the proposal detail page.
+- Proposal detail pages support member comments, revision submission for disputed/rejected proposals, and a submitted/approval/rejection/change-request/comment timeline.
+- Debtors can approve, reject, or request changes only for their own pending shares from the proposal detail page.
 - Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once, with repayment due events created when the proposal has a due date.
 - Proposal creation and share approve/reject persist `Idempotency-Key` records, replay matching duplicate requests, and reject key reuse with changed request bodies.
 - Rejected shares and pending proposals do not affect formal balances.
@@ -53,7 +53,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Owner/admin ledger correction APIs support manual adjustments and reversal of unallocated open obligations with append-only ledger transactions.
 - Calendar/task APIs and `/[locale]/app/calendar` page let owners/admins/members create one-off or finite recurring calendar events, switch event list/week/month views, create/assign one-off or recurring tasks, auto-link due tasks to `TASK` calendar events, complete tasks with linked event status updates, and create linked pending expense proposals from tasks.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current list/create/detail proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject idempotency, balance, obligation, ledger transaction, settlement, settlement suggestion, ledger correction, calendar event, task, and task-to-expense proposal endpoints.
+- OpenAPI covers the current list/create/detail/revision proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject/request-changes idempotency, balance, obligation, ledger transaction, settlement, settlement suggestion, ledger correction, calendar event, task, and task-to-expense proposal endpoints.
 
 ## Development
 
@@ -104,6 +104,16 @@ pnpm e2e
 
 `pnpm e2e` starts the real Next.js dev server and runs Playwright against Chromium desktop and mobile projects.
 Because Phase 1 routes read PostgreSQL, run `docker compose up -d postgres redis`, `pnpm db:migrate`, and `pnpm db:seed` before local E2E runs.
+
+## Deployment
+
+Docker-first deployment is the current production baseline for `roompire.aialra.online`.
+For public/staging deployments, configure site-level Basic Auth through deployment secrets:
+
+- `ROOMPIRE_SITE_GATE_USERNAME`
+- `ROOMPIRE_SITE_GATE_PASSWORD`
+
+Leave either value unset to disable the gate locally. Do not commit real gate credentials; set the shared deployment credentials only in the target server, CI, or hosting platform secret store.
 
 ## Document Map
 

@@ -58,6 +58,7 @@ export function serializeExpenseProposal(proposal: ExpenseProposal & ProposalRel
     fxLockedAt: proposal.fxLockedAt?.toISOString() ?? null,
     status: proposal.status,
     revisionNumber: proposal.revisionNumber,
+    supersedesProposalId: proposal.supersedesProposalId,
     createdAt: proposal.createdAt.toISOString(),
     updatedAt: proposal.updatedAt.toISOString(),
     payers:

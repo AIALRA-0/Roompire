@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ReceiptText, ShieldAlert, WalletCards } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { ExpenseProposalComments } from "@/components/expense-proposal-comments";
+import { ExpenseProposalRevisionForm } from "@/components/expense-proposal-revision-form";
 import { ExpenseShareActions } from "@/components/expense-share-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -223,12 +224,18 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
       : proposal.category.nameEn
     : expense("uncategorized");
   const hasLedgerObligation = proposal.shares.some((share) => share.ledgerObligationId);
+  const canRevise =
+    proposal.createdByUserId === user.id &&
+    !hasLedgerObligation &&
+    (proposal.status === "DISPUTED" || proposal.status === "REJECTED");
   const shareActionLabels = {
     approveShare: expense("approveShare"),
     rejectShare: expense("rejectShare"),
+    requestChanges: expense("requestChanges"),
     rejectionReason: expense("rejectionReason"),
     shareApproved: expense("shareApproved"),
     shareRejected: expense("shareRejected"),
+    changesRequested: expense("changesRequested"),
     errorFallback: expense("errorFallback"),
     working: common("working"),
   };
@@ -236,6 +243,31 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
     addComment: expense("addComment"),
     commentPlaceholder: expense("commentPlaceholder"),
     commentAdded: expense("commentAdded"),
+    errorFallback: expense("errorFallback"),
+    working: common("working"),
+  };
+  const revisionLabels = {
+    reviseTitle: expense("reviseTitle"),
+    reviseHint: expense("reviseHint"),
+    revisionReason: expense("revisionReason"),
+    proposalTitle: expense("proposalTitle"),
+    merchant: expense("merchant"),
+    expenseDate: expense("expenseDate"),
+    dueDate: expense("dueDate"),
+    originalAmount: expense("originalAmount"),
+    originalCurrency: expense("originalCurrency"),
+    fxRate: expense("fxRate"),
+    splitMethod: expense("splitMethod"),
+    splitMethodEqual: expense("splitMethodEqual"),
+    splitMethodExact: expense("splitMethodExact"),
+    splitMethodPercentage: expense("splitMethodPercentage"),
+    splitMethodShares: expense("splitMethodShares"),
+    splitValueExact: expense("splitValueExact"),
+    splitValuePercentage: expense("splitValuePercentage"),
+    splitValueShares: expense("splitValueShares"),
+    debtors: expense("debtors"),
+    submitRevision: expense("submitRevision"),
+    revisionSubmitted: expense("revisionSubmitted"),
     errorFallback: expense("errorFallback"),
     working: common("working"),
   };
@@ -252,7 +284,9 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
       label:
         approval.decision === "APPROVED"
           ? expense("timelineApproved")
-          : expense("timelineRejected"),
+          : approval.decision === "REQUEST_CHANGES"
+            ? expense("timelineRequestedChanges")
+            : expense("timelineRejected"),
       body: approval.comment,
       occurredAt: approval.createdAt,
     })),
@@ -392,6 +426,23 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
             </div>
 
             <div className="grid gap-4 content-start">
+              {canRevise ? (
+                <div className="rounded-lg border border-border bg-background p-4">
+                  <ExpenseProposalRevisionForm
+                    householdId={householdId}
+                    labels={revisionLabels}
+                    locale={locale}
+                    members={members
+                      .filter((member) => member.role !== "VIEWER")
+                      .map((member) => ({
+                        userId: member.userId,
+                        displayName: member.displayNameOverride ?? member.user.displayName,
+                      }))}
+                    proposal={proposal}
+                  />
+                </div>
+              ) : null}
+
               <div className="rounded-lg border border-border bg-background p-4">
                 <h2 className="text-sm font-semibold">{expense("receipts")}</h2>
                 <div className="mt-3 divide-y divide-border" data-testid="proposal-files">

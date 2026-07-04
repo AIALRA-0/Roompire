@@ -301,6 +301,12 @@ components:
           allOf:
             - { $ref: "#/components/schemas/CreateExpenseSplitMethod" }
           default: EQUAL
+    CreateExpenseProposalRevisionRequest:
+      allOf:
+        - { $ref: "#/components/schemas/CreateExpenseProposalRequest" }
+        - type: object
+          properties:
+            revisionReason: { type: string, minLength: 1, maxLength: 1000 }
     ExpensePayer:
       type: object
       required: [id, userId, amountOriginal, amountSettlement, isPrimary]
@@ -467,6 +473,8 @@ components:
           settlementCurrency,
           splitMethod,
           fxPolicy,
+          revisionNumber,
+          supersedesProposalId,
           shares,
           payers,
           approvals,
@@ -491,6 +499,8 @@ components:
         expenseDate: { type: string, format: date }
         dueDate: { type: string, format: date, nullable: true }
         status: { $ref: "#/components/schemas/ExpenseProposalStatus" }
+        revisionNumber: { type: integer, minimum: 1 }
+        supersedesProposalId: { type: string, format: uuid, nullable: true }
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         settlementAmount: { $ref: "#/components/schemas/DecimalString" }
@@ -533,6 +543,11 @@ components:
       properties:
         comment: { type: string, maxLength: 1000 }
     RejectExpenseShareRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    RequestChangesExpenseShareRequest:
       type: object
       required: [reason]
       properties:
@@ -1376,6 +1391,55 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/expenses/proposals/{proposalId}/revisions:
+    post:
+      summary: Submit a revised expense proposal
+      description: The original proposal creator can revise a disputed or rejected proposal that has not created ledger obligations. The old proposal is cancelled, the new proposal is submitted with an incremented revisionNumber and supersedesProposalId, and duplicate matching Idempotency-Key requests replay the stored proposal response.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: proposalId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExpenseProposalRevisionRequest" }
+      responses:
+        "201":
+          description: Revised proposal submitted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseProposalResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not the original proposal creator
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or inaccessible proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Proposal is not revisionable, has ledger obligations, already has a newer revision, or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/expenses/shares/{shareId}/approve:
     post:
       summary: Approve own assigned expense share and mature it to the ledger
@@ -1450,6 +1514,55 @@ paths:
       responses:
         "200":
           description: Rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseProposalResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not the assigned debtor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or inaccessible share
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Share/proposal is no longer actionable, the idempotent request is in progress, or the Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/expenses/shares/{shareId}/request-changes:
+    post:
+      summary: Request changes for own assigned expense share
+      description: The assigned debtor can move their pending share to DISPUTED and the proposal to DISPUTED without creating formal ledger obligations. The creator can then submit a revised proposal.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: shareId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RequestChangesExpenseShareRequest" }
+      responses:
+        "200":
+          description: Changes requested
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ExpenseProposalResponse" }
