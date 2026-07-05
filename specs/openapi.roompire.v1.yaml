@@ -1762,6 +1762,7 @@ components:
           allOf:
             - { $ref: "#/components/schemas/TaskPriority" }
           default: NORMAL
+        categoryId: { type: string, format: uuid }
         dueAt: { type: string, format: date-time }
         assignedUserIds:
           type: array
@@ -1787,6 +1788,7 @@ components:
           allOf:
             - { $ref: "#/components/schemas/TaskPriority" }
           default: NORMAL
+        categoryId: { type: string, format: uuid, nullable: true }
         dueAt: { type: string, format: date-time }
         assignedUserIds:
           type: array
@@ -4017,6 +4019,20 @@ paths:
           name: end
           schema: { type: string, format: date-time }
         - in: query
+          name: type
+          schema: { $ref: "#/components/schemas/CalendarEventType" }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/WorkItemStatus" }
+        - in: query
+          name: categoryId
+          schema: { type: string, format: uuid }
+          description: Filters recurring expense generation events by template category.
+        - in: query
+          name: memberUserId
+          schema: { type: string, format: uuid }
+          description: Filters events created by the member plus TASK events linked to tasks assigned to that member.
+        - in: query
           name: cursor
           schema: { type: string, format: uuid }
           description: Cursor returned from the previous calendar event page.
@@ -4236,6 +4252,15 @@ paths:
         - in: query
           name: status
           schema: { $ref: "#/components/schemas/WorkItemStatus" }
+        - in: query
+          name: priority
+          schema: { $ref: "#/components/schemas/TaskPriority" }
+        - in: query
+          name: categoryId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: assignedUserId
+          schema: { type: string, format: uuid }
         - in: query
           name: cursor
           schema: { type: string, format: uuid }

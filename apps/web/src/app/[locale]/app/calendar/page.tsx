@@ -26,8 +26,36 @@ type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+const eventFilterTypes = [
+  "TASK",
+  "CHORE",
+  "GROUP_ACTIVITY",
+  "BILL_DUE",
+  "REPAYMENT_DUE",
+  "SETTLEMENT_REMINDER",
+  "RECURRING_EXPENSE_GENERATION",
+] as const;
+const statusFilterValues = ["OPEN", "COMPLETED"] as const;
+const taskPriorityFilterValues = ["LOW", "NORMAL", "HIGH"] as const;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function firstSearchValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function allowedSearchValue<const T extends readonly string[]>(
+  value: string | string[] | undefined,
+  allowed: T,
+): T[number] | undefined {
+  const firstValue = firstSearchValue(value);
+
+  return firstValue && allowed.includes(firstValue) ? firstValue : undefined;
+}
+
+function uuidSearchValue(value: string | string[] | undefined) {
+  const firstValue = firstSearchValue(value);
+
+  return firstValue && uuidPattern.test(firstValue) ? firstValue : undefined;
 }
 
 function calendarLimitHref(
@@ -84,13 +112,29 @@ export default async function CalendarPage({ params, searchParams }: PageProps) 
   const taskLimit = firstSearchValue(rawSearchParams.taskLimit) ?? "50";
   const selectedEventLimit = limitOptions.includes(eventLimit) ? Number(eventLimit) : 50;
   const selectedTaskLimit = limitOptions.includes(taskLimit) ? Number(taskLimit) : 50;
+  const eventType = allowedSearchValue(rawSearchParams.eventType, eventFilterTypes);
+  const eventStatus = allowedSearchValue(rawSearchParams.eventStatus, statusFilterValues);
+  const eventCategoryId = uuidSearchValue(rawSearchParams.eventCategoryId);
+  const eventMemberUserId = uuidSearchValue(rawSearchParams.eventMemberUserId);
+  const taskStatus = allowedSearchValue(rawSearchParams.taskStatus, statusFilterValues);
+  const taskPriority = allowedSearchValue(rawSearchParams.taskPriority, taskPriorityFilterValues);
+  const taskCategoryId = uuidSearchValue(rawSearchParams.taskCategoryId);
+  const taskAssignedUserId = uuidSearchValue(rawSearchParams.taskAssignedUserId);
   const [eventResult, taskResult] = activeHouseholdId
     ? await Promise.all([
         listCalendarEventsForHousehold(model.user.id, activeHouseholdId, {
           limit: selectedEventLimit,
+          type: eventType,
+          status: eventStatus,
+          categoryId: eventCategoryId,
+          memberUserId: eventMemberUserId,
         }),
         listTasksForHousehold(model.user.id, activeHouseholdId, {
           limit: selectedTaskLimit,
+          status: taskStatus,
+          priority: taskPriority,
+          categoryId: taskCategoryId,
+          assignedUserId: taskAssignedUserId,
         }),
       ])
     : [
@@ -206,6 +250,18 @@ export default async function CalendarPage({ params, searchParams }: PageProps) 
                   : null
               }
               events={eventResult.items.map(serializeCalendarEvent)}
+              filterValues={{
+                eventType: eventType ?? "",
+                eventStatus: eventStatus ?? "",
+                eventCategoryId: eventCategoryId ?? "",
+                eventMemberUserId: eventMemberUserId ?? "",
+                taskStatus: taskStatus ?? "",
+                taskPriority: taskPriority ?? "",
+                taskCategoryId: taskCategoryId ?? "",
+                taskAssignedUserId: taskAssignedUserId ?? "",
+                eventLimit: selectedEventLimit,
+                taskLimit: selectedTaskLimit,
+              }}
               labels={{
                 events: calendar("events"),
                 eventsHint: calendar("eventsHint"),
@@ -216,6 +272,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps) 
                 eventTitle: calendar("eventTitle"),
                 taskTitle: calendar("taskTitle"),
                 type: calendar("type"),
+                status: common("status"),
                 priority: calendar("priority"),
                 startAt: calendar("startAt"),
                 endAt: calendar("endAt"),
@@ -285,6 +342,19 @@ export default async function CalendarPage({ params, searchParams }: PageProps) 
                 taskBoardCompleted: calendar("taskBoardCompleted"),
                 taskCalendarUnscheduled: calendar("taskCalendarUnscheduled"),
                 noTasksInView: calendar("noTasksInView"),
+                filters: calendar("filters"),
+                filtersHint: calendar("filtersHint"),
+                eventFilters: calendar("eventFilters"),
+                taskFilters: calendar("taskFilters"),
+                anyType: calendar("anyType"),
+                anyStatus: calendar("anyStatus"),
+                anyMember: calendar("anyMember"),
+                anyCategory: calendar("anyCategory"),
+                anyPriority: calendar("anyPriority"),
+                eventMember: calendar("eventMember"),
+                taskMember: calendar("taskMember"),
+                applyFilters: calendar("applyFilters"),
+                clearFilters: calendar("clearFilters"),
                 eventTypes: {
                   TASK: calendar("eventTypeTask"),
                   CHORE: calendar("eventTypeChore"),

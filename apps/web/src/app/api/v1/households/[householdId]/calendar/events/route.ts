@@ -30,6 +30,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
       cursor: request.nextUrl.searchParams.get("cursor") ?? undefined,
       start: request.nextUrl.searchParams.get("start") ?? undefined,
       end: request.nextUrl.searchParams.get("end") ?? undefined,
+      type: request.nextUrl.searchParams.get("type") ?? undefined,
+      status: request.nextUrl.searchParams.get("status") ?? undefined,
+      categoryId: request.nextUrl.searchParams.get("categoryId") ?? undefined,
+      memberUserId: request.nextUrl.searchParams.get("memberUserId") ?? undefined,
       limit: request.nextUrl.searchParams.get("limit") ?? undefined,
     });
 

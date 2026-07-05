@@ -44,11 +44,18 @@ const optionalFxRateStringSchema = z.preprocess(emptyToUndefined, fxRateStringSc
 const eventQuerySchema = z.object({
   start: optionalDateTimeSchema,
   end: optionalDateTimeSchema,
+  type: z.preprocess(emptyToUndefined, z.nativeEnum(CalendarEventType).optional()),
+  status: z.preprocess(emptyToUndefined, z.enum(["OPEN", "COMPLETED"]).optional()),
+  categoryId: nullableUuidSchema,
+  memberUserId: nullableUuidSchema,
   ...paginationQueryFields(50),
 });
 
 const taskQuerySchema = z.object({
   status: z.preprocess(emptyToUndefined, z.enum(["OPEN", "COMPLETED"]).optional()),
+  priority: z.preprocess(emptyToUndefined, z.enum(["LOW", "NORMAL", "HIGH"]).optional()),
+  categoryId: nullableUuidSchema,
+  assignedUserId: nullableUuidSchema,
   ...paginationQueryFields(50),
 });
 
@@ -70,7 +77,13 @@ const recurringExpenseTemplateSchema = z.object({
   participantUserIds: z.array(z.string().uuid()).min(1).max(20),
 });
 
+type CalendarEventQuery = z.infer<typeof eventQuerySchema>;
 type TaskQuery = z.infer<typeof taskQuerySchema>;
+
+type CalendarEventFilterIds = {
+  categoryEventIds?: string[];
+  memberLinkedEventIds?: string[];
+};
 
 const calendarEventOrderBy = [
   { startAt: "asc" as const },
@@ -110,6 +123,7 @@ export const createTaskSchema = z.object({
   title: z.string().trim().min(2).max(120),
   description: optionalDescriptionSchema,
   priority: z.enum(["LOW", "NORMAL", "HIGH"]).default("NORMAL"),
+  categoryId: nullableUuidSchema,
   dueAt: optionalDateTimeSchema,
   assignedUserIds: z.array(z.string().uuid()).max(20).default([]),
   recurrenceFrequency: recurrenceFrequencySchema.default("NONE"),
@@ -314,6 +328,82 @@ async function assertTemplateCategoryBelongsToHousehold(categoryId: string, hous
   }
 }
 
+async function assertFilterMemberBelongsToHousehold(
+  userId: string,
+  householdId: string,
+  fieldName: "memberUserId" | "assignedUserId",
+) {
+  const membership = await prisma.householdMembership.findFirst({
+    where: {
+      householdId,
+      userId,
+      status: "ACTIVE",
+    },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    throw validationError("Calendar filter is invalid.", {
+      fieldErrors: {
+        [fieldName]: ["Member must be active in this household."],
+      },
+    });
+  }
+}
+
+async function resolveCalendarEventFilterIds(
+  householdId: string,
+  query: Pick<CalendarEventQuery, "categoryId" | "memberUserId">,
+): Promise<CalendarEventFilterIds> {
+  const categoryEventsPromise = query.categoryId
+    ? prisma.recurringExpenseTemplate.findMany({
+        where: {
+          householdId,
+          categoryId: query.categoryId,
+        },
+        select: { eventId: true },
+      })
+    : Promise.resolve([]);
+  const memberLinkedEventsPromise = query.memberUserId
+    ? prisma.task
+        .findMany({
+          where: {
+            householdId,
+            assignments: {
+              some: {
+                assignedUserId: query.memberUserId,
+              },
+            },
+          },
+          select: { id: true },
+        })
+        .then((assignedTasks) =>
+          assignedTasks.length > 0
+            ? prisma.eventLink.findMany({
+                where: {
+                  linkedType: "task",
+                  linkedId: {
+                    in: assignedTasks.map((task) => task.id),
+                  },
+                },
+                select: { eventId: true },
+              })
+            : [],
+        )
+    : Promise.resolve([]);
+  const [categoryEvents, memberLinkedEvents] = await Promise.all([
+    categoryEventsPromise,
+    memberLinkedEventsPromise,
+  ]);
+
+  return {
+    categoryEventIds: query.categoryId ? categoryEvents.map((event) => event.eventId) : undefined,
+    memberLinkedEventIds: query.memberUserId
+      ? memberLinkedEvents.map((event) => event.eventId)
+      : undefined,
+  };
+}
+
 async function getAssignableMemberships(householdId: string, userIds: string[]) {
   const memberships = await prisma.householdMembership.findMany({
     where: {
@@ -413,9 +503,48 @@ function recurringExpenseTemplateCreateData({
   };
 }
 
+function buildCalendarEventBaseWhere(
+  householdId: string,
+  range: { start?: Date; end?: Date },
+  query: Pick<CalendarEventQuery, "type" | "status" | "categoryId" | "memberUserId">,
+  filterIds: CalendarEventFilterIds,
+) {
+  const andFilters: Prisma.CalendarEventWhereInput[] = [];
+
+  if (query.categoryId) {
+    andFilters.push({ id: { in: filterIds.categoryEventIds ?? [] } });
+  }
+
+  if (query.memberUserId) {
+    andFilters.push({
+      OR: [
+        { createdByUserId: query.memberUserId },
+        { id: { in: filterIds.memberLinkedEventIds ?? [] } },
+      ],
+    });
+  }
+
+  return {
+    householdId,
+    ...(range.start || range.end
+      ? {
+          startAt: {
+            gte: range.start,
+            lte: range.end,
+          },
+        }
+      : {}),
+    type: query.type,
+    status: query.status,
+    AND: andFilters.length > 0 ? andFilters : undefined,
+  } satisfies Prisma.CalendarEventWhereInput;
+}
+
 function buildCalendarEventWhere(
   householdId: string,
   range: { start?: Date; end?: Date },
+  query: Pick<CalendarEventQuery, "type" | "status" | "categoryId" | "memberUserId">,
+  filterIds: CalendarEventFilterIds,
   cursorEvent?: Pick<CalendarEvent, "id" | "startAt" | "createdAt">,
 ) {
   const cursorWindow: Prisma.CalendarEventWhereInput | undefined = cursorEvent
@@ -442,14 +571,16 @@ function buildCalendarEventWhere(
         ],
       }
     : undefined;
+  const baseWhere = buildCalendarEventBaseWhere(householdId, range, query, filterIds);
+  const baseAnd = Array.isArray(baseWhere.AND)
+    ? baseWhere.AND
+    : baseWhere.AND
+      ? [baseWhere.AND]
+      : [];
 
   return {
-    householdId,
-    startAt: {
-      gte: range.start,
-      lte: range.end,
-    },
-    AND: cursorWindow ? [cursorWindow] : undefined,
+    ...baseWhere,
+    AND: cursorWindow ? [...baseAnd, cursorWindow] : baseWhere.AND,
   } satisfies Prisma.CalendarEventWhereInput;
 }
 
@@ -500,9 +631,28 @@ function buildTaskDueCursorWindow(cursorTask: Pick<Task, "id" | "dueAt" | "creat
   } satisfies Prisma.TaskWhereInput;
 }
 
+function buildTaskBaseWhere(
+  householdId: string,
+  query: Pick<TaskQuery, "status" | "priority" | "categoryId" | "assignedUserId">,
+) {
+  return {
+    householdId,
+    status: query.status,
+    priority: query.priority,
+    categoryId: query.categoryId,
+    assignments: query.assignedUserId
+      ? {
+          some: {
+            assignedUserId: query.assignedUserId,
+          },
+        }
+      : undefined,
+  } satisfies Prisma.TaskWhereInput;
+}
+
 function buildTaskWhere(
   householdId: string,
-  query: Pick<TaskQuery, "status">,
+  query: Pick<TaskQuery, "status" | "priority" | "categoryId" | "assignedUserId">,
   cursorTask?: Pick<Task, "id" | "status" | "dueAt" | "createdAt">,
 ) {
   const cursorWindow: Prisma.TaskWhereInput | undefined = cursorTask
@@ -516,10 +666,10 @@ function buildTaskWhere(
         ],
       }
     : undefined;
+  const baseWhere = buildTaskBaseWhere(householdId, query);
 
   return {
-    householdId,
-    status: query.status,
+    ...baseWhere,
     AND: cursorWindow ? [cursorWindow] : undefined,
   } satisfies Prisma.TaskWhereInput;
 }
@@ -527,23 +677,23 @@ function buildTaskWhere(
 async function resolveCalendarEventCursor(
   householdId: string,
   range: { start?: Date; end?: Date },
+  query: Pick<CalendarEventQuery, "type" | "status" | "categoryId" | "memberUserId">,
+  filterIds: CalendarEventFilterIds,
   cursor: string | undefined,
 ) {
   if (!cursor) {
     return undefined;
   }
 
-  const cursorEvent = await prisma.calendarEvent.findUnique({
-    where: { id: cursor },
+  const cursorEvent = await prisma.calendarEvent.findFirst({
+    where: {
+      ...buildCalendarEventBaseWhere(householdId, range, query, filterIds),
+      id: cursor,
+    },
     select: { id: true, householdId: true, startAt: true, createdAt: true },
   });
 
-  if (
-    !cursorEvent ||
-    cursorEvent.householdId !== householdId ||
-    (range.start && cursorEvent.startAt < range.start) ||
-    (range.end && cursorEvent.startAt > range.end)
-  ) {
+  if (!cursorEvent) {
     throw validationError("Calendar event query is invalid.", {
       fieldErrors: {
         cursor: ["Invalid cursor."],
@@ -556,23 +706,22 @@ async function resolveCalendarEventCursor(
 
 async function resolveTaskCursor(
   householdId: string,
-  query: Pick<TaskQuery, "status">,
+  query: Pick<TaskQuery, "status" | "priority" | "categoryId" | "assignedUserId">,
   cursor: string | undefined,
 ) {
   if (!cursor) {
     return undefined;
   }
 
-  const cursorTask = await prisma.task.findUnique({
-    where: { id: cursor },
+  const cursorTask = await prisma.task.findFirst({
+    where: {
+      ...buildTaskBaseWhere(householdId, query),
+      id: cursor,
+    },
     select: { id: true, householdId: true, status: true, dueAt: true, createdAt: true },
   });
 
-  if (
-    !cursorTask ||
-    cursorTask.householdId !== householdId ||
-    (query.status && cursorTask.status !== query.status)
-  ) {
+  if (!cursorTask) {
     throw validationError("Task query is invalid.", {
       fieldErrors: {
         cursor: ["Invalid cursor."],
@@ -597,13 +746,29 @@ export async function listCalendarEventsForHousehold(
 
   const start = parsed.data.start ? dateTimeInputToUtc(parsed.data.start, "start") : undefined;
   const end = parsed.data.end ? dateTimeInputToUtc(parsed.data.end, "end") : undefined;
+  if (parsed.data.memberUserId) {
+    await assertFilterMemberBelongsToHousehold(
+      parsed.data.memberUserId,
+      householdId,
+      "memberUserId",
+    );
+  }
+  const filterIds = await resolveCalendarEventFilterIds(householdId, parsed.data);
   const cursorEvent = await resolveCalendarEventCursor(
     householdId,
     { start, end },
+    parsed.data,
+    filterIds,
     parsed.data.cursor,
   );
   const events = await prisma.calendarEvent.findMany({
-    where: buildCalendarEventWhere(householdId, { start, end }, cursorEvent),
+    where: buildCalendarEventWhere(
+      householdId,
+      { start, end },
+      parsed.data,
+      filterIds,
+      cursorEvent,
+    ),
     orderBy: calendarEventOrderBy,
     take: parsed.data.limit + 1,
   });
@@ -627,6 +792,13 @@ export async function listTasksForHousehold(
     throw validationError("Task query is invalid.", parsed.error.flatten());
   }
 
+  if (parsed.data.assignedUserId) {
+    await assertFilterMemberBelongsToHousehold(
+      parsed.data.assignedUserId,
+      householdId,
+      "assignedUserId",
+    );
+  }
   const cursorTask = await resolveTaskCursor(householdId, parsed.data, parsed.data.cursor);
   const tasks = await prisma.task.findMany({
     where: buildTaskWhere(householdId, parsed.data, cursorTask),
@@ -963,6 +1135,7 @@ async function createTaskInstance(
     title: string;
     description?: string;
     priority: string;
+    categoryId?: string;
     dueAt?: Date;
     assignedUserIds: string[];
   },
@@ -973,6 +1146,7 @@ async function createTaskInstance(
       title: input.title,
       description: input.description,
       priority: input.priority,
+      categoryId: input.categoryId,
       dueAt: input.dueAt,
       createdByUserId: input.userId,
       assignments: {
@@ -1036,6 +1210,9 @@ export async function createTaskForHousehold(userId: string, householdId: string
   }
 
   await getAssignableMemberships(householdId, assignedUserIds);
+  if (data.categoryId) {
+    await assertTemplateCategoryBelongsToHousehold(data.categoryId, householdId);
+  }
 
   return prisma.$transaction(async (tx) => {
     const { task, calendarEventId } = await createTaskInstance(tx, {
@@ -1045,6 +1222,7 @@ export async function createTaskForHousehold(userId: string, householdId: string
       title: data.title,
       description: data.description,
       priority: data.priority,
+      categoryId: data.categoryId,
       dueAt,
       assignedUserIds,
     });
@@ -1086,6 +1264,7 @@ export async function createTaskForHousehold(userId: string, householdId: string
           title: data.title,
           description: data.description,
           priority: data.priority,
+          categoryId: data.categoryId,
           dueAt: occurrenceDueAt,
           assignedUserIds,
         });
@@ -1116,6 +1295,7 @@ export async function createTaskForHousehold(userId: string, householdId: string
           title: task.title,
           status: task.status,
           priority: task.priority,
+          categoryId: task.categoryId,
           assignedUserIds,
           dueAt: task.dueAt?.toISOString() ?? null,
           calendarEventId,
@@ -1154,6 +1334,9 @@ export async function updateTaskForHousehold(
   const dueAt = data.dueAt ? dateTimeInputToUtc(data.dueAt, "dueAt") : undefined;
 
   await getAssignableMemberships(householdId, assignedUserIds);
+  if (data.categoryId) {
+    await assertTemplateCategoryBelongsToHousehold(data.categoryId, householdId);
+  }
 
   return prisma.$transaction(async (tx) => {
     const task = await tx.task.findFirst({
@@ -1260,6 +1443,7 @@ export async function updateTaskForHousehold(
         title: data.title,
         description: data.description ?? null,
         priority: data.priority,
+        categoryId: data.categoryId ?? null,
         dueAt: dueAt ?? null,
       },
       include: {
@@ -1278,6 +1462,7 @@ export async function updateTaskForHousehold(
           title: task.title,
           description: task.description,
           priority: task.priority,
+          categoryId: task.categoryId,
           dueAt: task.dueAt?.toISOString() ?? null,
           assignedUserIds: task.assignments.map((assignment) => assignment.assignedUserId),
           linkedEventIds,
@@ -1286,6 +1471,7 @@ export async function updateTaskForHousehold(
           title: updatedTask.title,
           description: updatedTask.description,
           priority: updatedTask.priority,
+          categoryId: updatedTask.categoryId,
           dueAt: updatedTask.dueAt?.toISOString() ?? null,
           assignedUserIds,
           createdLinkedEventIds,

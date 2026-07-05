@@ -150,8 +150,9 @@ Current implemented subset:
 2. Create task with member assignment and due date.
 3. Calendar shows the linked `TASK` event.
 4. Task list, board, and due-date calendar modes show the same loaded task.
-5. Assigned member completes task.
-6. API confirms linked task/event records and completed statuses.
+5. Filter the calendar/task workspace by type, member, category, status, and priority.
+6. Assigned member completes task.
+7. API confirms linked task/event records and completed statuses.
 
 Backlog coverage:
 

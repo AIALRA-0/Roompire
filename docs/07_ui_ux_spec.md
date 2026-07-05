@@ -206,6 +206,8 @@ Filters:
 - category
 - status
 
+Current implementation keeps these filters in the page URL and applies them through the list APIs so refresh, load-more, desktop, and mobile views share the same result window.
+
 ### Tasks
 
 Views:
@@ -220,6 +222,7 @@ Task card:
 - assignee(s)
 - due date
 - recurrence
+- category
 - status
 - linked expense/event
 

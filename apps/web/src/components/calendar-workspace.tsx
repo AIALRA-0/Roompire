@@ -8,6 +8,7 @@ import {
   Pencil,
   Plus,
   ReceiptText,
+  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react";
@@ -57,6 +58,19 @@ type ExpenseCategorySummary = {
   name: string;
 };
 
+type CalendarFilterValues = {
+  eventType: string;
+  eventStatus: string;
+  eventCategoryId: string;
+  eventMemberUserId: string;
+  taskStatus: string;
+  taskPriority: string;
+  taskCategoryId: string;
+  taskAssignedUserId: string;
+  eventLimit: number;
+  taskLimit: number;
+};
+
 type CalendarWorkspaceLabels = {
   events: string;
   eventsHint: string;
@@ -67,6 +81,7 @@ type CalendarWorkspaceLabels = {
   eventTitle: string;
   taskTitle: string;
   type: string;
+  status: string;
   priority: string;
   startAt: string;
   endAt: string;
@@ -136,6 +151,19 @@ type CalendarWorkspaceLabels = {
   taskBoardCompleted: string;
   taskCalendarUnscheduled: string;
   noTasksInView: string;
+  filters: string;
+  filtersHint: string;
+  eventFilters: string;
+  taskFilters: string;
+  anyType: string;
+  anyStatus: string;
+  anyMember: string;
+  anyCategory: string;
+  anyPriority: string;
+  eventMember: string;
+  taskMember: string;
+  applyFilters: string;
+  clearFilters: string;
   eventTypes: Record<EventTypeKey, string>;
   priorities: Record<PriorityKey, string>;
   recurrences: Record<RecurrenceKey, string>;
@@ -150,6 +178,7 @@ type CalendarWorkspaceProps = {
   currentUserId: string;
   eventLoadMoreHref: string | null;
   events: SerializedCalendarEvent[];
+  filterValues: CalendarFilterValues;
   taskLoadMoreHref: string | null;
   tasks: SerializedTask[];
   members: CalendarWorkspaceMember[];
@@ -295,6 +324,7 @@ export function CalendarWorkspace({
   currentUserId,
   eventLoadMoreHref,
   events,
+  filterValues,
   taskLoadMoreHref,
   tasks,
   members,
@@ -321,6 +351,21 @@ export function CalendarWorkspace({
     () => new Map(members.map((member) => [member.userId, member.displayName])),
     [members],
   );
+  const categoryNamesById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+  const hasActiveEventFilters =
+    filterValues.eventType !== "" ||
+    filterValues.eventStatus !== "" ||
+    filterValues.eventCategoryId !== "" ||
+    filterValues.eventMemberUserId !== "";
+  const hasActiveTaskFilters =
+    filterValues.taskStatus !== "" ||
+    filterValues.taskPriority !== "" ||
+    filterValues.taskCategoryId !== "" ||
+    filterValues.taskAssignedUserId !== "";
+  const filterResetHref = `/${locale}/app/calendar?eventLimit=${filterValues.eventLimit}&taskLimit=${filterValues.taskLimit}`;
   const sortedEvents = useMemo(
     () =>
       [...events].sort(
@@ -441,6 +486,7 @@ export function CalendarWorkspace({
     const assignedUserIds = new Set(
       task.assignments.map((assignment) => assignment.assignedUserId),
     );
+    const taskCategoryName = task.categoryId ? categoryNamesById.get(task.categoryId) : null;
 
     return (
       <div
@@ -466,6 +512,7 @@ export function CalendarWorkspace({
               <Badge variant="neutral">
                 {labels.priorities[(task.priority as PriorityKey) ?? "NORMAL"] ?? task.priority}
               </Badge>
+              {taskCategoryName ? <Badge variant="neutral">{taskCategoryName}</Badge> : null}
               {hasLinkedProposal ? <Badge>{labels.linkedExpenseProposal}</Badge> : null}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -583,6 +630,23 @@ export function CalendarWorkspace({
                   ))}
                 </select>
               </Field>
+              <Field label={labels.category}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-edit-category-${task.id}`}
+                  defaultValue={task.categoryId ?? ""}
+                  name="categoryId"
+                >
+                  <option value="">{labels.uncategorized}</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
               <Field label={labels.dueAt}>
                 <input
                   className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
@@ -780,6 +844,7 @@ export function CalendarWorkspace({
 
   function renderTaskCalendarItem(task: SerializedTask) {
     const taskStatus = task.status as StatusKey;
+    const taskCategoryName = task.categoryId ? categoryNamesById.get(task.categoryId) : null;
 
     return (
       <div
@@ -795,6 +860,7 @@ export function CalendarWorkspace({
           <Badge variant="neutral">
             {labels.priorities[(task.priority as PriorityKey) ?? "NORMAL"] ?? task.priority}
           </Badge>
+          {taskCategoryName ? <Badge variant="neutral">{taskCategoryName}</Badge> : null}
         </div>
       </div>
     );
@@ -931,6 +997,7 @@ export function CalendarWorkspace({
         {
           title: String(formData.get("title") ?? ""),
           priority: String(formData.get("priority") ?? "NORMAL"),
+          categoryId: String(formData.get("categoryId") ?? ""),
           dueAt: String(formData.get("dueAt") ?? ""),
           assignedUserIds: formData.getAll("assignedUserIds").map(String),
           recurrenceFrequency: String(formData.get("recurrenceFrequency") ?? "NONE"),
@@ -963,6 +1030,7 @@ export function CalendarWorkspace({
         {
           title: String(formData.get("title") ?? ""),
           priority: String(formData.get("priority") ?? "NORMAL"),
+          categoryId: String(formData.get("categoryId") ?? ""),
           dueAt: String(formData.get("dueAt") ?? ""),
           assignedUserIds: formData.getAll("assignedUserIds").map(String),
           description: String(formData.get("description") ?? ""),
@@ -1355,6 +1423,23 @@ export function CalendarWorkspace({
                   ))}
                 </select>
               </Field>
+              <Field label={labels.category}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="task-category"
+                  disabled={!canCreateWorkItems}
+                  name="categoryId"
+                >
+                  <option value="">{labels.uncategorized}</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <Field label={labels.dueAt}>
                 <input
                   className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
@@ -1453,6 +1538,164 @@ export function CalendarWorkspace({
           <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm">{message}</div>
         ) : null}
 
+        <form
+          action={`/${locale}/app/calendar`}
+          className="min-w-0 overflow-hidden rounded-lg border border-border bg-card"
+          data-testid="calendar-work-filters"
+        >
+          <input name="eventLimit" type="hidden" value={filterValues.eventLimit} />
+          <input name="taskLimit" type="hidden" value={filterValues.taskLimit} />
+          <div className="border-b border-border p-5">
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <SlidersHorizontal aria-hidden="true" className="h-5 w-5 text-primary" />
+              {labels.filters}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{labels.filtersHint}</p>
+          </div>
+          <div className="grid gap-4 p-5 lg:grid-cols-2">
+            <fieldset className="grid gap-3">
+              <legend className="text-sm font-semibold">{labels.eventFilters}</legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={labels.type}>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="calendar-filter-event-type"
+                    defaultValue={filterValues.eventType}
+                    name="eventType"
+                  >
+                    <option value="">{labels.anyType}</option>
+                    {eventTypeKeys.map((type) => (
+                      <option key={type} value={type}>
+                        {labels.eventTypes[type]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={labels.status}>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="calendar-filter-event-status"
+                    defaultValue={filterValues.eventStatus}
+                    name="eventStatus"
+                  >
+                    <option value="">{labels.anyStatus}</option>
+                    {(["OPEN", "COMPLETED"] as const).map((status) => (
+                      <option key={status} value={status}>
+                        {labels.statuses[status]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={labels.eventMember}>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="calendar-filter-event-member"
+                    defaultValue={filterValues.eventMemberUserId}
+                    name="eventMemberUserId"
+                  >
+                    <option value="">{labels.anyMember}</option>
+                    {members.map((member) => (
+                      <option key={member.userId} value={member.userId}>
+                        {member.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={labels.category}>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="calendar-filter-event-category"
+                    defaultValue={filterValues.eventCategoryId}
+                    name="eventCategoryId"
+                  >
+                    <option value="">{labels.anyCategory}</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            </fieldset>
+            <fieldset className="grid gap-3">
+              <legend className="text-sm font-semibold">{labels.taskFilters}</legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={labels.status}>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="calendar-filter-task-status"
+                    defaultValue={filterValues.taskStatus}
+                    name="taskStatus"
+                  >
+                    <option value="">{labels.anyStatus}</option>
+                    {(["OPEN", "COMPLETED"] as const).map((status) => (
+                      <option key={status} value={status}>
+                        {labels.statuses[status]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={labels.priority}>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="calendar-filter-task-priority"
+                    defaultValue={filterValues.taskPriority}
+                    name="taskPriority"
+                  >
+                    <option value="">{labels.anyPriority}</option>
+                    {priorityKeys.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {labels.priorities[priority]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={labels.taskMember}>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="calendar-filter-task-member"
+                    defaultValue={filterValues.taskAssignedUserId}
+                    name="taskAssignedUserId"
+                  >
+                    <option value="">{labels.anyMember}</option>
+                    {members.map((member) => (
+                      <option key={member.userId} value={member.userId}>
+                        {member.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={labels.category}>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="calendar-filter-task-category"
+                    defaultValue={filterValues.taskCategoryId}
+                    name="taskCategoryId"
+                  >
+                    <option value="">{labels.anyCategory}</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            </fieldset>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
+            <Button asChild variant="outline">
+              <Link data-testid="calendar-filter-clear" href={filterResetHref}>
+                {labels.clearFilters}
+              </Link>
+            </Button>
+            <Button data-testid="calendar-filter-submit" type="submit">
+              {labels.applyFilters}
+            </Button>
+          </div>
+        </form>
+
         <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
           <div className="border-b border-border p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1491,7 +1734,9 @@ export function CalendarWorkspace({
             </div>
           </div>
           {sortedEvents.length === 0 ? (
-            <p className="p-5 text-sm text-muted-foreground">{labels.noEvents}</p>
+            <p className="p-5 text-sm text-muted-foreground">
+              {hasActiveEventFilters ? labels.noEventsInView : labels.noEvents}
+            </p>
           ) : (
             <>
               {eventViewMode === "LIST" ? (
@@ -1516,6 +1761,9 @@ export function CalendarWorkspace({
                     const isEventExpenseBusy = busyActionId === `event-expense-${event.id}`;
                     const isEventUpdateBusy = busyActionId === `event-update-${event.id}`;
                     const isEventDeleteBusy = busyActionId === `event-delete-${event.id}`;
+                    const eventCategoryName = event.recurringExpenseTemplate?.categoryId
+                      ? categoryNamesById.get(event.recurringExpenseTemplate.categoryId)
+                      : null;
 
                     return (
                       <div
@@ -1537,6 +1785,9 @@ export function CalendarWorkspace({
                           </div>
                           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                             <Badge variant="neutral">{labels.eventTypes[eventType]}</Badge>
+                            {eventCategoryName ? (
+                              <Badge variant="neutral">{eventCategoryName}</Badge>
+                            ) : null}
                             <Badge variant={statusVariant(event.status)}>
                               {labels.statuses[(event.status as StatusKey) ?? "OPEN"] ??
                                 event.status}
@@ -1847,6 +2098,9 @@ export function CalendarWorkspace({
                       dayEvents.map((event) => {
                         const eventType = event.type as EventTypeKey;
                         const eventStatus = event.status as StatusKey;
+                        const eventCategoryName = event.recurringExpenseTemplate?.categoryId
+                          ? categoryNamesById.get(event.recurringExpenseTemplate.categoryId)
+                          : null;
 
                         return (
                           <div
@@ -1867,6 +2121,9 @@ export function CalendarWorkspace({
                             </div>
                             <div className="flex flex-wrap gap-2 sm:justify-end">
                               <Badge variant="neutral">{labels.eventTypes[eventType]}</Badge>
+                              {eventCategoryName ? (
+                                <Badge variant="neutral">{eventCategoryName}</Badge>
+                              ) : null}
                               <Badge variant={statusVariant(event.status)}>
                                 {labels.statuses[eventStatus] ?? event.status}
                               </Badge>
@@ -2103,7 +2360,9 @@ export function CalendarWorkspace({
               ) : null}
             </>
           ) : (
-            <p className="p-5 text-sm text-muted-foreground">{labels.noTasks}</p>
+            <p className="p-5 text-sm text-muted-foreground">
+              {hasActiveTaskFilters ? labels.noTasksInView : labels.noTasks}
+            </p>
           )}
         </div>
       </div>

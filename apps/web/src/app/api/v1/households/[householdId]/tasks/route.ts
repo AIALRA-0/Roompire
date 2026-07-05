@@ -27,6 +27,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
       cursor: request.nextUrl.searchParams.get("cursor") ?? undefined,
       limit: request.nextUrl.searchParams.get("limit") ?? undefined,
       status: request.nextUrl.searchParams.get("status") ?? undefined,
+      priority: request.nextUrl.searchParams.get("priority") ?? undefined,
+      categoryId: request.nextUrl.searchParams.get("categoryId") ?? undefined,
+      assignedUserId: request.nextUrl.searchParams.get("assignedUserId") ?? undefined,
     });
 
     return NextResponse.json({

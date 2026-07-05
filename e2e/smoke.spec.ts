@@ -5577,6 +5577,24 @@ test.describe("Roompire real browser smoke", () => {
     if (!memberUserId) {
       throw new Error("Expected member user id in calendar members payload");
     }
+    const categoriesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/categories`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(categoriesResponse.ok()).toBeTruthy();
+    const categoriesPayload = (await categoriesResponse.json()) as {
+      categories: Array<{ id: string; key: string; nameEn: string; nameZhCn: string }>;
+    };
+    const workCategory = categoriesPayload.categories[0];
+    expect(workCategory).toBeTruthy();
+    if (!workCategory) {
+      throw new Error("Expected seeded household category");
+    }
 
     await setDevSessionWithRetry(page, ownerEmail, "Calendar Owner E2E");
     await page.goto("/en-US/app/calendar");
@@ -5593,6 +5611,7 @@ test.describe("Roompire real browser smoke", () => {
 
     await page.getByTestId("task-title").fill(taskTitle);
     await page.getByTestId("task-priority").selectOption("HIGH");
+    await page.getByTestId("task-category").selectOption(workCategory.id);
     await page.getByTestId("task-due-at").fill("2026-07-09T10:00");
     await page.getByTestId("task-recurrence").selectOption("WEEKLY");
     await page.getByTestId("task-recurrence-count").fill("2");
@@ -5609,6 +5628,7 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("calendar-event-description").fill("Auto-generated internet proposal");
     await page.getByTestId("calendar-event-auto-proposal-title").fill(autoRecurringProposalTitle);
     await page.getByTestId("calendar-event-auto-proposal-merchant").fill("Internet vendor");
+    await page.getByTestId("calendar-event-auto-proposal-category").selectOption(workCategory.id);
     await page.getByTestId("calendar-event-auto-proposal-amount").fill("240");
     await page.getByTestId("calendar-event-auto-proposal-original-currency").fill("CNY");
     await page.getByTestId("calendar-event-auto-proposal-fx-rate").fill("1");
@@ -5626,6 +5646,8 @@ test.describe("Roompire real browser smoke", () => {
         id: string;
         title: string;
         status: string;
+        priority: string;
+        categoryId: string | null;
         dueAt: string | null;
         assignments: Array<{ assignedUserId: string; status: string }>;
         linkedEventIds: string[];
@@ -5639,12 +5661,14 @@ test.describe("Roompire real browser smoke", () => {
       createdTasks.find((task) => task.dueAt?.startsWith("2026-07-09T10:00")) ?? createdTasks[0];
     expect(createdTask).toBeTruthy();
     expect(createdTask!.status).toBe("OPEN");
+    expect(createdTask!.categoryId).toBe(workCategory.id);
     expect(createdTask!.assignments).toHaveLength(1);
     expect(createdTask!.linkedEventIds).toHaveLength(1);
     expect(createdTask!.linkedProposalIds).toHaveLength(0);
     for (const task of createdTasks) {
       expect(task).toMatchObject({
         status: "OPEN",
+        categoryId: workCategory.id,
         assignments: [expect.objectContaining({ status: "ASSIGNED" })],
       });
       expect(task.linkedEventIds).toHaveLength(1);
@@ -5694,6 +5718,53 @@ test.describe("Roompire real browser smoke", () => {
     );
     expect(invalidTaskCursorResponse.status()).toBe(400);
 
+    const filteredTasksResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks?status=OPEN&priority=HIGH&categoryId=${workCategory.id}&assignedUserId=${memberUserId}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(filteredTasksResponse.ok()).toBeTruthy();
+    const filteredTasksPayload = (await filteredTasksResponse.json()) as typeof tasksPayload;
+    expect(filteredTasksPayload.tasks.filter((task) => task.title === taskTitle)).toHaveLength(2);
+    expect(
+      filteredTasksPayload.tasks.every(
+        (task) =>
+          task.status === "OPEN" &&
+          task.priority === "HIGH" &&
+          task.categoryId === workCategory.id &&
+          task.assignments.some((assignment) => assignment.assignedUserId === memberUserId),
+      ),
+    ).toBe(true);
+
+    const excludedTaskMemberResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks?assignedUserId=${ownerUserId}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(excludedTaskMemberResponse.ok()).toBeTruthy();
+    const excludedTaskMemberPayload =
+      (await excludedTaskMemberResponse.json()) as typeof tasksPayload;
+    expect(excludedTaskMemberPayload.tasks.some((task) => task.title === taskTitle)).toBe(false);
+
+    const invalidTaskMemberResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks?assignedUserId=00000000-0000-4000-8000-000000000000`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(invalidTaskMemberResponse.status()).toBe(400);
+
     const eventsResponse = await getApiWithRetry(
       page,
       `/api/v1/households/${householdId}/calendar/events`,
@@ -5713,6 +5784,7 @@ test.describe("Roompire real browser smoke", () => {
         startAt: string;
         links: Array<{ linkedType: string; linkedId: string }>;
         recurringExpenseTemplate: {
+          categoryId: string | null;
           originalAmount: string;
           originalCurrency: string;
           participantUserIds: string[];
@@ -5745,6 +5817,7 @@ test.describe("Roompire real browser smoke", () => {
     ]);
     for (const event of autoRecurringEvents) {
       expect(event.recurringExpenseTemplate).toMatchObject({
+        categoryId: workCategory.id,
         originalAmount: "240",
         originalCurrency: "CNY",
         participantUserIds: [memberUserId],
@@ -5793,6 +5866,60 @@ test.describe("Roompire real browser smoke", () => {
       },
     );
     expect(invalidEventCursorResponse.status()).toBe(400);
+
+    const filteredBillEventsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events?type=BILL_DUE&status=OPEN&memberUserId=${ownerUserId}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(filteredBillEventsResponse.ok()).toBeTruthy();
+    const filteredBillEventsPayload =
+      (await filteredBillEventsResponse.json()) as typeof eventsPayload;
+    expect(
+      filteredBillEventsPayload.events.filter(
+        (event) => event.title === eventTitle && event.type === "BILL_DUE",
+      ),
+    ).toHaveLength(3);
+    expect(
+      filteredBillEventsPayload.events.every(
+        (event) => event.type === "BILL_DUE" && event.status === "OPEN",
+      ),
+    ).toBe(true);
+
+    const filteredCategoryEventsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events?type=RECURRING_EXPENSE_GENERATION&categoryId=${workCategory.id}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(filteredCategoryEventsResponse.ok()).toBeTruthy();
+    const filteredCategoryEventsPayload =
+      (await filteredCategoryEventsResponse.json()) as typeof eventsPayload;
+    expect(
+      filteredCategoryEventsPayload.events.filter(
+        (event) =>
+          event.title === autoRecurringExpenseTitle &&
+          event.recurringExpenseTemplate?.categoryId === workCategory.id,
+      ),
+    ).toHaveLength(2);
+
+    const invalidEventMemberResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events?memberUserId=00000000-0000-4000-8000-000000000000`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(invalidEventMemberResponse.status()).toBe(400);
 
     const recurringExpenseEnv = {
       ...process.env,
@@ -5912,6 +6039,33 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId(`task-calendar-item-${createdTask!.id}`)).toContainText("High");
     await page.getByTestId("task-view-list").click();
     await expect(page.getByTestId("task-list-view")).toBeVisible();
+    await expect(page.getByTestId("calendar-work-filters")).toBeVisible();
+    await page
+      .getByTestId("calendar-filter-event-type")
+      .selectOption("RECURRING_EXPENSE_GENERATION");
+    await page.getByTestId("calendar-filter-event-category").selectOption(workCategory.id);
+    await page.getByTestId("calendar-filter-task-member").selectOption(memberUserId);
+    await page.getByTestId("calendar-filter-task-priority").selectOption("HIGH");
+    await page.getByTestId("calendar-filter-task-category").selectOption(workCategory.id);
+    await page.getByTestId("calendar-filter-submit").click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("eventType"))
+      .toBe("RECURRING_EXPENSE_GENERATION");
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("taskAssignedUserId"))
+      .toBe(memberUserId);
+    await expect(
+      page.getByTestId(`calendar-event-row-${autoRecurringEvents[0]!.id}`),
+    ).toContainText(autoRecurringExpenseTitle);
+    await expect(
+      page.getByTestId(`calendar-event-row-${autoRecurringEvents[0]!.id}`),
+    ).toContainText(workCategory.nameEn);
+    await expect(page.getByTestId(`task-row-${createdTask!.id}`)).toContainText(taskTitle);
+    await expect(page.getByTestId(`task-row-${createdTask!.id}`)).toContainText(
+      workCategory.nameEn,
+    );
+    await page.getByTestId("calendar-filter-clear").click();
+    await expect.poll(() => new URL(page.url()).searchParams.get("eventType")).toBeNull();
 
     const eventExpenseSource = recurringEvents[0]!;
     await page.getByTestId(`calendar-event-edit-${eventExpenseSource.id}`).click();
