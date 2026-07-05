@@ -162,6 +162,7 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
   - Targeted Playwright desktop/mobile ops test passed and proved host `ops/status/ops-status.json` stayed at the real host disk value while the test fixture contained the expected fake 42% disk data.
   - Full `pnpm e2e` passed after the isolation change: 28 browser tests across Chromium desktop and mobile in 7.8 minutes.
   - Real-domain smoke passed again for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`; `collect_ops_status.sh` restored/refreshed the live host snapshot and authenticated `/api/v1/ops/status` returned `latestSmoke.status=passed` with disk-pressure warnings.
+  - Remote GitHub Actions push runs succeeded after the Prisma generation fix: both `CI` and `E2E` completed with `success` on `chore/ci-workflow-hardening`.
 - 2026-07-05 Housekeeping ops visibility:
   - Updated `scripts/collect_ops_status.sh` so host snapshots include `roompire-housekeeping.timer` active/enabled state, next/last run, and `roompire-housekeeping.service` result/exit/timestamps.
   - Extended `OpsStatusSnapshot`, `/api/v1/ops/status`, OpenAPI, localized ops UI, and targeted Playwright fixture/assertions to expose housekeeping health without web-request-time host commands.
