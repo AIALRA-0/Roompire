@@ -61,6 +61,35 @@ async function clickCategoryMutationWithRetry(
   throw new Error(`${method} category mutation failed with status ${lastStatus}`);
 }
 
+async function clickTagMutationWithRetry(
+  page: Page,
+  button: Locator,
+  method: "POST" | "PATCH" | "DELETE",
+) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/households/") &&
+        response.url().includes("/tags") &&
+        response.request().method() === method,
+    );
+
+    await button.click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`${method} tag mutation failed with status ${lastStatus}`);
+}
+
 async function clickOwnershipTransferWithRetry(page: Page, button: Locator) {
   let lastStatus = 0;
 
@@ -2249,6 +2278,9 @@ test.describe("Roompire real browser smoke", () => {
     const categoryNameZh = `测试分类 ${suffix}`;
     const updatedCategoryName = `E2E Shared Supplies ${suffix}`;
     const updatedCategoryNameZh = `共享用品 ${suffix}`;
+    const tagName = `E2E Tag ${suffix}`;
+    const updatedTagName = `E2E Shared Tag ${suffix}`;
+    const taggedProposalTitle = `Tagged Proposal ${suffix}`;
 
     await setDevSessionWithRetry(page, ownerEmail, "Owner E2E");
 
@@ -2349,6 +2381,50 @@ test.describe("Roompire real browser smoke", () => {
       page.getByTestId(`category-row-${createdCategory.key}`).getByText(updatedCategoryName),
     ).toBeVisible();
 
+    await page.getByTestId("tag-create-name").fill(tagName);
+    await page.getByTestId("tag-create-color-token").fill("tag.e2e");
+    await page.getByTestId("tag-create-sort-order").fill("9");
+    await clickTagMutationWithRetry(page, page.getByTestId("tag-create-submit"), "POST");
+    await expect(page.getByText("Tag created")).toBeVisible();
+
+    const tagsResponse = await getApiWithRetry(page, `/api/v1/households/${householdId}/tags`, {
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(tagsResponse.ok()).toBeTruthy();
+    const tagsPayload = (await tagsResponse.json()) as {
+      tags: Array<{
+        id: string;
+        name: string;
+        colorToken: string | null;
+        sortOrder: number;
+      }>;
+    };
+    const createdTag = tagsPayload.tags.find((tag) => tag.name === tagName);
+    expect(createdTag).toBeTruthy();
+    if (!createdTag) {
+      throw new Error("Expected created tag in API response.");
+    }
+    expect(createdTag).toMatchObject({
+      colorToken: "tag.e2e",
+      sortOrder: 9,
+    });
+
+    const tagRow = page.getByTestId(`tag-row-${createdTag.id}`);
+    await expect(tagRow).toBeVisible();
+    await tagRow.getByTestId(`tag-name-${createdTag.id}`).fill(updatedTagName);
+    await tagRow.getByTestId(`tag-sort-order-${createdTag.id}`).fill("3");
+    await clickTagMutationWithRetry(
+      page,
+      tagRow.getByTestId(`tag-update-${createdTag.id}`),
+      "PATCH",
+    );
+    await expect(page.getByText("Tag updated")).toBeVisible();
+    await expect(
+      page.getByTestId(`tag-row-${createdTag.id}`).getByText(updatedTagName),
+    ).toBeVisible();
+
     await page.getByLabel("Invite email").fill(inviteeEmail);
     await page.getByLabel("Invite role").selectOption("MEMBER");
     await clickInviteCreateWithRetry(page);
@@ -2379,7 +2455,84 @@ test.describe("Roompire real browser smoke", () => {
     );
     expect(memberCategoryResponse.status()).toBe(403);
 
+    const memberTagResponse = await page.request.post(`/api/v1/households/${householdId}/tags`, {
+      data: {
+        name: `Member tag ${suffix}`,
+      },
+      headers: {
+        "x-roompire-dev-user-email": inviteeEmail,
+      },
+    });
+    expect(memberTagResponse.status()).toBe(403);
+
     await setDevSessionWithRetry(page, ownerEmail, "Owner E2E");
+
+    await page.goto("/en-US/app");
+    await page.getByTestId("expense-title").fill(taggedProposalTitle);
+    await page.getByTestId("expense-merchant").fill("Tagged Merchant");
+    await page.getByTestId("expense-category").selectOption({ label: updatedCategoryName });
+    await page.getByTestId(`expense-tag-${updatedTagName}`).check();
+    await page.getByTestId("expense-date").fill("2026-07-07");
+    await page.getByTestId("expense-amount").fill("20");
+    await page.getByTestId("expense-original-currency").fill("USD");
+    await page.getByTestId(`expense-debtor-${inviteeEmail}`).check();
+    const taggedProposalResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/v1/households/${householdId}/expenses/proposals`) &&
+        response.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Submit proposal" }).click();
+    const taggedProposalResponse = await taggedProposalResponsePromise;
+    expect(taggedProposalResponse.status()).toBe(201);
+    const taggedProposalPayload = (await taggedProposalResponse.json()) as {
+      proposal: {
+        id: string;
+        tags: Array<{ id: string; name: string }>;
+      };
+    };
+    expect(taggedProposalPayload.proposal.tags).toEqual([
+      expect.objectContaining({ id: createdTag.id, name: updatedTagName }),
+    ]);
+    await expect(page.getByText("Proposal submitted")).toBeVisible();
+    await expect(page.getByText(taggedProposalTitle)).toBeVisible();
+    await expect(page.getByTestId("expense-proposal-tags").first()).toContainText(updatedTagName);
+
+    await page.goto(
+      `/en-US/app/households/${householdId}/expenses/proposals/${taggedProposalPayload.proposal.id}`,
+    );
+    await expect(page.getByTestId("proposal-tags")).toContainText(updatedTagName);
+
+    await page.goto("/en-US/app");
+    const refreshedTagRow = page.getByTestId(`tag-row-${createdTag.id}`);
+    await expect(refreshedTagRow).toBeVisible();
+    await clickTagMutationWithRetry(
+      page,
+      refreshedTagRow.getByTestId(`tag-archive-${createdTag.id}`),
+      "DELETE",
+    );
+    await expect(page.getByText("Tag archived")).toBeVisible();
+    await expect(page.getByTestId(`tag-row-${createdTag.id}`)).toHaveCount(0);
+    await expect(page.getByTestId(`expense-tag-${updatedTagName}`)).toHaveCount(0);
+
+    const archivedTagsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tags`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(archivedTagsResponse.ok()).toBeTruthy();
+    const archivedTagsPayload = (await archivedTagsResponse.json()) as {
+      tags: Array<{ id: string }>;
+    };
+    expect(archivedTagsPayload.tags.find((tag) => tag.id === createdTag.id)).toBeUndefined();
+
+    await page.goto(
+      `/en-US/app/households/${householdId}/expenses/proposals/${taggedProposalPayload.proposal.id}`,
+    );
+    await expect(page.getByTestId("proposal-tags")).toContainText(updatedTagName);
 
     await page.goto("/en-US/app");
     const refreshedCategoryRow = page.getByTestId(`category-row-${createdCategory.key}`);

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/routing";
 import { requirePageUser } from "@/server/auth/session";
-import { getExpenseProposalForUser } from "@/server/expenses/service";
+import { getExpenseProposalForUser, listExpenseTagsForHousehold } from "@/server/expenses/service";
 import { serializeExpenseProposal } from "@/server/expenses/serializers";
 import { createFileDownloadPath } from "@/server/files/service";
 import { listMembersForHousehold } from "@/server/households/service";
@@ -19,6 +19,7 @@ type PageProps = {
 };
 
 type SerializedProposal = ReturnType<typeof serializeExpenseProposal>;
+type TagSummary = Awaited<ReturnType<typeof listExpenseTagsForHousehold>>[number];
 type ProposalStatus = SerializedProposal["status"];
 type ShareStatus = SerializedProposal["shares"][number]["status"];
 type MemberSummary = Awaited<ReturnType<typeof listMembersForHousehold>>[number];
@@ -192,14 +193,17 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
   let proposal: SerializedProposal | null = null;
   let memberNames = new Map<string, string>();
   let members: MemberSummary[] = [];
+  let tags: TagSummary[] = [];
 
   try {
-    const [proposalRecord, memberRecords] = await Promise.all([
+    const [proposalRecord, memberRecords, tagRecords] = await Promise.all([
       getExpenseProposalForUser(user.id, householdId, proposalId),
       listMembersForHousehold(user.id, householdId),
+      listExpenseTagsForHousehold(user.id, householdId),
     ]);
     proposal = serializeExpenseProposal(proposalRecord);
     members = memberRecords;
+    tags = tagRecords;
     memberNames = new Map(
       members.map((member) => [
         member.userId,
@@ -261,6 +265,7 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
     revisionReason: expense("revisionReason"),
     proposalTitle: expense("proposalTitle"),
     merchant: expense("merchant"),
+    tags: expense("tags"),
     expenseDate: expense("expenseDate"),
     dueDate: expense("dueDate"),
     originalAmount: expense("originalAmount"),
@@ -374,6 +379,20 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
                     {splitMethodLabel(proposal.splitMethod, expense)}
                   </p>
                 </div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-muted-foreground">{expense("tags")}</p>
+                  {proposal.tags.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5" data-testid="proposal-tags">
+                      {proposal.tags.map((tag) => (
+                        <Badge key={tag.id} variant="neutral">
+                          {tag.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-sm font-medium">{expense("noTags")}</p>
+                  )}
+                </div>
               </div>
 
               <div className="rounded-lg border border-border bg-background p-4">
@@ -455,6 +474,10 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
                         displayName: member.displayNameOverride ?? member.user.displayName,
                       }))}
                     proposal={proposal}
+                    tagOptions={tags.map((tag) => ({
+                      id: tag.id,
+                      name: tag.name,
+                    }))}
                   />
                 </div>
               ) : null}

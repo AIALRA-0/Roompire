@@ -75,6 +75,8 @@ const participantShareSchema = z.object({
   shareUnits: optionalDecimalStringSchema,
 });
 
+const tagIdsSchema = z.array(z.string().uuid()).max(12).optional();
+
 const createExpenseProposalBaseSchema = z.object({
   title: z.string().trim().min(2).max(120),
   description: z.string().trim().max(1000).optional(),
@@ -93,6 +95,7 @@ const createExpenseProposalBaseSchema = z.object({
   ),
   participantUserIds: z.array(z.string().uuid()).min(1).max(20).optional(),
   participantShares: z.array(participantShareSchema).min(1).max(20).optional(),
+  tagIds: tagIdsSchema,
   fileIds: z.array(z.string().uuid()).max(10).optional(),
   splitMethod: z.enum(supportedSplitMethods).default("EQUAL"),
 });
@@ -189,6 +192,15 @@ const expenseCategoryInputSchema = z.object({
   ),
 });
 
+const expenseTagInputSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  colorToken: optionalCategoryTextSchema,
+  sortOrder: z.preprocess(
+    (value) => (value === "" || value === null || value === undefined ? undefined : value),
+    z.coerce.number().int().min(0).max(10_000).optional(),
+  ),
+});
+
 export const approveExpenseShareSchema = z.object({
   comment: z.string().trim().max(1000).optional(),
 });
@@ -233,6 +245,7 @@ type PreparedExpenseProposalCreate = {
   expenseDate: Date;
   dueDate?: Date;
   fileIds: string[];
+  tagIds: string[];
   revisionNumber?: number;
   supersedesProposalId?: string;
   shareRows: Array<{
@@ -251,6 +264,14 @@ type PreparedExpenseProposalCreate = {
 
 const expenseProposalDetailInclude = {
   category: true,
+  tagLinks: {
+    include: {
+      tag: true,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
   payers: true,
   shares: true,
   approvals: {
@@ -455,6 +476,37 @@ async function assertCategoryBelongsToHousehold(categoryId: string, householdId:
   }
 }
 
+async function assertTagsBelongToHousehold(tagIds: string[], householdId: string) {
+  if (tagIds.length === 0) {
+    return [];
+  }
+
+  const uniqueTagIds = uniqueValues(tagIds);
+
+  if (uniqueTagIds.length !== tagIds.length) {
+    throw new ApiError(400, "DUPLICATE_TAG", "Each tag can be selected only once.");
+  }
+
+  const tags = await prisma.expenseTag.findMany({
+    where: {
+      id: {
+        in: uniqueTagIds,
+      },
+      householdId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (tags.length !== uniqueTagIds.length) {
+    throw new ApiError(400, "INVALID_TAG", "Every tag must be active in this household.");
+  }
+
+  return uniqueTagIds;
+}
+
 function categoryKeyBase(name: string) {
   const base = name
     .toLowerCase()
@@ -473,6 +525,16 @@ async function nextCategorySortOrder(tx: Prisma.TransactionClient, householdId: 
   });
 
   return (lastCategory?.sortOrder ?? -1) + 1;
+}
+
+async function nextTagSortOrder(tx: Prisma.TransactionClient, householdId: string) {
+  const lastTag = await tx.expenseTag.findFirst({
+    where: { householdId },
+    orderBy: [{ sortOrder: "desc" }, { createdAt: "desc" }],
+    select: { sortOrder: true },
+  });
+
+  return (lastTag?.sortOrder ?? -1) + 1;
 }
 
 async function uniqueCategoryKey(
@@ -544,6 +606,18 @@ export async function listExpenseCategoriesForHousehold(userId: string, househol
       isActive: true,
     },
     orderBy: [{ sortOrder: "asc" }, { nameEn: "asc" }],
+  });
+}
+
+export async function listExpenseTagsForHousehold(userId: string, householdId: string) {
+  await requireActiveMembership(userId, householdId);
+
+  return prisma.expenseTag.findMany({
+    where: {
+      householdId,
+      isActive: true,
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
 }
 
@@ -708,6 +782,167 @@ export async function archiveExpenseCategoryForHousehold(
   });
 }
 
+export async function createExpenseTagForHousehold(
+  userId: string,
+  householdId: string,
+  input: unknown,
+) {
+  await requireHouseholdSettingsManager(userId, householdId);
+  const parsed = expenseTagInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Expense tag input is invalid.", parsed.error.flatten());
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const tag = await tx.expenseTag.create({
+        data: {
+          householdId,
+          name: parsed.data.name,
+          colorToken: parsed.data.colorToken,
+          sortOrder: parsed.data.sortOrder ?? (await nextTagSortOrder(tx, householdId)),
+        },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          householdId,
+          actorUserId: userId,
+          action: "expense_tag.created",
+          entityType: "ExpenseTag",
+          entityId: tag.id,
+          after: {
+            name: tag.name,
+            colorToken: tag.colorToken,
+            sortOrder: tag.sortOrder,
+            isActive: tag.isActive,
+          },
+        },
+      });
+
+      return tag;
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new ApiError(409, "TAG_NAME_EXISTS", "A tag with this name already exists.");
+    }
+
+    throw error;
+  }
+}
+
+export async function updateExpenseTagForHousehold(
+  userId: string,
+  householdId: string,
+  tagId: string,
+  input: unknown,
+) {
+  await requireHouseholdSettingsManager(userId, householdId);
+  const parsed = expenseTagInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Expense tag input is invalid.", parsed.error.flatten());
+  }
+
+  const previous = await prisma.expenseTag.findFirst({
+    where: { id: tagId, householdId, isActive: true },
+  });
+
+  if (!previous) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const tag = await tx.expenseTag.update({
+        where: { id: tagId },
+        data: {
+          name: parsed.data.name,
+          colorToken: parsed.data.colorToken,
+          sortOrder: parsed.data.sortOrder ?? previous.sortOrder,
+        },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          householdId,
+          actorUserId: userId,
+          action: "expense_tag.updated",
+          entityType: "ExpenseTag",
+          entityId: tag.id,
+          before: {
+            name: previous.name,
+            colorToken: previous.colorToken,
+            sortOrder: previous.sortOrder,
+            isActive: previous.isActive,
+          },
+          after: {
+            name: tag.name,
+            colorToken: tag.colorToken,
+            sortOrder: tag.sortOrder,
+            isActive: tag.isActive,
+          },
+        },
+      });
+
+      return tag;
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new ApiError(409, "TAG_NAME_EXISTS", "A tag with this name already exists.");
+    }
+
+    throw error;
+  }
+}
+
+export async function archiveExpenseTagForHousehold(
+  userId: string,
+  householdId: string,
+  tagId: string,
+) {
+  await requireHouseholdSettingsManager(userId, householdId);
+  const previous = await prisma.expenseTag.findFirst({
+    where: { id: tagId, householdId, isActive: true },
+  });
+
+  if (!previous) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const tag = await tx.expenseTag.update({
+      where: { id: tagId },
+      data: { isActive: false },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "expense_tag.archived",
+        entityType: "ExpenseTag",
+        entityId: tag.id,
+        before: {
+          name: previous.name,
+          colorToken: previous.colorToken,
+          sortOrder: previous.sortOrder,
+          isActive: previous.isActive,
+        },
+        after: {
+          name: tag.name,
+          colorToken: tag.colorToken,
+          sortOrder: tag.sortOrder,
+          isActive: tag.isActive,
+        },
+      },
+    });
+
+    return tag;
+  });
+}
+
 export async function listExpenseProposalsForHousehold(
   userId: string,
   householdId: string,
@@ -727,6 +962,14 @@ export async function listExpenseProposalsForHousehold(
     },
     include: {
       category: true,
+      tagLinks: {
+        include: {
+          tag: true,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
       payers: true,
       shares: true,
       proposalFiles: {
@@ -796,6 +1039,7 @@ async function prepareExpenseProposalCreate(
     await assertCategoryBelongsToHousehold(data.categoryId, householdId);
   }
 
+  const tagIds = await assertTagsBelongToHousehold(data.tagIds ?? [], householdId);
   const fileIds = data.fileIds ?? [];
 
   await assertFilesReadyForProposal({
@@ -951,6 +1195,7 @@ async function prepareExpenseProposalCreate(
     expenseDate,
     dueDate,
     fileIds,
+    tagIds,
     revisionNumber: revision?.revisionNumber,
     supersedesProposalId: revision?.supersedesProposalId,
     shareRows,
@@ -999,9 +1244,23 @@ async function createExpenseProposalRecord(
       shares: {
         create: prepared.shareRows,
       },
+      ...(prepared.tagIds.length > 0
+        ? {
+            tagLinks: {
+              create: prepared.tagIds.map((tagId) => ({
+                tagId,
+              })),
+            },
+          }
+        : {}),
     },
     include: {
       category: true,
+      tagLinks: {
+        include: {
+          tag: true,
+        },
+      },
       payers: true,
       shares: true,
     },
@@ -1038,6 +1297,7 @@ async function createExpenseProposalRecord(
         splitMethod: proposal.splitMethod,
         shareStatus: ShareStatus.PENDING,
         debtorUserIds: prepared.debtorUserIds,
+        tagIds: prepared.tagIds,
         fileIds: prepared.fileIds,
         revisionNumber: prepared.revisionNumber ?? 1,
         supersedesProposalId: prepared.supersedesProposalId ?? null,
@@ -1870,6 +2130,7 @@ export async function reviseExpenseProposalForHousehold(
     include: {
       shares: true,
       proposalFiles: true,
+      tagLinks: true,
       taskLinks: true,
     },
   });
@@ -1907,6 +2168,7 @@ export async function reviseExpenseProposalForHousehold(
 
   const revisionData: ReviseExpenseProposalData = {
     ...parsed.data,
+    tagIds: parsed.data.tagIds ?? existingProposal.tagLinks.map((link) => link.tagId),
     fileIds: parsed.data.fileIds ?? existingProposal.proposalFiles.map((file) => file.fileId),
   };
   const prepared = await prepareExpenseProposalCreate(
@@ -2008,3 +2270,4 @@ export type ExpenseProposalDetail = Awaited<ReturnType<typeof getExpenseProposal
 export type ExpenseCategorySummary = Awaited<
   ReturnType<typeof listExpenseCategoriesForHousehold>
 >[number];
+export type ExpenseTagSummary = Awaited<ReturnType<typeof listExpenseTagsForHousehold>>[number];

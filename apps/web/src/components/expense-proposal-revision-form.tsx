@@ -12,12 +12,18 @@ type RevisionMember = {
   displayName: string;
 };
 
+type RevisionTag = {
+  id: string;
+  name: string;
+};
+
 type RevisionProposal = {
   id: string;
   title: string;
   description: string | null;
   merchant: string | null;
   category: { id: string } | null;
+  tags: RevisionTag[];
   expenseDate: string | null;
   dueDate: string | null;
   originalAmount: string;
@@ -42,6 +48,7 @@ type RevisionLabels = {
   revisionReason: string;
   proposalTitle: string;
   merchant: string;
+  tags: string;
   expenseDate: string;
   dueDate: string;
   originalAmount: string;
@@ -130,12 +137,14 @@ export function ExpenseProposalRevisionForm({
   labels,
   members,
   proposal,
+  tagOptions,
 }: Readonly<{
   householdId: string;
   locale: string;
   labels: RevisionLabels;
   members: RevisionMember[];
   proposal: RevisionProposal;
+  tagOptions: RevisionTag[];
 }>) {
   const router = useRouter();
   const initialSplitMethod = proposal.splitMethod === "ADJUSTMENT" ? "EQUAL" : proposal.splitMethod;
@@ -145,6 +154,11 @@ export function ExpenseProposalRevisionForm({
   const [selectedDebtorIds, setSelectedDebtorIds] = useState(
     proposal.shares.map((share) => share.debtorUserId),
   );
+  const [selectedTagIds, setSelectedTagIds] = useState(() => {
+    const availableTagIds = new Set(tagOptions.map((tag) => tag.id));
+
+    return proposal.tags.filter((tag) => availableTagIds.has(tag.id)).map((tag) => tag.id);
+  });
   const [splitValues, setSplitValues] = useState<Record<string, string>>(
     Object.fromEntries(
       proposal.shares.map((share) => [share.debtorUserId, splitValueForShare(proposal, share)]),
@@ -157,6 +171,12 @@ export function ExpenseProposalRevisionForm({
       checked
         ? [...current, userId]
         : current.filter((selectedUserId) => selectedUserId !== userId),
+    );
+  }
+
+  function toggleTag(tagId: string, checked: boolean) {
+    setSelectedTagIds((current) =>
+      checked ? [...current, tagId] : current.filter((selectedTagId) => selectedTagId !== tagId),
     );
   }
 
@@ -187,6 +207,7 @@ export function ExpenseProposalRevisionForm({
           fxRate: String(formData.get("fxRate") ?? ""),
           participantUserIds: selectedDebtorIds,
           participantShares: splitMethod === "EQUAL" ? undefined : participantShares,
+          tagIds: selectedTagIds,
           fileIds: proposal.files.map((file) => file.id),
           splitMethod,
           revisionReason: String(formData.get("revisionReason") ?? ""),
@@ -240,6 +261,25 @@ export function ExpenseProposalRevisionForm({
           name="merchant"
         />
       </label>
+      {tagOptions.length > 0 ? (
+        <fieldset className="rounded-md border border-border px-3 py-2">
+          <legend className="px-1 text-xs font-medium text-muted-foreground">{labels.tags}</legend>
+          <div className="flex flex-wrap gap-2">
+            {tagOptions.map((tag) => (
+              <label className="inline-flex items-center gap-2 text-sm" key={tag.id}>
+                <input
+                  checked={selectedTagIds.includes(tag.id)}
+                  className="h-4 w-4 rounded border-input"
+                  data-testid={`proposal-revision-tag-${tag.id}`}
+                  onChange={(event) => toggleTag(tag.id, event.target.checked)}
+                  type="checkbox"
+                />
+                <span>{tag.name}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="grid gap-1 text-xs font-medium text-muted-foreground">
           <span>{labels.expenseDate}</span>

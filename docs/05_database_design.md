@@ -195,6 +195,16 @@ Fields:
 - `household_id`
 - `name`
 - `color_token`
+- `sort_order`
+- `is_active`
+
+### expense_proposal_tags
+
+Fields:
+
+- `proposal_id`
+- `tag_id`
+- `created_at`
 
 ### expense_proposals
 

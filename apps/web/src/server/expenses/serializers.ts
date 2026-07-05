@@ -2,7 +2,9 @@ import type {
   ExpenseCategory,
   ExpensePayer,
   ExpenseProposal,
+  ExpenseProposalTag,
   ExpenseShare,
+  ExpenseTag,
   File as UploadedFile,
   ProposalApproval,
   ProposalComment,
@@ -13,8 +15,13 @@ type ProposalFileWithFile = ProposalFile & {
   file: UploadedFile;
 };
 
+type ProposalTagWithTag = ExpenseProposalTag & {
+  tag: ExpenseTag;
+};
+
 type ProposalRelations = {
   category?: ExpenseCategory | null;
+  tagLinks?: ProposalTagWithTag[];
   payers?: ExpensePayer[];
   shares?: ExpenseShare[];
   approvals?: ProposalApproval[];
@@ -44,6 +51,12 @@ export function serializeExpenseProposal(proposal: ExpenseProposal & ProposalRel
           colorToken: proposal.category.colorToken,
         }
       : null,
+    tags:
+      proposal.tagLinks?.map((link) => ({
+        id: link.tag.id,
+        name: link.tag.name,
+        colorToken: link.tag.colorToken,
+      })) ?? [],
     expenseDate: dateToDateOnly(proposal.expenseDate),
     dueDate: dateToDateOnly(proposal.dueDate),
     originalAmount: proposal.originalAmount.toString(),

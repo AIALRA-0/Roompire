@@ -10,6 +10,7 @@ import {
 import {
   listExpenseCategoriesForHousehold,
   listExpenseProposalsForHousehold,
+  listExpenseTagsForHousehold,
 } from "@/server/expenses/service";
 import { listHouseholdsForUser } from "@/server/households/service";
 import { listNotificationsForUser } from "@/server/notifications/service";
@@ -45,6 +46,7 @@ export async function getDashboardModel() {
       activeMembership: null,
       members: [],
       categories: [],
+      tags: [],
       expenseProposals: [],
       expenseProposalPage: {
         limit: 5,
@@ -67,6 +69,7 @@ export async function getDashboardModel() {
   const [
     members,
     categories,
+    tags,
     expenseProposalResult,
     debtObligations,
     pendingProposalCount,
@@ -83,6 +86,7 @@ export async function getDashboardModel() {
       orderBy: [{ role: "asc" }, { createdAt: "asc" }],
     }),
     listExpenseCategoriesForHousehold(user.id, activeHousehold.id),
+    listExpenseTagsForHousehold(user.id, activeHousehold.id),
     listExpenseProposalsForHousehold(user.id, activeHousehold.id, { limit: 5 }),
     prisma.debtObligation.findMany({
       where: {
@@ -131,6 +135,7 @@ export async function getDashboardModel() {
     activeMembership,
     members,
     categories,
+    tags,
     expenseProposals: expenseProposalResult.items,
     expenseProposalPage: expenseProposalResult.page,
     debtObligations,

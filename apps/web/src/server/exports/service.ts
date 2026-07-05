@@ -180,6 +180,11 @@ async function exportExpenseProposals(householdId: string) {
     where: { householdId },
     include: {
       category: true,
+      tagLinks: {
+        include: {
+          tag: true,
+        },
+      },
       payers: true,
       shares: true,
       approvals: true,

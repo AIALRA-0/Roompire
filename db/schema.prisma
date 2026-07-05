@@ -140,6 +140,7 @@ model Household {
   createdBy                 User                       @relation("HouseholdCreator", fields: [createdByUserId], references: [id])
   memberships               HouseholdMembership[]
   categories                ExpenseCategory[]
+  tags                      ExpenseTag[]
   proposals                 ExpenseProposal[]
   files                     File[]
   ledgerTransactions        LedgerTransaction[]
@@ -203,6 +204,23 @@ model ExpenseCategory {
   @@index([householdId])
 }
 
+model ExpenseTag {
+  id          String   @id @default(uuid()) @db.Uuid
+  householdId String   @db.Uuid
+  name        String
+  colorToken  String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  household     Household            @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  proposalLinks ExpenseProposalTag[]
+
+  @@unique([householdId, name])
+  @@index([householdId])
+}
+
 model IdempotencyRecord {
   id                 String    @id @default(uuid()) @db.Uuid
   key                String    @db.VarChar(160)
@@ -260,6 +278,7 @@ model ExpenseProposal {
   approvals     ProposalApproval[]
   comments      ProposalComment[]
   proposalFiles ProposalFile[]
+  tagLinks      ExpenseProposalTag[]
   taskLinks     TaskExpenseProposalLink[]
   supersedes    ExpenseProposal?          @relation("ExpenseProposalRevision", fields: [supersedesProposalId], references: [id], onDelete: SetNull)
   revisions     ExpenseProposal[]         @relation("ExpenseProposalRevision")
@@ -268,6 +287,18 @@ model ExpenseProposal {
   @@index([householdId, expenseDate])
   @@index([createdByUserId])
   @@index([supersedesProposalId])
+}
+
+model ExpenseProposalTag {
+  proposalId String   @db.Uuid
+  tagId      String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  proposal ExpenseProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  tag      ExpenseTag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([proposalId, tagId])
+  @@index([tagId])
 }
 
 model ExpensePayer {

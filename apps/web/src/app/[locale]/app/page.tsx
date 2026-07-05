@@ -151,6 +151,19 @@ export default async function AppPage({ params }: PageProps) {
     archiveCategory: identity("archiveCategory"),
     noCategories: identity("noCategories"),
     cannotManageCategories: identity("cannotManageCategories"),
+    tagManagement: identity("tagManagement"),
+    tagManagementHint: identity("tagManagementHint"),
+    createTag: identity("createTag"),
+    tagCreated: identity("tagCreated"),
+    tagUpdated: identity("tagUpdated"),
+    tagArchived: identity("tagArchived"),
+    tagName: identity("tagName"),
+    tagColorToken: identity("tagColorToken"),
+    tagSortOrder: identity("tagSortOrder"),
+    saveTag: identity("saveTag"),
+    archiveTag: identity("archiveTag"),
+    noTags: identity("noTags"),
+    cannotManageTags: identity("cannotManageTags"),
     createHouseholdButton: identity("createHouseholdButton"),
     householdCreated: identity("householdCreated"),
     householdList: identity("householdList"),
@@ -210,6 +223,7 @@ export default async function AppPage({ params }: PageProps) {
     proposalTitle: expense("proposalTitle"),
     merchant: expense("merchant"),
     category: expense("category"),
+    tags: expense("tags"),
     uncategorized: expense("uncategorized"),
     expenseDate: expense("expenseDate"),
     dueDate: expense("dueDate"),
@@ -458,6 +472,11 @@ export default async function AppPage({ params }: PageProps) {
                   id: category.id,
                   name: locale === "zh-CN" ? category.nameZhCn : category.nameEn,
                 }))}
+                tags={model.tags.map((tag) => ({
+                  id: tag.id,
+                  name: tag.name,
+                  colorToken: tag.colorToken,
+                }))}
                 currentUserEmail={model.user.email}
                 labels={expenseLabels}
                 locale={locale}
@@ -476,6 +495,11 @@ export default async function AppPage({ params }: PageProps) {
                       ? proposal.category.nameZhCn
                       : proposal.category.nameEn
                     : null,
+                  tags: proposal.tagLinks.map((link) => ({
+                    id: link.tag.id,
+                    name: link.tag.name,
+                    colorToken: link.tag.colorToken,
+                  })),
                   expenseDate: proposal.expenseDate.toISOString().slice(0, 10),
                   originalAmount: proposal.originalAmount.toString(),
                   originalCurrency: proposal.originalCurrency,
@@ -508,6 +532,12 @@ export default async function AppPage({ params }: PageProps) {
                   icon: category.icon,
                   colorToken: category.colorToken,
                   sortOrder: category.sortOrder,
+                }))}
+                tags={model.tags.map((tag) => ({
+                  id: tag.id,
+                  name: tag.name,
+                  colorToken: tag.colorToken,
+                  sortOrder: tag.sortOrder,
                 }))}
                 currentUserDisplayName={model.userSettings.displayName}
                 currentUserEmail={model.user.email}

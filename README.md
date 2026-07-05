@@ -26,20 +26,20 @@ Phase 0 bootstrap is implemented:
 Phase 1 identity/RBAC slice is implemented:
 
 - Dev-session auth for local MVP testing through the `roompire_session` cookie.
-- Prisma-backed current session, active household switching, household list, household creation, household settings update, household category management, member list, member role update/removal, invite creation, and invite acceptance APIs.
+- Prisma-backed current session, active household switching, household list, household creation, household settings update, household category/tag management, member list, member role update/removal, invite creation, and invite acceptance APIs.
 - Server-side membership and role checks for every implemented household-scoped route.
 - Dashboard now loads seeded household/user/member data from PostgreSQL instead of static fixtures.
-- Browser UI can switch dev users, switch the active household, create households, edit household settings and active categories, create invite codes/links, accept invite codes or tokenized links, open member directory pages, update member roles, and remove members.
+- Browser UI can switch dev users, switch the active household, create households, edit household settings plus active categories/tags, create invite codes/links, accept invite codes or tokenized links, open member directory pages, update member roles, and remove members.
 - Viewer invite attempts are rejected by the API and verified in browser.
 - Non-members cannot view member directory pages before accepting an invite.
-- OpenAPI covers the current Phase 1 household, category, member, invite, and settings endpoints.
+- OpenAPI covers the current Phase 1 household, category/tag, member, invite, and settings endpoints.
 
 Phase 2 expense proposal approval/ledger slice is implemented:
 
 - Owners, admins, and members can create submitted expense proposals from the dashboard.
 - Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
 - Cross-currency proposals can omit `fxRate` under the default household FX policy; Roompire locks the expense-date rate from the `FxRate` cache or configured FX provider. Households can switch to manual FX approval, which requires a reviewed `fxRate` for every cross-currency proposal.
-- Dashboard proposal creation supports equal, exact-amount, percentage, and share-unit splits with a live split preview; proposal detail pages show the chosen method and stored split basis.
+- Dashboard proposal creation supports equal, exact-amount, percentage, and share-unit splits with a live split preview; owners/admins can maintain household proposal tags, proposals can attach multiple active tags, and proposal queues/details/exports show stored tags.
 - Proposal creation supports private receipt attachments through local disk in development or S3-compatible storage in production, with short-lived signed download URLs on proposal detail.
 - Proposal detail pages support member comments, receipt attachment/download, revision submission for disputed/rejected proposals, and a submitted/approval/rejection/change-request/receipt/comment timeline.
 - Household audit events are available through a dedicated audit page and cursor-paginated API, with actor/entity/time, before/after/metadata JSON, hash-chain status, and full-history export support for review.

@@ -47,6 +47,13 @@ type CategorySummary = {
   sortOrder: number;
 };
 
+type TagSummary = {
+  id: string;
+  name: string;
+  colorToken: string | null;
+  sortOrder: number;
+};
+
 type DevUser = {
   email: string;
   displayName: string;
@@ -115,6 +122,19 @@ type IdentityLabels = {
   archiveCategory: string;
   noCategories: string;
   cannotManageCategories: string;
+  tagManagement: string;
+  tagManagementHint: string;
+  createTag: string;
+  tagCreated: string;
+  tagUpdated: string;
+  tagArchived: string;
+  tagName: string;
+  tagColorToken: string;
+  tagSortOrder: string;
+  saveTag: string;
+  archiveTag: string;
+  noTags: string;
+  cannotManageTags: string;
   createHouseholdButton: string;
   householdCreated: string;
   householdList: string;
@@ -170,6 +190,7 @@ type IdentityWorkspaceProps = {
   households: HouseholdSummary[];
   members: MemberSummary[];
   categories: CategorySummary[];
+  tags: TagSummary[];
   devUsers: DevUser[];
   labels: IdentityLabels;
 };
@@ -290,6 +311,7 @@ export function IdentityWorkspace({
   households,
   members,
   categories,
+  tags,
   devUsers,
   labels,
 }: IdentityWorkspaceProps) {
@@ -301,6 +323,7 @@ export function IdentityWorkspace({
   const [householdMessage, setHouseholdMessage] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [categoryMessage, setCategoryMessage] = useState<string | null>(null);
+  const [tagMessage, setTagMessage] = useState<string | null>(null);
   const [memberMessage, setMemberMessage] = useState<string | null>(null);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
@@ -317,6 +340,7 @@ export function IdentityWorkspace({
     setHouseholdMessage(null);
     setSettingsMessage(null);
     setCategoryMessage(null);
+    setTagMessage(null);
     setMemberMessage(null);
     setInviteMessage(null);
     setAcceptMessage(null);
@@ -525,6 +549,84 @@ export function IdentityWorkspace({
       refreshAfter(setCategoryMessage, labels.categoryArchived);
     } catch (error) {
       setCategoryMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onCreateTag(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTagMessage(null);
+
+    if (!activeHouseholdId) {
+      setTagMessage(labels.noHousehold);
+      return;
+    }
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}/tags`,
+        {
+          name: String(formData.get("name") ?? ""),
+          colorToken: String(formData.get("colorToken") ?? ""),
+          sortOrder: String(formData.get("sortOrder") ?? ""),
+        },
+        labels.errorFallback,
+      );
+      form.reset();
+      refreshAfter(setTagMessage, labels.tagCreated);
+    } catch (error) {
+      setTagMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onUpdateTag(event: React.FormEvent<HTMLFormElement>, tagId: string) {
+    event.preventDefault();
+    setTagMessage(null);
+
+    if (!activeHouseholdId) {
+      setTagMessage(labels.noHousehold);
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}/tags/${tagId}`,
+        {
+          name: String(formData.get("name") ?? ""),
+          colorToken: String(formData.get("colorToken") ?? ""),
+          sortOrder: String(formData.get("sortOrder") ?? ""),
+        },
+        labels.errorFallback,
+        "PATCH",
+      );
+      refreshAfter(setTagMessage, labels.tagUpdated);
+    } catch (error) {
+      setTagMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onArchiveTag(tagId: string) {
+    setTagMessage(null);
+
+    if (!activeHouseholdId) {
+      setTagMessage(labels.noHousehold);
+      return;
+    }
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}/tags/${tagId}`,
+        undefined,
+        labels.errorFallback,
+        "DELETE",
+      );
+      refreshAfter(setTagMessage, labels.tagArchived);
+    } catch (error) {
+      setTagMessage(error instanceof Error ? error.message : labels.errorFallback);
     }
   }
 
@@ -1110,6 +1212,147 @@ export function IdentityWorkspace({
             {categories.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
                 {labels.noCategories}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">{labels.tagManagement}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{labels.tagManagementHint}</p>
+            </div>
+            <Badge variant={canManageMembers ? "success" : "neutral"}>
+              {canManageMembers ? labels.roles.ADMIN : labels.roles.VIEWER}
+            </Badge>
+          </div>
+          {!canManageMembers ? (
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {labels.cannotManageTags}
+            </p>
+          ) : null}
+
+          <form
+            className="mt-4 grid gap-3 rounded-lg border border-border bg-background p-4"
+            data-testid="tag-create-form"
+            onSubmit={onCreateTag}
+          >
+            <p className="text-sm font-medium">{labels.createTag}</p>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
+              <Field label={labels.tagName}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="tag-create-name"
+                  disabled={settingsDisabled}
+                  name="name"
+                  required
+                />
+              </Field>
+              <Field label={labels.tagColorToken}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="tag-create-color-token"
+                  disabled={settingsDisabled}
+                  name="colorToken"
+                  placeholder="tag.shared"
+                />
+              </Field>
+              <Field label={labels.tagSortOrder}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="tag-create-sort-order"
+                  disabled={settingsDisabled}
+                  min={0}
+                  name="sortOrder"
+                  type="number"
+                />
+              </Field>
+            </div>
+            <Button
+              data-testid="tag-create-submit"
+              disabled={isPending || settingsDisabled}
+              type="submit"
+              variant="outline"
+            >
+              {isPending ? labels.working : labels.createTag}
+            </Button>
+          </form>
+
+          {tagMessage ? (
+            <p className="mt-4 text-sm text-muted-foreground" role="status">
+              {tagMessage}
+            </p>
+          ) : null}
+
+          <div className="mt-5 grid gap-3">
+            {tags.map((tag) => (
+              <form
+                className="grid gap-3 rounded-lg border border-border bg-background p-4"
+                data-testid={`tag-row-${tag.id}`}
+                key={tag.id}
+                onSubmit={(event) => onUpdateTag(event, tag.id)}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium">{tag.name}</p>
+                  <Badge variant="neutral">{tag.colorToken ?? labels.tagColorToken}</Badge>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
+                  <Field label={labels.tagName}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`tag-name-${tag.id}`}
+                      defaultValue={tag.name}
+                      disabled={settingsDisabled}
+                      name="name"
+                      required
+                    />
+                  </Field>
+                  <Field label={labels.tagColorToken}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`tag-color-token-${tag.id}`}
+                      defaultValue={tag.colorToken ?? ""}
+                      disabled={settingsDisabled}
+                      name="colorToken"
+                    />
+                  </Field>
+                  <Field label={labels.tagSortOrder}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`tag-sort-order-${tag.id}`}
+                      defaultValue={tag.sortOrder}
+                      disabled={settingsDisabled}
+                      min={0}
+                      name="sortOrder"
+                      type="number"
+                    />
+                  </Field>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    data-testid={`tag-update-${tag.id}`}
+                    disabled={isPending || settingsDisabled}
+                    type="submit"
+                    variant="outline"
+                  >
+                    {isPending ? labels.working : labels.saveTag}
+                  </Button>
+                  <Button
+                    data-testid={`tag-archive-${tag.id}`}
+                    disabled={isPending || settingsDisabled}
+                    onClick={() => onArchiveTag(tag.id)}
+                    type="button"
+                    variant="outline"
+                  >
+                    {isPending ? labels.working : labels.archiveTag}
+                  </Button>
+                </div>
+              </form>
+            ))}
+            {tags.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
+                {labels.noTags}
               </div>
             ) : null}
           </div>

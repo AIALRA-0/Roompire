@@ -97,8 +97,10 @@ Current implementation lets owners and admins manage non-self member roles and r
 - `DELETE /households/{householdId}/categories/{categoryId}`
 - `GET /households/{householdId}/tags`
 - `POST /households/{householdId}/tags`
+- `PATCH /households/{householdId}/tags/{tagId}`
+- `DELETE /households/{householdId}/tags/{tagId}`
 
-Current category implementation: active household members can list active expense categories. Owners and admins can create, rename/reorder, or archive categories from the household settings page or REST API. Archiving is soft deletion: historical proposals keep their category reference, while new expense, task-expense, event-expense, and recurring-template flows only list active categories. Category mutations emit audit events. Tag endpoints remain backlog until the tag data model ships.
+Current category/tag implementation: active household members can list active expense categories and tags. Owners and admins can create, rename/reorder, or archive categories and tags from the household settings page or REST API. Category and tag archiving is soft deletion: historical proposals keep their category reference and tag links, while new expense, task-expense, event-expense, and recurring-template flows only list active categories/tags. Category and tag mutations emit audit events.
 
 ### Expense proposals
 
@@ -202,9 +204,12 @@ Current implementation also exposes `GET /households/{householdId}/audit-events`
   "settlementCurrency": "CNY",
   "splitMethod": "EQUAL",
   "participantUserIds": ["bob", "chen"],
+  "tagIds": ["active_household_tag_id"],
   "fileIds": ["uploaded_receipt_file_id"]
 }
 ```
+
+`tagIds` is optional and limited to active tags in the same household. Historical proposals keep tag links even after a tag is archived.
 
 For cross-currency proposals, `fxRate` is optional under `LOCK_AT_EXPENSE_DATE`. When it is omitted, the server locks the expense-date rate from the `FxRate` cache or configured provider and copies `fxRate`, `fxRateDate`, `fxProvider`, and `fxLockedAt` into the proposal. Clients may still send `fxRate` as a manual override when provider lookup is unavailable. When a household uses `MANUAL_RATE_WITH_APPROVAL`, cross-currency proposal, task-expense, and event-expense creation require `fxRate` and store `fxProvider=manual-entry`. `ORIGINAL_CURRENCY_DEBT` and `FX_DIFFERENCE_ADJUSTMENT` remain schema/backlog policies and are not accepted by household settings yet.
 

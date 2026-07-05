@@ -643,6 +643,36 @@ components:
       required: [category]
       properties:
         category: { $ref: "#/components/schemas/ExpenseCategory" }
+    ExpenseTag:
+      type: object
+      required: [id, name, colorToken, sortOrder, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        colorToken:
+          type: string
+          nullable: true
+        sortOrder: { type: integer, minimum: 0 }
+        isActive: { type: boolean }
+    ExpenseTagInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        colorToken: { type: string, maxLength: 80 }
+        sortOrder: { type: integer, minimum: 0, maximum: 10000 }
+    ExpenseTagListResponse:
+      type: object
+      required: [tags]
+      properties:
+        tags:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseTag" }
+    ExpenseTagResponse:
+      type: object
+      required: [tag]
+      properties:
+        tag: { $ref: "#/components/schemas/ExpenseTag" }
     Member:
       type: object
       required: [id, userId, role, displayName]
@@ -716,6 +746,11 @@ components:
         description: { type: string }
         merchant: { type: string }
         categoryId: { type: string, format: uuid }
+        tagIds:
+          type: array
+          description: Active household tag IDs to attach to this proposal.
+          maxItems: 12
+          items: { type: string, format: uuid }
         expenseDate: { type: string, format: date }
         dueDate: { type: string, format: date }
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
@@ -758,6 +793,11 @@ components:
           description: Defaults to the task description when omitted.
         merchant: { type: string }
         categoryId: { type: string, format: uuid }
+        tagIds:
+          type: array
+          description: Active household tag IDs to attach to this generated proposal.
+          maxItems: 12
+          items: { type: string, format: uuid }
         expenseDate: { type: string, format: date }
         dueDate:
           type: string
@@ -803,6 +843,11 @@ components:
           description: Defaults to the calendar event description when omitted.
         merchant: { type: string }
         categoryId: { type: string, format: uuid }
+        tagIds:
+          type: array
+          description: Active household tag IDs to attach to this generated proposal.
+          maxItems: 12
+          items: { type: string, format: uuid }
         expenseDate:
           type: string
           format: date
@@ -1042,6 +1087,7 @@ components:
           approvals,
           comments,
           files,
+          tags,
         ]
       properties:
         id: { type: string, format: uuid }
@@ -1058,6 +1104,9 @@ components:
             key: { type: string }
             nameEn: { type: string }
             nameZhCn: { type: string }
+        tags:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseTag" }
         expenseDate: { type: string, format: date }
         dueDate: { type: string, format: date, nullable: true }
         status: { $ref: "#/components/schemas/ExpenseProposalStatus" }
@@ -2495,6 +2544,137 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Category not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/tags:
+    get:
+      summary: List household expense tags
+      description: Active household members can read the active tag set used by expense proposal flows.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseTagListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      summary: Create household expense tag
+      description: Owners and admins can create active household tags for lightweight proposal grouping.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExpenseTagInput" }
+      responses:
+        "201":
+          description: Tag created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseTagResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: A tag with this name already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/tags/{tagId}:
+    patch:
+      summary: Update household expense tag
+      description: Owners and admins can rename, recolor, or reorder active household tags.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: tagId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExpenseTagInput" }
+      responses:
+        "200":
+          description: Tag updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseTagResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Tag not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: A tag with this name already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      summary: Archive household expense tag
+      description: Owners and admins can archive active tags. Historical proposals keep tag links, while new proposal flows only list active tags.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: tagId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Tag archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseTagResponse" }
+        "403":
+          description: Caller is not owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Tag not found or inaccessible household
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

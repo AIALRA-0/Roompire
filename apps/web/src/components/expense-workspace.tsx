@@ -28,6 +28,12 @@ type ExpenseCategorySummary = {
   name: string;
 };
 
+type ExpenseTagSummary = {
+  id: string;
+  name: string;
+  colorToken: string | null;
+};
+
 type ExpenseMemberSummary = {
   userId: string;
   displayName: string;
@@ -40,6 +46,7 @@ type ExpenseProposalSummary = {
   title: string;
   merchant: string | null;
   categoryName: string | null;
+  tags: ExpenseTagSummary[];
   expenseDate: string | null;
   originalAmount: string;
   originalCurrency: string;
@@ -64,6 +71,7 @@ type ExpenseProposalApiItem = {
     nameEn: string;
     nameZhCn: string;
   } | null;
+  tags: ExpenseTagSummary[];
   expenseDate: string | null;
   originalAmount: string;
   originalCurrency: string;
@@ -87,6 +95,7 @@ type ExpenseLabels = {
   proposalTitle: string;
   merchant: string;
   category: string;
+  tags: string;
   uncategorized: string;
   expenseDate: string;
   dueDate: string;
@@ -134,6 +143,7 @@ type ExpenseWorkspaceProps = {
   settlementCurrency: string | null;
   canCreateExpenseProposals: boolean;
   categories: ExpenseCategorySummary[];
+  tags: ExpenseTagSummary[];
   members: ExpenseMemberSummary[];
   proposals: ExpenseProposalSummary[];
   proposalPage: PageInfo;
@@ -261,6 +271,7 @@ export function ExpenseWorkspace({
   settlementCurrency,
   canCreateExpenseProposals,
   categories,
+  tags,
   members,
   proposals,
   proposalPage,
@@ -274,6 +285,7 @@ export function ExpenseWorkspace({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [splitMethod, setSplitMethod] = useState<SplitMethod>("EQUAL");
   const [selectedDebtorIds, setSelectedDebtorIds] = useState<string[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [splitValues, setSplitValues] = useState<Record<string, string>>({});
   const [originalAmountInput, setOriginalAmountInput] = useState("");
   const [originalCurrencyInput, setOriginalCurrencyInput] = useState("USD");
@@ -300,6 +312,7 @@ export function ExpenseWorkspace({
           ? proposal.category.nameZhCn
           : proposal.category.nameEn
         : null,
+      tags: proposal.tags,
       expenseDate: proposal.expenseDate,
       originalAmount: proposal.originalAmount,
       originalCurrency: proposal.originalCurrency,
@@ -519,6 +532,12 @@ export function ExpenseWorkspace({
     }
   }
 
+  function toggleTag(tagId: string, checked: boolean) {
+    setSelectedTagIds((current) =>
+      checked ? [...current, tagId] : current.filter((selectedTagId) => selectedTagId !== tagId),
+    );
+  }
+
   function splitValueLabel() {
     if (splitMethod === "EXACT") {
       return labels.splitValueExact;
@@ -568,6 +587,7 @@ export function ExpenseWorkspace({
           fxRate: fxRateInput,
           participantUserIds,
           participantShares: splitMethod === "EQUAL" ? undefined : participantShares,
+          tagIds: selectedTagIds,
           fileIds,
           splitMethod,
         },
@@ -576,6 +596,7 @@ export function ExpenseWorkspace({
       form.reset();
       setSplitMethod("EQUAL");
       setSelectedDebtorIds([]);
+      setSelectedTagIds([]);
       setSplitValues({});
       setOriginalAmountInput("");
       setOriginalCurrencyInput("USD");
@@ -634,6 +655,31 @@ export function ExpenseWorkspace({
               </select>
             </Field>
           </div>
+          {tags.length > 0 ? (
+            <fieldset className="rounded-lg border border-border bg-background p-3">
+              <legend className="px-1 text-sm font-medium">{labels.tags}</legend>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {tags.map((tag) => (
+                  <label
+                    className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                    key={tag.id}
+                  >
+                    <input
+                      checked={selectedTagIds.includes(tag.id)}
+                      className="h-4 w-4 rounded border-input"
+                      data-testid={`expense-tag-${tag.name}`}
+                      disabled={isDisabled}
+                      name="tagIds"
+                      onChange={(event) => toggleTag(tag.id, event.target.checked)}
+                      type="checkbox"
+                      value={tag.id}
+                    />
+                    <span>{tag.name}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={labels.expenseDate}>
               <input
@@ -866,6 +912,15 @@ export function ExpenseWorkspace({
                   {proposal.expenseDate} · {proposal.debtorCount} {labels.debtors}
                 </span>
               </div>
+              {proposal.tags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5" data-testid="expense-proposal-tags">
+                  {proposal.tags.map((tag) => (
+                    <Badge key={tag.id} variant="neutral">
+                      {tag.name}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
               {activeHouseholdId ? (
                 <Button asChild size="sm" variant="outline">
                   <Link
