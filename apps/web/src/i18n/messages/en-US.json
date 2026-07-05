@@ -204,6 +204,7 @@
     "expenseProposalCreated": "Expense proposal created",
     "openProposal": "Open proposal",
     "eventViewList": "List",
+    "eventViewDay": "Day",
     "eventViewWeek": "Week",
     "eventViewMonth": "Month",
     "eventTypeTask": "Task",

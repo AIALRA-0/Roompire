@@ -142,7 +142,7 @@ Current implementation: debtors can submit a settlement against one open obligat
 - `POST /households/{householdId}/tasks/{taskId}/complete`
 - `POST /households/{householdId}/tasks/{taskId}/create-expense-proposal`
 
-Current implementation supports list/create calendar event, list/create task, assign task at creation, complete task, finite daily/weekly/monthly recurrence, list/week/month calendar UI views, creating one linked submitted expense proposal from a task, and creating one linked submitted expense proposal from bill/chore/group/recurring-expense calendar events. Creating a task with `dueAt` automatically creates a linked `TASK` calendar event, and task/event-generated expense proposals remain pending until the normal debtor approval flow. Event editing/deletion and task editing remain backlog items.
+Current implementation supports list/create calendar event, list/create task, assign task at creation, complete task, finite daily/weekly/monthly recurrence, list/day/week/month calendar UI views, creating one linked submitted expense proposal from a task, and creating one linked submitted expense proposal from bill/chore/group/recurring-expense calendar events. Creating a task with `dueAt` automatically creates a linked `TASK` calendar event, and task/event-generated expense proposals remain pending until the normal debtor approval flow. Event editing/deletion and task editing remain backlog items.
 
 ### Files
 

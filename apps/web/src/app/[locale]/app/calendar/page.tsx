@@ -188,6 +188,7 @@ export default async function CalendarPage({ params }: PageProps) {
                 payerShareIncluded: expense("payerShareIncluded"),
                 submitProposal: expense("submitProposal"),
                 eventViewList: calendar("eventViewList"),
+                eventViewDay: calendar("eventViewDay"),
                 eventViewWeek: calendar("eventViewWeek"),
                 eventViewMonth: calendar("eventViewMonth"),
                 eventTypes: {

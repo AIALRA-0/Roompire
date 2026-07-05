@@ -204,6 +204,7 @@
     "expenseProposalCreated": "费用提案已创建",
     "openProposal": "打开提案",
     "eventViewList": "列表",
+    "eventViewDay": "日",
     "eventViewWeek": "周",
     "eventViewMonth": "月",
     "eventTypeTask": "任务",

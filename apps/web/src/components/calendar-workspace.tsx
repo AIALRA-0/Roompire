@@ -31,7 +31,7 @@ type EventTypeKey = (typeof eventTypeKeys)[number];
 type PriorityKey = (typeof priorityKeys)[number];
 type RecurrenceKey = (typeof recurrenceKeys)[number];
 type StatusKey = "OPEN" | "COMPLETED";
-type EventViewMode = "LIST" | "WEEK" | "MONTH";
+type EventViewMode = "LIST" | "DAY" | "WEEK" | "MONTH";
 
 type CalendarWorkspaceMember = {
   userId: string;
@@ -97,6 +97,7 @@ type CalendarWorkspaceLabels = {
   payerShareIncluded: string;
   submitProposal: string;
   eventViewList: string;
+  eventViewDay: string;
   eventViewWeek: string;
   eventViewMonth: string;
   eventTypes: Record<EventTypeKey, string>;
@@ -295,6 +296,8 @@ export function CalendarWorkspace({
 
     return groupedEvents;
   }, [sortedEvents]);
+  const dayKey = utcDateKey(startOfUtcDay(referenceDate));
+  const dayEvents = eventsByDate.get(dayKey) ?? [];
   const taskAssignmentsByTaskId = useMemo(
     () =>
       new Map(
@@ -734,6 +737,7 @@ export function CalendarWorkspace({
               >
                 {[
                   { mode: "LIST", label: labels.eventViewList },
+                  { mode: "DAY", label: labels.eventViewDay },
                   { mode: "WEEK", label: labels.eventViewWeek },
                   { mode: "MONTH", label: labels.eventViewMonth },
                 ].map(({ mode, label }) => (
@@ -977,6 +981,52 @@ export function CalendarWorkspace({
                       </div>
                     );
                   })}
+                </div>
+              ) : null}
+              {eventViewMode === "DAY" ? (
+                <div data-testid="calendar-day-view">
+                  <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+                    {formatDayHeading(referenceDate, locale)}
+                  </div>
+                  <div
+                    className="divide-y divide-border"
+                    data-testid={`calendar-day-events-${dayKey}`}
+                  >
+                    {dayEvents.length > 0 ? (
+                      dayEvents.map((event) => {
+                        const eventType = event.type as EventTypeKey;
+                        const eventStatus = event.status as StatusKey;
+
+                        return (
+                          <div
+                            className="grid gap-3 p-4 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-start"
+                            data-testid={`calendar-day-event-${event.id}`}
+                            key={event.id}
+                          >
+                            <p className="text-sm font-medium text-muted-foreground">
+                              {event.allDay ? labels.allDay : formatDateTime(event.startAt, locale)}
+                            </p>
+                            <div className="min-w-0">
+                              <p className="break-words text-sm font-semibold">{event.title}</p>
+                              {event.description ? (
+                                <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                                  {event.description}
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap gap-2 sm:justify-end">
+                              <Badge variant="neutral">{labels.eventTypes[eventType]}</Badge>
+                              <Badge variant={statusVariant(event.status)}>
+                                {labels.statuses[eventStatus] ?? event.status}
+                              </Badge>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="p-4 text-sm text-muted-foreground">{labels.noEventsInView}</p>
+                    )}
+                  </div>
                 </div>
               ) : null}
               {eventViewMode === "WEEK" ? (

@@ -4470,6 +4470,11 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId(`calendar-month-event-${recurringEvents[0]!.id}`)).toContainText(
       eventTitle,
     );
+    await page.getByTestId("calendar-view-day").click();
+    await expect(page.getByTestId("calendar-day-view")).toBeVisible();
+    await expect(page.getByTestId(`calendar-day-event-${recurringEvents[0]!.id}`)).toContainText(
+      eventTitle,
+    );
     await page.getByTestId("calendar-view-week").click();
     await expect(page.getByTestId("calendar-week-view")).toBeVisible();
     await expect(page.getByTestId(`calendar-week-event-${recurringEvents[0]!.id}`)).toContainText(
