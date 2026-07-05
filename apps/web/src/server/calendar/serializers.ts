@@ -1,6 +1,7 @@
 import type {
   CalendarEvent,
   EventLink,
+  RecurringExpenseTemplate,
   Task,
   TaskAssignment,
   TaskExpenseProposalLink,
@@ -8,6 +9,7 @@ import type {
 
 export type CalendarEventWithLinks = CalendarEvent & {
   links: EventLink[];
+  recurringExpenseTemplate?: RecurringExpenseTemplate | null;
 };
 
 export type TaskWithAssignmentsAndLinks = Task & {
@@ -32,6 +34,20 @@ export function serializeCalendarEvent(event: CalendarEventWithLinks) {
     createdByUserId: event.createdByUserId,
     createdAt: event.createdAt.toISOString(),
     updatedAt: event.updatedAt.toISOString(),
+    recurringExpenseTemplate: event.recurringExpenseTemplate
+      ? {
+          id: event.recurringExpenseTemplate.id,
+          eventId: event.recurringExpenseTemplate.eventId,
+          title: event.recurringExpenseTemplate.title,
+          description: event.recurringExpenseTemplate.description,
+          merchant: event.recurringExpenseTemplate.merchant,
+          categoryId: event.recurringExpenseTemplate.categoryId,
+          originalAmount: event.recurringExpenseTemplate.originalAmount.toString(),
+          originalCurrency: event.recurringExpenseTemplate.originalCurrency,
+          fxRate: event.recurringExpenseTemplate.fxRate?.toString() ?? null,
+          participantUserIds: event.recurringExpenseTemplate.participantUserIds,
+        }
+      : null,
     links: event.links.map((link) => ({
       id: link.id,
       eventId: link.eventId,

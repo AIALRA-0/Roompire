@@ -470,6 +470,31 @@ Fields:
 - `count` nullable
 - `created_at`
 
+### recurring_expense_templates
+
+Fields:
+
+- `id`
+- `household_id`
+- `event_id`
+- `created_by_user_id`
+- `title` nullable
+- `description` nullable
+- `merchant` nullable
+- `category_id` nullable
+- `original_amount numeric(20,6)`
+- `original_currency char(3)`
+- `fx_rate numeric(20,12)` nullable
+- `participant_user_ids jsonb`
+- `created_at`
+- `updated_at`
+
+Constraints:
+
+- unique `event_id` so each calendar event has at most one auto-proposal template.
+- cascades with the household or owning calendar event.
+- participant IDs are validated against active non-viewer household members at creation.
+
 ### tasks
 
 Fields:

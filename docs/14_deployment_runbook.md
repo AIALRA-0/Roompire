@@ -140,17 +140,17 @@ systemctl start roompire-housekeeping.service
 systemctl list-timers 'roompire-*'
 ```
 
-## In-App Reminders
+## Recurring Expenses and In-App Reminders
 
-Run task/debt/settlement reminder delivery manually when validating a deployment. In production, run it through the Compose migrator container so `DATABASE_URL=postgres:5432` resolves inside the Docker network:
+Run recurring expense proposal generation and task/debt/settlement reminder delivery manually when validating a deployment. In production, run them through the Compose migrator container so `DATABASE_URL=postgres:5432` resolves inside the Docker network:
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.nginx.example.yml --profile migrate run --rm migrate pnpm notifications:send-reminders
+docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.nginx.example.yml --profile migrate run --rm migrate sh -lc "pnpm recurring-expenses:generate && pnpm notifications:send-reminders"
 ```
 
-For local development, `pnpm notifications:send-reminders` is still fine. The job emits in-app notifications only. It respects user notification preferences, targets active household members, and uses unique notification `dedupeKey` values so repeated runs do not duplicate reminders.
+For local development, `pnpm recurring-expenses:generate` and `pnpm notifications:send-reminders` are still fine. Recurring expense generation creates at most one pending proposal per due template-backed event; reminder delivery emits in-app notifications only, respects user notification preferences, targets active household members, and uses unique notification `dedupeKey` values so repeated runs do not duplicate reminders.
 
-Install the hourly reminder timer on the self-hosted server:
+Install the hourly recurring expense and reminder timer on the self-hosted server:
 
 ```bash
 cp ops/systemd/roompire-reminders.service /etc/systemd/system/
@@ -281,7 +281,7 @@ systemctl start roompire-ops-status.service roompire-smoke.service roompire-remi
 systemctl list-timers 'roompire-*'
 ```
 
-`roompire-ops-status.timer` refreshes disk, Docker storage, its own timer/service state, backup timer/service state, housekeeping timer/service state, reminder timer/service state, backup encryption health, offsite backup copy status, smoke timer/service state, and latest smoke state every 15 minutes. The Docker storage snapshot records image, container, local-volume, and build-cache size/reclaimable totals from `docker system df` so disk-pressure investigations do not require shell access from the web container. The encryption health snapshot checks the backup unit configuration, passphrase file presence, encrypted artifact count, plaintext artifact count, and `.sha256` sidecar coverage without exposing secret values. The offsite snapshot checks whether a real sync target is configured and whether the latest sync status is healthy. `roompire-smoke.timer` runs authenticated real-domain checks hourly at minute 7, updates `ops/status/latest-smoke.json`, then refreshes the ops snapshot; `roompire-reminders.timer` runs in-app reminder delivery hourly at minute 17 and refreshes ops status after each service run. The ops dashboard surfaces these automation timers and their latest service results so stale snapshot, smoke, or reminder automation is visible from the real site.
+`roompire-ops-status.timer` refreshes disk, Docker storage, its own timer/service state, backup timer/service state, housekeeping timer/service state, reminder timer/service state, backup encryption health, offsite backup copy status, smoke timer/service state, and latest smoke state every 15 minutes. The Docker storage snapshot records image, container, local-volume, and build-cache size/reclaimable totals from `docker system df` so disk-pressure investigations do not require shell access from the web container. The encryption health snapshot checks the backup unit configuration, passphrase file presence, encrypted artifact count, plaintext artifact count, and `.sha256` sidecar coverage without exposing secret values. The offsite snapshot checks whether a real sync target is configured and whether the latest sync status is healthy. `roompire-smoke.timer` runs authenticated real-domain checks hourly at minute 7, updates `ops/status/latest-smoke.json`, then refreshes the ops snapshot; `roompire-reminders.timer` runs recurring expense proposal generation followed by in-app reminder delivery hourly at minute 17 and refreshes ops status after each service run. The ops dashboard surfaces these automation timers and their latest service results so stale snapshot, smoke, or reminder automation is visible from the real site.
 
 ## Restore Drill
 

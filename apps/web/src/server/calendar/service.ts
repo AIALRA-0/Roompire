@@ -20,6 +20,34 @@ const optionalDateTimeSchema = z.preprocess(
   z.string().trim().min(1).optional(),
 );
 
+const nullableUuidSchema = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  z.string().uuid().optional(),
+);
+
+const currencySchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{3}$/);
+
+const decimalStringSchema = z
+  .string()
+  .trim()
+  .regex(/^\d+(\.\d{1,6})?$/)
+  .refine((value) => Number(value) > 0, "Amount must be greater than zero.");
+
+const fxRateStringSchema = z
+  .string()
+  .trim()
+  .regex(/^\d+(\.\d{1,12})?$/)
+  .refine((value) => Number(value) > 0, "FX rate must be greater than zero.");
+
+const optionalFxRateStringSchema = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  fxRateStringSchema.optional(),
+);
+
 const eventQuerySchema = z.object({
   start: optionalDateTimeSchema,
   end: optionalDateTimeSchema,
@@ -36,6 +64,17 @@ const recurrenceCountSchema = z.preprocess(
   z.coerce.number().int().min(1).max(12).default(1),
 );
 
+const recurringExpenseTemplateSchema = z.object({
+  title: z.string().trim().min(2).max(120).optional(),
+  description: optionalDescriptionSchema,
+  merchant: z.string().trim().max(120).optional(),
+  categoryId: nullableUuidSchema,
+  originalAmount: decimalStringSchema,
+  originalCurrency: currencySchema,
+  fxRate: optionalFxRateStringSchema,
+  participantUserIds: z.array(z.string().uuid()).min(1).max(20),
+});
+
 export const createCalendarEventSchema = z.object({
   title: z.string().trim().min(2).max(120),
   description: optionalDescriptionSchema,
@@ -45,11 +84,16 @@ export const createCalendarEventSchema = z.object({
   allDay: z.boolean().default(false),
   recurrenceFrequency: recurrenceFrequencySchema.default("NONE"),
   recurrenceCount: recurrenceCountSchema,
+  recurringExpenseTemplate: z.preprocess(
+    (value) => (value === null ? undefined : value),
+    recurringExpenseTemplateSchema.optional(),
+  ),
 });
 
 export const updateCalendarEventSchema = createCalendarEventSchema.omit({
   recurrenceFrequency: true,
   recurrenceCount: true,
+  recurringExpenseTemplate: true,
 });
 
 export const createTaskSchema = z.object({
@@ -154,6 +198,14 @@ async function attachLinksToEvents(
     orderBy: { createdAt: "asc" },
   });
   const linksByEventId = new Map<string, typeof links>();
+  const templates = await client.recurringExpenseTemplate.findMany({
+    where: {
+      eventId: {
+        in: events.map((event) => event.id),
+      },
+    },
+  });
+  const templatesByEventId = new Map(templates.map((template) => [template.eventId, template]));
 
   for (const link of links) {
     const eventLinks = linksByEventId.get(link.eventId) ?? [];
@@ -165,6 +217,7 @@ async function attachLinksToEvents(
   return events.map((event) => ({
     ...event,
     links: linksByEventId.get(event.id) ?? [],
+    recurringExpenseTemplate: templatesByEventId.get(event.id) ?? null,
   }));
 }
 
@@ -254,6 +307,21 @@ function assertEventCanBeEdited(event: CalendarEvent, links: Array<{ linkedType:
   }
 }
 
+async function assertTemplateCategoryBelongsToHousehold(categoryId: string, householdId: string) {
+  const category = await prisma.expenseCategory.findFirst({
+    where: {
+      id: categoryId,
+      householdId,
+      isActive: true,
+    },
+    select: { id: true },
+  });
+
+  if (!category) {
+    throw new ApiError(400, "INVALID_CATEGORY", "Category is not active in this household.");
+  }
+}
+
 async function getAssignableMemberships(householdId: string, userIds: string[]) {
   const memberships = await prisma.householdMembership.findMany({
     where: {
@@ -283,6 +351,74 @@ async function getAssignableMemberships(householdId: string, userIds: string[]) 
   }
 
   return userIds.map((userId) => membershipsByUserId.get(userId)!);
+}
+
+async function assertRecurringExpenseTemplateForEvent(
+  userId: string,
+  householdId: string,
+  data: z.infer<typeof createCalendarEventSchema>,
+) {
+  if (!data.recurringExpenseTemplate) {
+    return null;
+  }
+
+  if (data.type !== CalendarEventType.RECURRING_EXPENSE_GENERATION) {
+    throw validationError("Automatic proposal templates require a recurring expense event.");
+  }
+
+  const participantUserIds = uniqueValues(data.recurringExpenseTemplate.participantUserIds);
+
+  if (participantUserIds.length !== data.recurringExpenseTemplate.participantUserIds.length) {
+    throw new ApiError(400, "DUPLICATE_PARTICIPANT", "Each debtor can appear only once.");
+  }
+
+  if (participantUserIds.includes(userId)) {
+    throw new ApiError(
+      400,
+      "PAYER_AS_DEBTOR_FORBIDDEN",
+      "The payer share is implicit; debtor list cannot include the payer.",
+    );
+  }
+
+  await getAssignableMemberships(householdId, participantUserIds);
+
+  if (data.recurringExpenseTemplate.categoryId) {
+    await assertTemplateCategoryBelongsToHousehold(
+      data.recurringExpenseTemplate.categoryId,
+      householdId,
+    );
+  }
+
+  return {
+    ...data.recurringExpenseTemplate,
+    participantUserIds,
+  };
+}
+
+function recurringExpenseTemplateCreateData({
+  eventId,
+  householdId,
+  template,
+  userId,
+}: {
+  eventId: string;
+  householdId: string;
+  template: NonNullable<Awaited<ReturnType<typeof assertRecurringExpenseTemplateForEvent>>>;
+  userId: string;
+}) {
+  return {
+    householdId,
+    eventId,
+    createdByUserId: userId,
+    title: template.title,
+    description: template.description,
+    merchant: template.merchant,
+    categoryId: template.categoryId,
+    originalAmount: template.originalAmount,
+    originalCurrency: template.originalCurrency,
+    fxRate: template.fxRate,
+    participantUserIds: template.participantUserIds,
+  };
 }
 
 export async function listCalendarEventsForHousehold(
@@ -357,6 +493,11 @@ export async function createCalendarEventForHousehold(
   const startAt = dateTimeInputToUtc(data.startAt, "startAt");
   const endAt = data.endAt ? dateTimeInputToUtc(data.endAt, "endAt") : undefined;
   const recurrence = normalizeRecurrence(data.recurrenceFrequency, data.recurrenceCount);
+  const recurringExpenseTemplate = await assertRecurringExpenseTemplateForEvent(
+    userId,
+    householdId,
+    data,
+  );
 
   if (endAt && endAt < startAt) {
     throw validationError("Event end time cannot be before the start time.");
@@ -379,6 +520,18 @@ export async function createCalendarEventForHousehold(
     });
     let recurrenceRuleId: string | null = null;
     const generatedEventIds: string[] = [];
+    const generatedTemplateEventIds: string[] = [];
+
+    if (recurringExpenseTemplate) {
+      await tx.recurringExpenseTemplate.create({
+        data: recurringExpenseTemplateCreateData({
+          eventId: event.id,
+          householdId,
+          template: recurringExpenseTemplate,
+          userId,
+        }),
+      });
+    }
 
     if (recurrence) {
       const recurrenceRule = await tx.recurrenceRule.create({
@@ -430,6 +583,18 @@ export async function createCalendarEventForHousehold(
             linkedId: recurrenceRule.id,
           },
         });
+
+        if (recurringExpenseTemplate) {
+          await tx.recurringExpenseTemplate.create({
+            data: recurringExpenseTemplateCreateData({
+              eventId: occurrence.id,
+              householdId,
+              template: recurringExpenseTemplate,
+              userId,
+            }),
+          });
+          generatedTemplateEventIds.push(occurrence.id);
+        }
       }
     }
 
@@ -450,6 +615,10 @@ export async function createCalendarEventForHousehold(
           recurrenceFrequency: recurrence?.frequency ?? "NONE",
           recurrenceCount: recurrence?.count ?? 1,
           generatedEventIds,
+          recurringExpenseTemplateEnabled: Boolean(recurringExpenseTemplate),
+          recurringExpenseTemplateEventIds: recurringExpenseTemplate
+            ? [event.id, ...generatedTemplateEventIds]
+            : [],
         },
       },
     });
@@ -515,6 +684,14 @@ export async function updateCalendarEventForHousehold(
         timezone: membership.household.timezone,
       },
     });
+
+    if (updatedEvent.type !== CalendarEventType.RECURRING_EXPENSE_GENERATION) {
+      await tx.recurringExpenseTemplate.deleteMany({
+        where: {
+          eventId,
+        },
+      });
+    }
 
     await tx.auditEvent.create({
       data: {

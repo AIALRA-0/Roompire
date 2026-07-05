@@ -1,5 +1,5 @@
 [Unit]
-Description=Send Roompire in-app reminder notifications
+Description=Run Roompire recurring expense generation and in-app reminders
 Wants=network-online.target
 After=network-online.target
 
@@ -10,4 +10,5 @@ EnvironmentFile=/srv/roompire/current/.env.production
 Environment=ROOMPIRE_TASK_REMINDER_LOOKAHEAD_HOURS=24
 Environment=ROOMPIRE_DEBT_REMINDER_LOOKAHEAD_DAYS=3
 Environment=ROOMPIRE_SETTLEMENT_REMINDER_CONFIRMATION_HOURS=24
-ExecStart=/usr/bin/env bash -lc 'docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.nginx.example.yml --profile migrate run --rm -e ROOMPIRE_TASK_REMINDER_LOOKAHEAD_HOURS -e ROOMPIRE_DEBT_REMINDER_LOOKAHEAD_DAYS -e ROOMPIRE_SETTLEMENT_REMINDER_CONFIRMATION_HOURS -e ROOMPIRE_REMINDER_MAX_ITEMS migrate pnpm notifications:send-reminders && ./scripts/collect_ops_status.sh'
+Environment=ROOMPIRE_RECURRING_EXPENSE_MAX_ITEMS=200
+ExecStart=/usr/bin/env bash -lc 'docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.nginx.example.yml --profile migrate run --rm -e ROOMPIRE_RECURRING_EXPENSE_MAX_ITEMS -e ROOMPIRE_TASK_REMINDER_LOOKAHEAD_HOURS -e ROOMPIRE_DEBT_REMINDER_LOOKAHEAD_DAYS -e ROOMPIRE_SETTLEMENT_REMINDER_CONFIRMATION_HOURS -e ROOMPIRE_REMINDER_MAX_ITEMS migrate sh -lc "pnpm recurring-expenses:generate && pnpm notifications:send-reminders" && ./scripts/collect_ops_status.sh'

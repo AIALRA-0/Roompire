@@ -102,6 +102,9 @@ type CalendarWorkspaceLabels = {
   errorFallback: string;
   linkedTask: string;
   linkedExpenseProposal: string;
+  autoProposalTemplate: string;
+  autoProposalTemplateConfigured: string;
+  autoProposalTitle: string;
   createExpenseProposal: string;
   expenseProposalCreated: string;
   openProposal: string;
@@ -293,6 +296,7 @@ export function CalendarWorkspace({
   const [expandedExpenseTaskId, setExpandedExpenseTaskId] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [newEventType, setNewEventType] = useState<EventTypeKey>("GROUP_ACTIVITY");
   const writableMembers = members.filter((member) => member.role !== "VIEWER");
   const expenseDebtorOptions = members.filter(
     (member) => member.role !== "VIEWER" && member.userId !== currentUserId,
@@ -359,23 +363,41 @@ export function CalendarWorkspace({
 
     const form = event.currentTarget;
     const formData = new FormData(form);
+    const eventType = String(formData.get("type") ?? "GROUP_ACTIVITY") as EventTypeKey;
+    const autoProposalParticipantUserIds = formData
+      .getAll("autoProposalParticipantUserIds")
+      .map(String);
+    const recurringExpenseTemplate =
+      eventType === "RECURRING_EXPENSE_GENERATION"
+        ? {
+            title: String(formData.get("autoProposalTitle") ?? "") || undefined,
+            merchant: String(formData.get("autoProposalMerchant") ?? "") || undefined,
+            categoryId: String(formData.get("autoProposalCategoryId") ?? "") || undefined,
+            originalAmount: String(formData.get("autoProposalOriginalAmount") ?? ""),
+            originalCurrency: String(formData.get("autoProposalOriginalCurrency") ?? ""),
+            fxRate: String(formData.get("autoProposalFxRate") ?? "") || undefined,
+            participantUserIds: autoProposalParticipantUserIds,
+          }
+        : undefined;
 
     try {
       await postCalendarMutation(
         `/api/v1/households/${activeHouseholdId}/calendar/events`,
         {
           title: String(formData.get("title") ?? ""),
-          type: String(formData.get("type") ?? "GROUP_ACTIVITY"),
+          type: eventType,
           startAt: String(formData.get("startAt") ?? ""),
           endAt: String(formData.get("endAt") ?? ""),
           allDay: formData.get("allDay") === "on",
           recurrenceFrequency: String(formData.get("recurrenceFrequency") ?? "NONE"),
           recurrenceCount: Number(formData.get("recurrenceCount") ?? 1),
           description: String(formData.get("description") ?? ""),
+          recurringExpenseTemplate,
         },
         labels.errorFallback,
       );
       form.reset();
+      setNewEventType("GROUP_ACTIVITY");
       setMessage(labels.eventCreated);
       startTransition(() => router.refresh());
     } catch (error) {
@@ -649,9 +671,10 @@ export function CalendarWorkspace({
                 <select
                   className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                   data-testid="calendar-event-type"
-                  defaultValue="GROUP_ACTIVITY"
                   disabled={!canCreateWorkItems}
                   name="type"
+                  onChange={(event) => setNewEventType(event.target.value as EventTypeKey)}
+                  value={newEventType}
                 >
                   {eventTypeKeys.map((type) => (
                     <option key={type} value={type}>
@@ -728,6 +751,113 @@ export function CalendarWorkspace({
                 name="description"
               />
             </Field>
+            {newEventType === "RECURRING_EXPENSE_GENERATION" ? (
+              <fieldset className="grid gap-3 border-t border-border pt-3">
+                <legend className="text-sm font-semibold">{labels.autoProposalTemplate}</legend>
+                <Field label={labels.autoProposalTitle}>
+                  <input
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="calendar-event-auto-proposal-title"
+                    disabled={!canCreateWorkItems}
+                    maxLength={120}
+                    name="autoProposalTitle"
+                    placeholder={labels.eventTitle}
+                  />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  <Field label={labels.merchant}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid="calendar-event-auto-proposal-merchant"
+                      disabled={!canCreateWorkItems}
+                      maxLength={120}
+                      name="autoProposalMerchant"
+                    />
+                  </Field>
+                  <Field label={labels.category}>
+                    <select
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid="calendar-event-auto-proposal-category"
+                      disabled={!canCreateWorkItems}
+                      name="autoProposalCategoryId"
+                    >
+                      <option value="">{labels.uncategorized}</option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                  <Field label={labels.originalAmount}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid="calendar-event-auto-proposal-amount"
+                      disabled={!canCreateWorkItems}
+                      min="0.01"
+                      name="autoProposalOriginalAmount"
+                      required
+                      step="0.01"
+                      type="number"
+                    />
+                  </Field>
+                  <Field label={labels.originalCurrency}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
+                      data-testid="calendar-event-auto-proposal-original-currency"
+                      defaultValue={settlementCurrency ?? "USD"}
+                      disabled={!canCreateWorkItems}
+                      maxLength={3}
+                      minLength={3}
+                      name="autoProposalOriginalCurrency"
+                      required
+                    />
+                  </Field>
+                  <Field label={labels.fxRate}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid="calendar-event-auto-proposal-fx-rate"
+                      defaultValue="1"
+                      disabled={!canCreateWorkItems}
+                      min="0.000001"
+                      name="autoProposalFxRate"
+                      step="0.000001"
+                      type="number"
+                    />
+                  </Field>
+                </div>
+                <fieldset className="grid gap-2">
+                  <legend className="text-sm font-medium">{labels.debtors}</legend>
+                  <p className="text-xs text-muted-foreground">{labels.payerShareIncluded}</p>
+                  <div className="grid gap-2">
+                    {expenseDebtorOptions.map((member) => (
+                      <label
+                        className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                        data-testid={`calendar-event-auto-proposal-debtor-row-${member.email}`}
+                        key={member.userId}
+                      >
+                        <span className="min-w-0 overflow-hidden">
+                          <span className="block truncate font-medium">{member.displayName}</span>
+                          <span className="block break-all text-xs text-muted-foreground">
+                            {member.email}
+                          </span>
+                        </span>
+                        <input
+                          className="h-4 w-4 rounded border-input"
+                          data-testid={`calendar-event-auto-proposal-debtor-${member.email}`}
+                          disabled={!canCreateWorkItems}
+                          name="autoProposalParticipantUserIds"
+                          type="checkbox"
+                          value={member.userId}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              </fieldset>
+            ) : null}
             <Button
               data-testid="calendar-event-submit"
               disabled={!canCreateWorkItems || busyActionId === "event" || isPending}
@@ -964,6 +1094,11 @@ export function CalendarWorkspace({
                             ) : null}
                             {hasLinkedProposal ? (
                               <Badge>{labels.linkedExpenseProposal}</Badge>
+                            ) : null}
+                            {event.recurringExpenseTemplate ? (
+                              <Badge variant="neutral">
+                                {labels.autoProposalTemplateConfigured}
+                              </Badge>
                             ) : null}
                             {linkedProposalIds.map((proposalId) => (
                               <Button asChild key={proposalId} size="sm" variant="outline">

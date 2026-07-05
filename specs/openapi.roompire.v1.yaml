@@ -1394,6 +1394,43 @@ components:
           examples: [task, expense_proposal]
         linkedId: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
+    RecurringExpenseTemplate:
+      type: object
+      required: [id, eventId, originalAmount, originalCurrency, participantUserIds]
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        title: { type: string, nullable: true, maxLength: 120 }
+        description: { type: string, nullable: true, maxLength: 1000 }
+        merchant: { type: string, nullable: true, maxLength: 120 }
+        categoryId: { type: string, format: uuid, nullable: true }
+        originalAmount: { $ref: "#/components/schemas/DecimalString" }
+        originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        fxRate:
+          allOf:
+            - { $ref: "#/components/schemas/FxRateString" }
+          nullable: true
+        participantUserIds:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { type: string, format: uuid }
+    RecurringExpenseTemplateInput:
+      type: object
+      required: [originalAmount, originalCurrency, participantUserIds]
+      properties:
+        title: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 1000 }
+        merchant: { type: string, maxLength: 120 }
+        categoryId: { type: string, format: uuid }
+        originalAmount: { $ref: "#/components/schemas/DecimalString" }
+        originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        fxRate: { $ref: "#/components/schemas/FxRateString" }
+        participantUserIds:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { type: string, format: uuid }
     CalendarEvent:
       type: object
       required:
@@ -1408,6 +1445,7 @@ components:
           status,
           createdAt,
           updatedAt,
+          recurringExpenseTemplate,
           links,
         ]
       properties:
@@ -1424,6 +1462,10 @@ components:
         createdByUserId: { type: string, format: uuid, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        recurringExpenseTemplate:
+          allOf:
+            - { $ref: "#/components/schemas/RecurringExpenseTemplate" }
+          nullable: true
         links:
           type: array
           items: { $ref: "#/components/schemas/CalendarEventLink" }
@@ -1450,6 +1492,10 @@ components:
           minimum: 1
           maximum: 12
           default: 1
+        recurringExpenseTemplate:
+          allOf:
+            - { $ref: "#/components/schemas/RecurringExpenseTemplateInput" }
+          description: Optional auto-generation template for RECURRING_EXPENSE_GENERATION events. The server copies it to each materialized recurrence instance and the recurring-expense job creates one pending proposal per due event.
     UpdateCalendarEventRequest:
       type: object
       required: [title, startAt]

@@ -68,7 +68,7 @@ Current user settings implementation: `GET /users/me` returns the authenticated 
 - `GET /notifications`
 - `PATCH /notifications/{notificationId}`
 
-Current implementation: `GET /notifications` returns recent in-app notifications for households where the current user is still active, plus an unread count. `PATCH /notifications/{notificationId}` toggles the scoped notification read state. Expense proposal creation emits `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the recipient's in-app and proposal preference switches are enabled. The server-side `notifications:send-reminders` job emits task due/overdue, repayment due/overdue, and settlement confirmation reminder notifications; the public notification API remains read/update only.
+Current implementation: `GET /notifications` returns recent in-app notifications for households where the current user is still active, plus an unread count. `PATCH /notifications/{notificationId}` toggles the scoped notification read state. Expense proposal creation emits `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the recipient's in-app and proposal preference switches are enabled. The scheduled server-side jobs run recurring expense proposal generation before `notifications:send-reminders`, which emits task due/overdue, repayment due/overdue, and settlement confirmation reminder notifications; the public notification API remains read/update only.
 
 ### Households
 
@@ -148,7 +148,7 @@ Current implementation: debtors can submit a settlement against one open obligat
 - `POST /households/{householdId}/tasks/{taskId}/complete`
 - `POST /households/{householdId}/tasks/{taskId}/create-expense-proposal`
 
-Current implementation supports list/create/update/delete calendar events, list/create/update/delete tasks, assign task at creation and update, complete task, finite daily/weekly/monthly recurrence, list/day/week/month calendar UI views, creating one linked submitted expense proposal from a task, and creating one linked submitted expense proposal from bill/chore/group/recurring-expense calendar events. Creating or updating a task with `dueAt` automatically creates or updates a linked `TASK` calendar event; clearing `dueAt` removes the linked task event. Task/event-generated expense proposals remain pending until the normal debtor approval flow. Linked task and formal repayment calendar events must be changed through their source task or ledger record, and tasks with linked expense proposals cannot be deleted.
+Current implementation supports list/create/update/delete calendar events, list/create/update/delete tasks, assign task at creation and update, complete task, finite daily/weekly/monthly recurrence, list/day/week/month calendar UI views, creating one linked submitted expense proposal from a task, and creating one linked submitted expense proposal from bill/chore/group/recurring-expense calendar events. Creating a `RECURRING_EXPENSE_GENERATION` event can include a recurring expense template; recurrence materialization copies the template to each generated event, and the scheduled recurring-expense job creates at most one pending proposal for each due template-backed event. Creating or updating a task with `dueAt` automatically creates or updates a linked `TASK` calendar event; clearing `dueAt` removes the linked task event. Task/event-generated expense proposals remain pending until the normal debtor approval flow. Linked task and formal repayment calendar events must be changed through their source task or ledger record, and tasks with linked expense proposals cannot be deleted.
 
 ### Files
 
@@ -333,6 +333,8 @@ Only the debtor can submit it. Payment metadata includes `method`, optional `pay
   "description": "Check rent transfer status."
 }
 ```
+
+For `RECURRING_EXPENSE_GENERATION` events, callers may include `recurringExpenseTemplate` with title, merchant, category, original amount/currency, optional FX rate, and debtor participant user IDs. The template is copied to finite recurrence instances and consumed by the server-side recurring expense generation job once the event is due.
 
 `recurrenceCount` is finite and includes the first created instance. Current implementation materializes the additional event rows immediately and links them to a stored recurrence rule.
 

@@ -4467,6 +4467,8 @@ test.describe("Roompire real browser smoke", () => {
     const taskTitle = `E2E Kitchen reset ${suffix}`;
     const updatedTaskTitle = `E2E Kitchen reset updated ${suffix}`;
     const deletedTaskTitle = `E2E Temporary task ${suffix}`;
+    const autoRecurringExpenseTitle = `E2E Auto internet ${suffix}`;
+    const autoRecurringProposalTitle = `E2E Auto internet proposal ${suffix}`;
     const eventProposalTitle = `E2E Event reimbursement ${suffix}`;
     const taskProposalTitle = `E2E Task reimbursement ${suffix}`;
 
@@ -4558,6 +4560,20 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("task-description").fill("Reset counters and recycling");
     await clickTaskSubmitWithRetry(page);
 
+    await page.getByTestId("calendar-event-title").fill(autoRecurringExpenseTitle);
+    await page.getByTestId("calendar-event-type").selectOption("RECURRING_EXPENSE_GENERATION");
+    await page.getByTestId("calendar-event-start").fill("2026-07-10T09:00");
+    await page.getByTestId("calendar-event-recurrence").selectOption("WEEKLY");
+    await page.getByTestId("calendar-event-recurrence-count").fill("2");
+    await page.getByTestId("calendar-event-description").fill("Auto-generated internet proposal");
+    await page.getByTestId("calendar-event-auto-proposal-title").fill(autoRecurringProposalTitle);
+    await page.getByTestId("calendar-event-auto-proposal-merchant").fill("Internet vendor");
+    await page.getByTestId("calendar-event-auto-proposal-amount").fill("240");
+    await page.getByTestId("calendar-event-auto-proposal-original-currency").fill("CNY");
+    await page.getByTestId("calendar-event-auto-proposal-fx-rate").fill("1");
+    await page.getByTestId(`calendar-event-auto-proposal-debtor-${memberEmail}`).check();
+    await clickCalendarEventSubmitWithRetry(page);
+
     const tasksResponse = await getApiWithRetry(page, `/api/v1/households/${householdId}/tasks`, {
       headers: {
         "x-roompire-dev-user-email": ownerEmail,
@@ -4611,6 +4627,11 @@ test.describe("Roompire real browser smoke", () => {
         status: string;
         startAt: string;
         links: Array<{ linkedType: string; linkedId: string }>;
+        recurringExpenseTemplate: {
+          originalAmount: string;
+          originalCurrency: string;
+          participantUserIds: string[];
+        } | null;
       }>;
     };
     const recurringEvents = eventsPayload.events.filter(
@@ -4627,6 +4648,119 @@ test.describe("Roompire real browser smoke", () => {
         event.links.some((link) => link.linkedType === "recurrence_rule"),
       ),
     ).toBe(true);
+    const autoRecurringEvents = eventsPayload.events.filter(
+      (event) =>
+        event.title === autoRecurringExpenseTitle && event.type === "RECURRING_EXPENSE_GENERATION",
+    );
+    expect(autoRecurringEvents).toHaveLength(2);
+    expect(autoRecurringEvents.map((event) => event.startAt.slice(0, 10))).toEqual([
+      "2026-07-10",
+      "2026-07-17",
+    ]);
+    for (const event of autoRecurringEvents) {
+      expect(event.recurringExpenseTemplate).toMatchObject({
+        originalAmount: "240",
+        originalCurrency: "CNY",
+        participantUserIds: [memberUserId],
+      });
+    }
+
+    const recurringExpenseEnv = {
+      ...process.env,
+      DATABASE_URL:
+        process.env.DATABASE_URL ?? "postgresql://roompire:roompire@localhost:5432/roompire_dev",
+      NO_COLOR: "1",
+    };
+    const recurringExpenseArgs = [
+      "recurring-expenses:generate",
+      "--",
+      "--now=2026-07-10T12:00:00.000Z",
+    ];
+    const firstRecurringExpenseRun = execFileSync("pnpm", recurringExpenseArgs, {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: recurringExpenseEnv,
+    });
+    expect(firstRecurringExpenseRun).toContain("ok recurring-expenses");
+    expect(firstRecurringExpenseRun).toContain('"created":1');
+    const secondRecurringExpenseRun = execFileSync("pnpm", recurringExpenseArgs, {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: recurringExpenseEnv,
+    });
+    expect(secondRecurringExpenseRun).toContain('"created":0');
+
+    const autoProposalEventsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(autoProposalEventsResponse.ok()).toBeTruthy();
+    const autoProposalEventsPayload =
+      (await autoProposalEventsResponse.json()) as typeof eventsPayload;
+    const generatedRecurringEvent = autoProposalEventsPayload.events.find(
+      (event) => event.id === autoRecurringEvents[0]!.id,
+    );
+    const generatedRecurringProposalId = generatedRecurringEvent?.links.find(
+      (link) => link.linkedType === "expense_proposal",
+    )?.linkedId;
+    expect(generatedRecurringProposalId).toBeTruthy();
+    const futureRecurringEvent = autoProposalEventsPayload.events.find(
+      (event) => event.id === autoRecurringEvents[1]!.id,
+    );
+    expect(futureRecurringEvent?.links.some((link) => link.linkedType === "expense_proposal")).toBe(
+      false,
+    );
+    if (!generatedRecurringProposalId) {
+      throw new Error("Expected auto-generated recurring expense proposal link");
+    }
+
+    const generatedRecurringProposalResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals/${generatedRecurringProposalId}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(generatedRecurringProposalResponse.ok()).toBeTruthy();
+    const generatedRecurringProposalPayload = (await generatedRecurringProposalResponse.json()) as {
+      proposal: {
+        title: string;
+        status: string;
+        originalAmount: string;
+        originalCurrency: string;
+        settlementAmount: string;
+        settlementCurrency: string;
+        shares: Array<{ debtorUserId: string; creditorUserId: string; status: string }>;
+      };
+    };
+    expect(generatedRecurringProposalPayload.proposal).toMatchObject({
+      title: autoRecurringProposalTitle,
+      status: "SUBMITTED",
+      originalAmount: "240",
+      originalCurrency: "CNY",
+      settlementAmount: "240",
+      settlementCurrency: "CNY",
+    });
+    expect(generatedRecurringProposalPayload.proposal.shares).toContainEqual(
+      expect.objectContaining({
+        debtorUserId: memberUserId,
+        creditorUserId: ownerUserId,
+        status: "PENDING",
+      }),
+    );
+    await page.goto("/en-US/app/calendar");
+    await expect(
+      page.getByTestId(
+        `event-proposal-link-${autoRecurringEvents[0]!.id}-${generatedRecurringProposalId}`,
+      ),
+    ).toBeVisible();
 
     const eventExpenseSource = recurringEvents[0]!;
     await page.getByTestId(`calendar-event-edit-${eventExpenseSource.id}`).click();

@@ -116,10 +116,11 @@ model User {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  memberships            HouseholdMembership[]
-  createdHouseholds      Household[]             @relation("HouseholdCreator")
-  idempotencyRecords     IdempotencyRecord[]
-  notificationPreference NotificationPreference?
+  memberships               HouseholdMembership[]
+  createdHouseholds         Household[]                @relation("HouseholdCreator")
+  idempotencyRecords        IdempotencyRecord[]
+  notificationPreference    NotificationPreference?
+  recurringExpenseTemplates RecurringExpenseTemplate[] @relation("RecurringExpenseTemplateCreator")
 }
 
 model Household {
@@ -136,15 +137,16 @@ model Household {
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
-  createdBy          User                  @relation("HouseholdCreator", fields: [createdByUserId], references: [id])
-  memberships        HouseholdMembership[]
-  categories         ExpenseCategory[]
-  proposals          ExpenseProposal[]
-  files              File[]
-  ledgerTransactions LedgerTransaction[]
-  ledgerPeriodCloses LedgerPeriodClose[]
-  auditEvents        AuditEvent[]
-  idempotencyRecords IdempotencyRecord[]
+  createdBy                 User                       @relation("HouseholdCreator", fields: [createdByUserId], references: [id])
+  memberships               HouseholdMembership[]
+  categories                ExpenseCategory[]
+  proposals                 ExpenseProposal[]
+  files                     File[]
+  ledgerTransactions        LedgerTransaction[]
+  ledgerPeriodCloses        LedgerPeriodClose[]
+  auditEvents               AuditEvent[]
+  idempotencyRecords        IdempotencyRecord[]
+  recurringExpenseTemplates RecurringExpenseTemplate[]
 
   @@index([createdByUserId])
 }
@@ -516,8 +518,35 @@ model CalendarEvent {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
+  recurringExpenseTemplate RecurringExpenseTemplate?
+
   @@index([householdId, startAt])
   @@index([householdId, type])
+}
+
+model RecurringExpenseTemplate {
+  id                 String   @id @default(uuid()) @db.Uuid
+  householdId        String   @db.Uuid
+  eventId            String   @unique @db.Uuid
+  createdByUserId    String   @db.Uuid
+  title              String?
+  description        String?
+  merchant           String?
+  categoryId         String?  @db.Uuid
+  originalAmount     Decimal  @db.Decimal(20, 6)
+  originalCurrency   String   @db.Char(3)
+  fxRate             Decimal? @db.Decimal(20, 12)
+  participantUserIds Json
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  household Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  event     CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdBy User          @relation("RecurringExpenseTemplateCreator", fields: [createdByUserId], references: [id])
+
+  @@index([householdId])
+  @@index([createdByUserId])
+  @@index([categoryId])
 }
 
 model RecurrenceRule {

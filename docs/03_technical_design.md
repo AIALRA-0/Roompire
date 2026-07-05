@@ -99,6 +99,7 @@ For a smaller first implementation, `apps/web` can contain route handlers and se
 - Tasks
 - Recurrence rules
 - Event links
+- Recurring expense templates
 - Reminders
 
 ### Audit/statistics/export
@@ -244,6 +245,8 @@ Events link to domain records via polymorphic `event_links`:
 
 Task due dates create linked `TASK` calendar events. Updating a task creates, updates, or removes that linked event so the task stays authoritative. Direct calendar edits are allowed for standalone materialized events; task-linked and debt-obligation-linked events are locked and must be changed from their source record.
 
+`RECURRING_EXPENSE_GENERATION` events can own a `RecurringExpenseTemplate` that stores the proposal title, merchant/category, original amount/currency, optional locked FX rate, and debtor participant IDs. Finite recurrence copies the template onto each materialized occurrence. The idempotent `pnpm recurring-expenses:generate` job scans due open template-backed events without an existing expense-proposal link and creates one pending proposal through the same event-to-proposal service path used by manual calendar actions.
+
 ## Notifications
 
 Initial notification model:
@@ -263,9 +266,10 @@ Current implemented subset:
 - `GET /api/v1/notifications` lists the current user's recent in-app notifications across active household memberships.
 - `PATCH /api/v1/notifications/{notificationId}` marks one scoped notification read or unread.
 - Creating an expense proposal writes `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the target user's in-app and proposal preferences allow it.
+- `pnpm recurring-expenses:generate` is an idempotent recurring-expense job. It emits one pending proposal per due open template-backed recurring expense event, then leaves debtor approval to the normal expense flow.
 - `pnpm notifications:send-reminders` is an idempotent in-app reminder job. It emits task due/overdue, debt due/overdue, and stale settlement confirmation notifications through fixed `dedupeKey` values, respects in-app/topic preferences, and only targets currently active household members.
 
-Use queue workers for future higher-volume scheduled work. The current self-hosted production deployment runs the reminder job through a systemd timer and surfaces timer/service health in the ops snapshot.
+Use queue workers for future higher-volume scheduled work. The current self-hosted production deployment runs recurring expense generation first and reminder delivery second through the same systemd timer, then surfaces timer/service health in the ops snapshot.
 
 ## Auth strategy
 

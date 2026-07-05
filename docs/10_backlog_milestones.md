@@ -130,13 +130,11 @@ Current implemented subset for settlements: debtors can submit direct-obligation
 - Complete task.
 - Link proposal/task/event.
 
-Current implemented subset across calendar branches: calendar/task page shell, event list/create/update/delete, event list/day/week/month views, task list/create/update/delete, assignment at creation and update, task completion, task-to-calendar-event linking, repayment due events, finite recurrence, in-app due/overdue task reminders, task-generated pending expense proposals linked back to the task and any linked task event, and event-generated pending expense proposals from bill/chore/group/recurring-expense events.
+Current implemented subset across calendar branches: calendar/task page shell, event list/create/update/delete, event list/day/week/month views, task list/create/update/delete, assignment at creation and update, task completion, task-to-calendar-event linking, repayment due events, finite recurrence, recurring expense templates copied across generated occurrences, scheduled auto-generation of one pending proposal per due recurring expense event, in-app due/overdue task reminders, task-generated pending expense proposals linked back to the task and any linked task event, and event-generated pending expense proposals from bill/chore/group/recurring-expense events.
 
 ### P1
 
 - Recurring task.
-- Recurring bill template.
-- Auto-generate proposal from recurring bill.
 - Reminders.
 
 ## Epic 7 — Audit and statistics
@@ -165,7 +163,7 @@ Current implemented subset for audit/statistics: mutation flows emit `AuditEvent
 - Backup script.
 - Restore script/drill.
 
-Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, optional Caddy reverse proxy profile, host-nginx localhost binding for the live self-hosted server, migration and demo-seed profiles, authenticated `/api/v1/health`, PWA manifest plus safe service-worker shell caching with API/data requests left network-only, S3-compatible private receipt storage wiring, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, encrypted backup/restore drills, ops health snapshots, scheduled housekeeping, scheduled in-app reminder delivery, and real-domain smoke tests against `roompire.aialra.online`. Remaining deployment hardening is capacity planning, off-host backup copy/passphrase escrow, and eventual long-term auth provider selection.
+Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, optional Caddy reverse proxy profile, host-nginx localhost binding for the live self-hosted server, migration and demo-seed profiles, authenticated `/api/v1/health`, PWA manifest plus safe service-worker shell caching with API/data requests left network-only, S3-compatible private receipt storage wiring, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, encrypted backup/restore drills, ops health snapshots, scheduled housekeeping, scheduled recurring expense proposal generation, scheduled in-app reminder delivery, and real-domain smoke tests against `roompire.aialra.online`. Remaining deployment hardening is capacity planning, off-host backup copy/passphrase escrow, and eventual long-term auth provider selection.
 
 ### P1
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Send Roompire in-app reminders every hour
+Description=Run Roompire recurring expense generation and reminders every hour
 
 [Timer]
 OnBootSec=10m
