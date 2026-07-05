@@ -1450,6 +1450,19 @@ components:
           minimum: 1
           maximum: 12
           default: 1
+    UpdateCalendarEventRequest:
+      type: object
+      required: [title, startAt]
+      properties:
+        title: { type: string, minLength: 2, maxLength: 120 }
+        description: { type: string, maxLength: 1000 }
+        type:
+          allOf:
+            - { $ref: "#/components/schemas/CalendarEventType" }
+          default: GROUP_ACTIVITY
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        allDay: { type: boolean, default: false }
     CalendarEventResponse:
       type: object
       required: [event]
@@ -1535,6 +1548,21 @@ components:
           minimum: 1
           maximum: 12
           default: 1
+    UpdateTaskRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 2, maxLength: 120 }
+        description: { type: string, maxLength: 1000 }
+        priority:
+          allOf:
+            - { $ref: "#/components/schemas/TaskPriority" }
+          default: NORMAL
+        dueAt: { type: string, format: date-time }
+        assignedUserIds:
+          type: array
+          maxItems: 20
+          items: { type: string, format: uuid }
     CompleteTaskRequest:
       type: object
       properties:
@@ -1551,6 +1579,18 @@ components:
         tasks:
           type: array
           items: { $ref: "#/components/schemas/Task" }
+    DeleteCalendarEventResponse:
+      type: object
+      required: [eventId, deleted]
+      properties:
+        eventId: { type: string, format: uuid }
+        deleted: { type: boolean }
+    DeleteTaskResponse:
+      type: object
+      required: [taskId, deleted]
+      properties:
+        taskId: { type: string, format: uuid }
+        deleted: { type: boolean }
     OpsHealthState:
       type: string
       enum: [ok, warning, unknown]
@@ -3404,6 +3444,98 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/calendar/events/{eventId}:
+    patch:
+      summary: Update calendar event
+      description: Owners, admins, and members can update one materialized household calendar event. TASK-linked and repayment-obligation events are changed from their source task or ledger record instead.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCalendarEventRequest" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CalendarEventResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Event not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Linked source event is locked, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      summary: Delete calendar event
+      description: Owners, admins, and members can delete one materialized household calendar event unless it is linked to a task or formal debt obligation.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeleteCalendarEventResponse" }
+        "400":
+          description: Missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Event not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Linked source event is locked, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/calendar/events/{eventId}/create-expense-proposal:
     post:
       summary: Create an expense proposal from a calendar event
@@ -3522,6 +3654,98 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
           description: Idempotent request is in progress or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/tasks/{taskId}:
+    patch:
+      summary: Update task
+      description: Owners, admins, and members can update a household task. Updating dueAt creates, updates, or removes the linked TASK calendar event for that materialized task instance.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: taskId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTaskRequest" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "400":
+          description: Validation error, invalid assignee, or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Task not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Idempotent request is in progress or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      summary: Delete task
+      description: Owners, admins, and members can delete a household task unless it already has a linked expense proposal. Linked TASK calendar events are removed with the task.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: taskId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeleteTaskResponse" }
+        "400":
+          description: Missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is a viewer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Task not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Task has a linked proposal, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

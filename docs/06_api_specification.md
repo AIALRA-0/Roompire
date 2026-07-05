@@ -43,7 +43,7 @@ Mutation headers:
 
 - `Idempotency-Key`: required for proposal submit, approval, maturity, settlement, file finalize.
 - Implemented financial mutations persist the key per user. Repeating the same key with the same endpoint and body replays the stored response; reusing the key with a changed request returns `409`.
-- Implemented calendar/task mutations also require `Idempotency-Key` for event creation, task creation, and task completion.
+- Implemented calendar/task mutations also require `Idempotency-Key` for event creation/update/deletion, task creation/update/deletion, and task completion.
 
 ## Endpoint groups
 
@@ -139,15 +139,16 @@ Current implementation: debtors can submit a settlement against one open obligat
 - `GET /households/{householdId}/calendar/events`
 - `POST /households/{householdId}/calendar/events`
 - `PATCH /households/{householdId}/calendar/events/{eventId}`
-- `DELETE /households/{householdId}/calendar/events/{eventId}` soft cancel
+- `DELETE /households/{householdId}/calendar/events/{eventId}`
 - `POST /households/{householdId}/calendar/events/{eventId}/create-expense-proposal`
 - `GET /households/{householdId}/tasks`
 - `POST /households/{householdId}/tasks`
 - `PATCH /households/{householdId}/tasks/{taskId}`
+- `DELETE /households/{householdId}/tasks/{taskId}`
 - `POST /households/{householdId}/tasks/{taskId}/complete`
 - `POST /households/{householdId}/tasks/{taskId}/create-expense-proposal`
 
-Current implementation supports list/create calendar event, list/create task, assign task at creation, complete task, finite daily/weekly/monthly recurrence, list/day/week/month calendar UI views, creating one linked submitted expense proposal from a task, and creating one linked submitted expense proposal from bill/chore/group/recurring-expense calendar events. Creating a task with `dueAt` automatically creates a linked `TASK` calendar event, and task/event-generated expense proposals remain pending until the normal debtor approval flow. Event editing/deletion and task editing remain backlog items.
+Current implementation supports list/create/update/delete calendar events, list/create/update/delete tasks, assign task at creation and update, complete task, finite daily/weekly/monthly recurrence, list/day/week/month calendar UI views, creating one linked submitted expense proposal from a task, and creating one linked submitted expense proposal from bill/chore/group/recurring-expense calendar events. Creating or updating a task with `dueAt` automatically creates or updates a linked `TASK` calendar event; clearing `dueAt` removes the linked task event. Task/event-generated expense proposals remain pending until the normal debtor approval flow. Linked task and formal repayment calendar events must be changed through their source task or ledger record, and tasks with linked expense proposals cannot be deleted.
 
 ### Files
 
@@ -335,6 +336,10 @@ Only the debtor can submit it. Payment metadata includes `method`, optional `pay
 
 `recurrenceCount` is finite and includes the first created instance. Current implementation materializes the additional event rows immediately and links them to a stored recurrence rule.
 
+### Update/delete calendar event
+
+`PATCH /households/{householdId}/calendar/events/{eventId}` updates one materialized event instance. `DELETE /households/{householdId}/calendar/events/{eventId}` deletes one materialized event and its event links. Events linked to a task or formal debt obligation are locked so their source record stays authoritative.
+
 ### Create task
 
 ```json
@@ -350,6 +355,10 @@ Only the debtor can submit it. Payment metadata includes `method`, optional `pay
 ```
 
 If `dueAt` is present, the current implementation creates a `TASK` calendar event and an `EventLink` from the event to the task. Recurring tasks require `dueAt`; the service materializes additional task rows, copies assignments, creates linked `TASK` events for each generated task, and links those events to a stored recurrence rule.
+
+### Update/delete task
+
+`PATCH /households/{householdId}/tasks/{taskId}` updates one materialized task instance, replaces its assignees, and creates, updates, or removes the linked `TASK` calendar event according to `dueAt`. `DELETE /households/{householdId}/tasks/{taskId}` deletes the task plus linked `TASK` calendar events when no expense proposal has been generated from that task.
 
 ### Complete task
 
@@ -375,6 +384,7 @@ The current implementation marks the task and assignments completed, updates lin
 | Reverse ledger entry             |    ✅ |    ✅ |             ❌ |         ❌ |
 | View calendar/tasks              |    ✅ |    ✅ |             ✅ |         ✅ |
 | Create calendar event/task       |    ✅ |    ✅ |             ✅ |         ❌ |
+| Edit/delete calendar event/task  |    ✅ |    ✅ |             ✅ |         ❌ |
 | Complete task                    |    ✅ |    ✅ |             ✅ |         ❌ |
 | View full audit                  |    ✅ |    ✅ | ⚠️ own-related | ❌/limited |
 | Edit household settings          |    ✅ |    ✅ |             ❌ |         ❌ |

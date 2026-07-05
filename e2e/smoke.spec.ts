@@ -4463,7 +4463,10 @@ test.describe("Roompire real browser smoke", () => {
     const memberEmail = `calendar-member+${suffix}@example.test`;
     const householdName = `Calendar House ${suffix}`;
     const eventTitle = `E2E Rent review ${suffix}`;
+    const updatedEventTitle = `E2E Rent review updated ${suffix}`;
     const taskTitle = `E2E Kitchen reset ${suffix}`;
+    const updatedTaskTitle = `E2E Kitchen reset updated ${suffix}`;
+    const deletedTaskTitle = `E2E Temporary task ${suffix}`;
     const eventProposalTitle = `E2E Event reimbursement ${suffix}`;
     const taskProposalTitle = `E2E Task reimbursement ${suffix}`;
 
@@ -4544,7 +4547,6 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("calendar-event-recurrence-count").fill("3");
     await page.getByTestId("calendar-event-description").fill("Review rent payment status");
     await clickCalendarEventSubmitWithRetry(page);
-    await expect(page.getByText(eventTitle).first()).toBeVisible();
 
     await page.getByTestId("task-title").fill(taskTitle);
     await page.getByTestId("task-priority").selectOption("HIGH");
@@ -4555,7 +4557,6 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId(`task-assignee-${memberEmail}`)).toBeChecked();
     await page.getByTestId("task-description").fill("Reset counters and recycling");
     await clickTaskSubmitWithRetry(page);
-    await expect(page.getByText(taskTitle).first()).toBeVisible();
 
     const tasksResponse = await getApiWithRetry(page, `/api/v1/households/${householdId}/tasks`, {
       headers: {
@@ -4628,6 +4629,57 @@ test.describe("Roompire real browser smoke", () => {
     ).toBe(true);
 
     const eventExpenseSource = recurringEvents[0]!;
+    await page.getByTestId(`calendar-event-edit-${eventExpenseSource.id}`).click();
+    await expect(
+      page.getByTestId(`calendar-event-edit-form-${eventExpenseSource.id}`),
+    ).toBeVisible();
+    await page
+      .getByTestId(`calendar-event-edit-title-${eventExpenseSource.id}`)
+      .fill(updatedEventTitle);
+    await page
+      .getByTestId(`calendar-event-edit-start-${eventExpenseSource.id}`)
+      .fill("2026-07-09T08:30");
+    await page.getByTestId(`calendar-event-save-${eventExpenseSource.id}`).click();
+    await expect(page.getByText("Calendar event updated")).toBeVisible();
+    await expect(page.getByTestId(`calendar-event-row-${eventExpenseSource.id}`)).toContainText(
+      updatedEventTitle,
+    );
+
+    const updatedEventResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(updatedEventResponse.ok()).toBeTruthy();
+    const updatedEventPayload = (await updatedEventResponse.json()) as typeof eventsPayload;
+    expect(
+      updatedEventPayload.events.find((event) => event.id === eventExpenseSource.id),
+    ).toMatchObject({
+      title: updatedEventTitle,
+      startAt: expect.stringContaining("2026-07-09T08:30"),
+    });
+
+    const deletedEventId = recurringEvents[2]!.id;
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByTestId(`calendar-event-delete-${deletedEventId}`).click();
+    await expect(page.getByText("Calendar event deleted")).toBeVisible();
+    const afterEventDeleteResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(afterEventDeleteResponse.ok()).toBeTruthy();
+    const afterEventDeletePayload = (await afterEventDeleteResponse.json()) as typeof eventsPayload;
+    expect(afterEventDeletePayload.events.some((event) => event.id === deletedEventId)).toBe(false);
+
     await page.getByTestId(`event-expense-toggle-${eventExpenseSource.id}`).click();
     await expect(page.getByTestId(`event-expense-form-${eventExpenseSource.id}`)).toBeVisible();
     await page.getByTestId(`event-expense-title-${eventExpenseSource.id}`).fill(eventProposalTitle);
@@ -4787,17 +4839,17 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("calendar-view-month").click();
     await expect(page.getByTestId("calendar-month-view")).toBeVisible();
     await expect(page.getByTestId(`calendar-month-event-${recurringEvents[0]!.id}`)).toContainText(
-      eventTitle,
+      updatedEventTitle,
     );
     await page.getByTestId("calendar-view-day").click();
     await expect(page.getByTestId("calendar-day-view")).toBeVisible();
     await expect(page.getByTestId(`calendar-day-event-${recurringEvents[0]!.id}`)).toContainText(
-      eventTitle,
+      updatedEventTitle,
     );
     await page.getByTestId("calendar-view-week").click();
     await expect(page.getByTestId("calendar-week-view")).toBeVisible();
     await expect(page.getByTestId(`calendar-week-event-${recurringEvents[0]!.id}`)).toContainText(
-      eventTitle,
+      updatedEventTitle,
     );
     await page.getByTestId("calendar-view-list").click();
     const taskEvents = eventsPayload.events.filter(
@@ -4820,9 +4872,116 @@ test.describe("Roompire real browser smoke", () => {
       }),
     );
 
+    const nextTask = createdTasks.find((task) => task.id !== createdTask!.id);
+    expect(nextTask).toBeTruthy();
+    if (!nextTask) {
+      throw new Error("Expected recurring task instance for edit and idempotency coverage");
+    }
+
+    await page.getByTestId(`task-edit-${nextTask.id}`).click();
+    await expect(page.getByTestId(`task-edit-form-${nextTask.id}`)).toBeVisible();
+    await page.getByTestId(`task-edit-title-${nextTask.id}`).fill(updatedTaskTitle);
+    await page.getByTestId(`task-edit-priority-${nextTask.id}`).selectOption("LOW");
+    await page.getByTestId(`task-edit-due-at-${nextTask.id}`).fill("2026-07-17T11:30");
+    await page.getByTestId(`task-edit-assignee-${nextTask.id}-${ownerEmail}`).check();
+    await page
+      .getByTestId(`task-edit-description-${nextTask.id}`)
+      .fill("Updated recurring task details");
+    await page.getByTestId(`task-save-${nextTask.id}`).click();
+    await expect(page.getByText("Task updated")).toBeVisible();
+    await expect(page.getByTestId(`task-row-${nextTask.id}`)).toContainText(updatedTaskTitle);
+
+    const updatedTaskResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(updatedTaskResponse.ok()).toBeTruthy();
+    const updatedTaskPayload = (await updatedTaskResponse.json()) as typeof tasksPayload;
+    const updatedTask = updatedTaskPayload.tasks.find((task) => task.id === nextTask.id);
+    expect(updatedTask).toMatchObject({
+      title: updatedTaskTitle,
+      priority: "LOW",
+      dueAt: expect.stringContaining("2026-07-17T11:30"),
+    });
+    expect(updatedTask!.assignments).toContainEqual(
+      expect.objectContaining({
+        assignedUserId: ownerUserId,
+        status: "ASSIGNED",
+      }),
+    );
+    expect(updatedTask!.assignments).toContainEqual(
+      expect.objectContaining({
+        assignedUserId: memberUserId,
+        status: "ASSIGNED",
+      }),
+    );
+    expect(updatedTask!.linkedEventIds).toHaveLength(1);
+
+    const updatedTaskEventsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(updatedTaskEventsResponse.ok()).toBeTruthy();
+    const updatedTaskEventsPayload =
+      (await updatedTaskEventsResponse.json()) as typeof eventsPayload;
+    expect(
+      updatedTaskEventsPayload.events.find((event) => event.id === updatedTask!.linkedEventIds[0]),
+    ).toMatchObject({
+      title: updatedTaskTitle,
+      startAt: expect.stringContaining("2026-07-17T11:30"),
+    });
+
+    const deleteTaskResponse = await page.request.post(`/api/v1/households/${householdId}/tasks`, {
+      data: {
+        title: deletedTaskTitle,
+        priority: "NORMAL",
+        dueAt: "2026-07-18T12:00:00.000Z",
+        assignedUserIds: [ownerUserId],
+      },
+      headers: {
+        "Idempotency-Key": `calendar-delete-task-${Date.now()}`,
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(deleteTaskResponse.ok()).toBeTruthy();
+    const deleteTaskPayload = (await deleteTaskResponse.json()) as {
+      task: { id: string; linkedEventIds: string[] };
+    };
+    await page.goto("/en-US/app/calendar");
+    await expect(page.getByTestId(`task-row-${deleteTaskPayload.task.id}`)).toContainText(
+      deletedTaskTitle,
+    );
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByTestId(`task-delete-${deleteTaskPayload.task.id}`).click();
+    await expect(page.getByText("Task deleted")).toBeVisible();
+    const afterTaskDeleteResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(afterTaskDeleteResponse.ok()).toBeTruthy();
+    const afterTaskDeletePayload = (await afterTaskDeleteResponse.json()) as typeof tasksPayload;
+    expect(afterTaskDeletePayload.tasks.some((task) => task.id === deleteTaskPayload.task.id)).toBe(
+      false,
+    );
+
     await setDevSessionWithRetry(page, memberEmail, "Calendar Member E2E");
     await page.goto("/en-US/app/calendar");
-    await expect(page.getByText(taskTitle).first()).toBeVisible();
+    await expect(page.getByTestId(`task-complete-${createdTask!.id}`)).toBeVisible();
     await clickTaskCompleteWithRetry(page, createdTask!.id);
 
     const completedTasksResponse = await getApiWithRetry(
@@ -4866,9 +5025,10 @@ test.describe("Roompire real browser smoke", () => {
       },
     );
     const remainingTaskEvent = completedEventsPayload.events.find(
-      (event) => event.title === taskTitle && event.id !== taskEvent!.id,
+      (event) => event.id === updatedTask!.linkedEventIds[0],
     );
     expect(remainingTaskEvent).toMatchObject({
+      title: updatedTaskTitle,
       status: "OPEN",
     });
 
@@ -4984,12 +5144,6 @@ test.describe("Roompire real browser smoke", () => {
     };
     expect(balancesAfterTaskProposalPayload.balances).toHaveLength(0);
 
-    const nextTask = createdTasks.find((task) => task.id !== createdTask!.id);
-    expect(nextTask).toBeTruthy();
-    if (!nextTask) {
-      throw new Error("Expected recurring task instance for idempotency coverage");
-    }
-
     const taskProposalIdempotencyKey = `task-proposal-idempotency-${Date.now()}`;
     const taskProposalReplayBody = {
       title: `E2E API task reimbursement ${suffix}`,
@@ -5093,6 +5247,43 @@ test.describe("Roompire real browser smoke", () => {
     });
     expect(acceptResponse.ok()).toBeTruthy();
 
+    const editableEventResponse = await page.request.post(
+      `/api/v1/households/${householdId}/calendar/events`,
+      {
+        data: {
+          title: `Viewer protected event ${suffix}`,
+          type: "GROUP_ACTIVITY",
+          startAt: "2026-07-09T09:00:00.000Z",
+        },
+        headers: {
+          "Idempotency-Key": `viewer-protected-event-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(editableEventResponse.ok()).toBeTruthy();
+    const editableEventPayload = (await editableEventResponse.json()) as {
+      event: { id: string };
+    };
+    const editableTaskResponse = await page.request.post(
+      `/api/v1/households/${householdId}/tasks`,
+      {
+        data: {
+          title: `Viewer protected task ${suffix}`,
+          priority: "NORMAL",
+          assignedUserIds: [],
+        },
+        headers: {
+          "Idempotency-Key": `viewer-protected-task-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(editableTaskResponse.ok()).toBeTruthy();
+    const editableTaskPayload = (await editableTaskResponse.json()) as {
+      task: { id: string };
+    };
+
     await page.goto("/en-US/app");
 
     await expect(page.getByText("Signed in as Viewer E2E")).toBeVisible();
@@ -5112,6 +5303,33 @@ test.describe("Roompire real browser smoke", () => {
     await expect(
       postViewerCalendarEventWithRetry(page, householdId, viewerEmail, `Viewer blocked ${suffix}`),
     ).resolves.toBe(403);
+
+    const viewerEventPatchResponse = await page.request.patch(
+      `/api/v1/households/${householdId}/calendar/events/${editableEventPayload.event.id}`,
+      {
+        data: {
+          title: `Viewer edited event ${suffix}`,
+          type: "GROUP_ACTIVITY",
+          startAt: "2026-07-10T09:00:00.000Z",
+        },
+        headers: {
+          "Idempotency-Key": `viewer-event-patch-${Date.now()}`,
+          "x-roompire-dev-user-email": viewerEmail,
+        },
+      },
+    );
+    expect(viewerEventPatchResponse.status()).toBe(403);
+
+    const viewerTaskDeleteResponse = await page.request.delete(
+      `/api/v1/households/${householdId}/tasks/${editableTaskPayload.task.id}`,
+      {
+        headers: {
+          "Idempotency-Key": `viewer-task-delete-${Date.now()}`,
+          "x-roompire-dev-user-email": viewerEmail,
+        },
+      },
+    );
+    expect(viewerTaskDeleteResponse.status()).toBe(403);
 
     const viewerTaskProposalResponse = await page.request.post(
       `/api/v1/households/${householdId}/tasks/00000000-0000-0000-0000-000000000000/create-expense-proposal`,

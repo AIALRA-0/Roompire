@@ -1,6 +1,15 @@
 "use client";
 
-import { CalendarDays, Check, ListChecks, Plus, ReceiptText } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  ListChecks,
+  Pencil,
+  Plus,
+  ReceiptText,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
@@ -67,8 +76,21 @@ type CalendarWorkspaceLabels = {
   createEvent: string;
   createTask: string;
   completeTask: string;
+  editEvent: string;
+  saveEvent: string;
+  deleteEvent: string;
+  deleteEventConfirm: string;
+  editTask: string;
+  saveTask: string;
+  deleteTask: string;
+  deleteTaskConfirm: string;
+  cancelEdit: string;
   eventCreated: string;
+  eventUpdated: string;
+  eventDeleted: string;
   taskCreated: string;
+  taskUpdated: string;
+  taskDeleted: string;
   taskCompleted: string;
   noEvents: string;
   noEventsInView: string;
@@ -130,9 +152,10 @@ async function postCalendarMutation<T>(
   url: string,
   body: unknown,
   errorFallback: string,
+  method = "POST",
 ): Promise<T> {
   const response = await fetch(url, {
-    method: "POST",
+    method,
     credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
@@ -176,6 +199,14 @@ function formatDateTime(value: string | null, locale: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function dateTimeLocalInputValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  return new Date(value).toISOString().slice(0, 16);
 }
 
 function dateOnly(value: Date | string) {
@@ -260,6 +291,8 @@ export function CalendarWorkspace({
   const [eventViewMode, setEventViewMode] = useState<EventViewMode>("LIST");
   const [expandedExpenseEventId, setExpandedExpenseEventId] = useState<string | null>(null);
   const [expandedExpenseTaskId, setExpandedExpenseTaskId] = useState<string | null>(null);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const writableMembers = members.filter((member) => member.role !== "VIEWER");
   const expenseDebtorOptions = members.filter(
     (member) => member.role !== "VIEWER" && member.userId !== currentUserId,
@@ -352,6 +385,64 @@ export function CalendarWorkspace({
     }
   }
 
+  async function updateEvent(eventId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    setBusyActionId(`event-update-${eventId}`);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      await postCalendarMutation(
+        `/api/v1/households/${activeHouseholdId}/calendar/events/${eventId}`,
+        {
+          title: String(formData.get("title") ?? ""),
+          type: String(formData.get("type") ?? "GROUP_ACTIVITY"),
+          startAt: String(formData.get("startAt") ?? ""),
+          endAt: String(formData.get("endAt") ?? ""),
+          allDay: formData.get("allDay") === "on",
+          description: String(formData.get("description") ?? ""),
+        },
+        labels.errorFallback,
+        "PATCH",
+      );
+      setEditingEventId(null);
+      setMessage(labels.eventUpdated);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : labels.errorFallback);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
+
+  async function deleteEvent(eventId: string) {
+    if (!window.confirm(labels.deleteEventConfirm)) {
+      return;
+    }
+
+    setMessage(null);
+    setBusyActionId(`event-delete-${eventId}`);
+
+    try {
+      await postCalendarMutation(
+        `/api/v1/households/${activeHouseholdId}/calendar/events/${eventId}`,
+        {},
+        labels.errorFallback,
+        "DELETE",
+      );
+      setExpandedExpenseEventId(null);
+      setEditingEventId(null);
+      setMessage(labels.eventDeleted);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : labels.errorFallback);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
+
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
@@ -376,6 +467,63 @@ export function CalendarWorkspace({
       );
       form.reset();
       setMessage(labels.taskCreated);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : labels.errorFallback);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
+
+  async function updateTask(taskId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    setBusyActionId(`task-update-${taskId}`);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      await postCalendarMutation(
+        `/api/v1/households/${activeHouseholdId}/tasks/${taskId}`,
+        {
+          title: String(formData.get("title") ?? ""),
+          priority: String(formData.get("priority") ?? "NORMAL"),
+          dueAt: String(formData.get("dueAt") ?? ""),
+          assignedUserIds: formData.getAll("assignedUserIds").map(String),
+          description: String(formData.get("description") ?? ""),
+        },
+        labels.errorFallback,
+        "PATCH",
+      );
+      setEditingTaskId(null);
+      setMessage(labels.taskUpdated);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : labels.errorFallback);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
+
+  async function deleteTask(taskId: string) {
+    if (!window.confirm(labels.deleteTaskConfirm)) {
+      return;
+    }
+
+    setMessage(null);
+    setBusyActionId(`task-delete-${taskId}`);
+
+    try {
+      await postCalendarMutation(
+        `/api/v1/households/${activeHouseholdId}/tasks/${taskId}`,
+        {},
+        labels.errorFallback,
+        "DELETE",
+      );
+      setExpandedExpenseTaskId(null);
+      setEditingTaskId(null);
+      setMessage(labels.taskDeleted);
       startTransition(() => router.refresh());
     } catch (error) {
       setMessage(error instanceof Error ? error.message : labels.errorFallback);
@@ -773,12 +921,19 @@ export function CalendarWorkspace({
                       .map((link) => link.linkedId);
                     const hasLinkedProposal = linkedProposalIds.length > 0;
                     const isExpenseFormOpen = expandedExpenseEventId === event.id;
+                    const isEditingEvent = editingEventId === event.id;
+                    const isSystemLinkedEvent = event.links.some(
+                      (link) => link.linkedType === "task" || link.linkedType === "debt_obligation",
+                    );
                     const canCreateEventExpenseProposal =
                       canCreateExpenseProposals &&
                       expenseProposalEventTypes.has(eventType) &&
                       !hasLinkedProposal &&
                       expenseDebtorOptions.length > 0;
+                    const canEditEvent = canCreateWorkItems && !isSystemLinkedEvent;
                     const isEventExpenseBusy = busyActionId === `event-expense-${event.id}`;
+                    const isEventUpdateBusy = busyActionId === `event-update-${event.id}`;
+                    const isEventDeleteBusy = busyActionId === `event-delete-${event.id}`;
 
                     return (
                       <div
@@ -834,8 +989,117 @@ export function CalendarWorkspace({
                               <ReceiptText aria-hidden="true" className="h-4 w-4" />
                               {labels.createExpenseProposal}
                             </Button>
+                            <Button
+                              data-testid={`calendar-event-edit-${event.id}`}
+                              disabled={!canEditEvent || isEventUpdateBusy || isPending}
+                              onClick={() => {
+                                setExpandedExpenseEventId(null);
+                                setEditingEventId(isEditingEvent ? null : event.id);
+                              }}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              {isEditingEvent ? (
+                                <X aria-hidden="true" className="h-4 w-4" />
+                              ) : (
+                                <Pencil aria-hidden="true" className="h-4 w-4" />
+                              )}
+                              {isEditingEvent ? labels.cancelEdit : labels.editEvent}
+                            </Button>
+                            <Button
+                              data-testid={`calendar-event-delete-${event.id}`}
+                              disabled={!canEditEvent || isEventDeleteBusy || isPending}
+                              onClick={() => void deleteEvent(event.id)}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              <Trash2 aria-hidden="true" className="h-4 w-4" />
+                              {isEventDeleteBusy ? labels.working : labels.deleteEvent}
+                            </Button>
                           </div>
                         </div>
+                        {isEditingEvent ? (
+                          <form
+                            className="grid gap-3 border-t border-border pt-3"
+                            data-testid={`calendar-event-edit-form-${event.id}`}
+                            onSubmit={(formEvent) => void updateEvent(event.id, formEvent)}
+                          >
+                            <Field label={labels.eventTitle}>
+                              <input
+                                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                data-testid={`calendar-event-edit-title-${event.id}`}
+                                defaultValue={event.title}
+                                maxLength={120}
+                                name="title"
+                                required
+                              />
+                            </Field>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Field label={labels.type}>
+                                <select
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                  data-testid={`calendar-event-edit-type-${event.id}`}
+                                  defaultValue={event.type}
+                                  name="type"
+                                >
+                                  {eventTypeKeys.map((type) => (
+                                    <option key={type} value={type}>
+                                      {labels.eventTypes[type]}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              <Field label={labels.startAt}>
+                                <input
+                                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                  data-testid={`calendar-event-edit-start-${event.id}`}
+                                  defaultValue={dateTimeLocalInputValue(event.startAt)}
+                                  name="startAt"
+                                  required
+                                  type="datetime-local"
+                                />
+                              </Field>
+                            </div>
+                            <Field label={labels.endAt}>
+                              <input
+                                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                                data-testid={`calendar-event-edit-end-${event.id}`}
+                                defaultValue={dateTimeLocalInputValue(event.endAt)}
+                                name="endAt"
+                                type="datetime-local"
+                              />
+                            </Field>
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                className="h-4 w-4 rounded border-input focus-ring"
+                                data-testid={`calendar-event-edit-all-day-${event.id}`}
+                                defaultChecked={event.allDay}
+                                name="allDay"
+                                type="checkbox"
+                              />
+                              {labels.allDay}
+                            </label>
+                            <Field label={labels.description}>
+                              <textarea
+                                className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm focus-ring"
+                                data-testid={`calendar-event-edit-description-${event.id}`}
+                                defaultValue={event.description ?? ""}
+                                maxLength={1000}
+                                name="description"
+                              />
+                            </Field>
+                            <Button
+                              data-testid={`calendar-event-save-${event.id}`}
+                              disabled={isEventUpdateBusy || isPending}
+                              type="submit"
+                            >
+                              <Check aria-hidden="true" className="h-4 w-4" />
+                              {isEventUpdateBusy ? labels.working : labels.saveEvent}
+                            </Button>
+                          </form>
+                        ) : null}
                         {isExpenseFormOpen ? (
                           <form
                             className="grid gap-3 border-t border-border pt-3"
@@ -1128,11 +1392,17 @@ export function CalendarWorkspace({
                 const taskStatus = task.status as StatusKey;
                 const hasLinkedProposal = task.linkedProposalIds.length > 0;
                 const isExpenseFormOpen = expandedExpenseTaskId === task.id;
+                const isEditingTask = editingTaskId === task.id;
                 const canCreateTaskExpenseProposal =
                   canCreateExpenseProposals &&
                   !hasLinkedProposal &&
                   expenseDebtorOptions.length > 0;
                 const isTaskExpenseBusy = busyActionId === `task-expense-${task.id}`;
+                const isTaskUpdateBusy = busyActionId === `task-update-${task.id}`;
+                const isTaskDeleteBusy = busyActionId === `task-delete-${task.id}`;
+                const assignedUserIds = new Set(
+                  task.assignments.map((assignment) => assignment.assignedUserId),
+                );
 
                 return (
                   <div
@@ -1209,8 +1479,131 @@ export function CalendarWorkspace({
                             ? labels.working
                             : labels.completeTask}
                         </Button>
+                        <Button
+                          data-testid={`task-edit-${task.id}`}
+                          disabled={!canCreateWorkItems || isTaskUpdateBusy || isPending}
+                          onClick={() => {
+                            setExpandedExpenseTaskId(null);
+                            setEditingTaskId(isEditingTask ? null : task.id);
+                          }}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          {isEditingTask ? (
+                            <X aria-hidden="true" className="h-4 w-4" />
+                          ) : (
+                            <Pencil aria-hidden="true" className="h-4 w-4" />
+                          )}
+                          {isEditingTask ? labels.cancelEdit : labels.editTask}
+                        </Button>
+                        <Button
+                          data-testid={`task-delete-${task.id}`}
+                          disabled={
+                            !canCreateWorkItems ||
+                            hasLinkedProposal ||
+                            isTaskDeleteBusy ||
+                            isPending
+                          }
+                          onClick={() => void deleteTask(task.id)}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          <Trash2 aria-hidden="true" className="h-4 w-4" />
+                          {isTaskDeleteBusy ? labels.working : labels.deleteTask}
+                        </Button>
                       </div>
                     </div>
+                    {isEditingTask ? (
+                      <form
+                        className="grid gap-3 border-t border-border pt-3"
+                        data-testid={`task-edit-form-${task.id}`}
+                        onSubmit={(formEvent) => void updateTask(task.id, formEvent)}
+                      >
+                        <Field label={labels.taskTitle}>
+                          <input
+                            className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                            data-testid={`task-edit-title-${task.id}`}
+                            defaultValue={task.title}
+                            maxLength={120}
+                            name="title"
+                            required
+                          />
+                        </Field>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label={labels.priority}>
+                            <select
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                              data-testid={`task-edit-priority-${task.id}`}
+                              defaultValue={task.priority}
+                              name="priority"
+                            >
+                              {priorityKeys.map((priority) => (
+                                <option key={priority} value={priority}>
+                                  {labels.priorities[priority]}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field label={labels.dueAt}>
+                            <input
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                              data-testid={`task-edit-due-at-${task.id}`}
+                              defaultValue={dateTimeLocalInputValue(task.dueAt)}
+                              name="dueAt"
+                              type="datetime-local"
+                            />
+                          </Field>
+                        </div>
+                        <div className="grid gap-2">
+                          <p className="text-sm font-medium">{labels.assignees}</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {writableMembers.map((member) => (
+                              <label
+                                className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                                data-testid={`task-edit-assignee-row-${task.id}-${member.email}`}
+                                key={member.userId}
+                              >
+                                <span className="min-w-0 overflow-hidden">
+                                  <span className="block truncate font-medium">
+                                    {member.displayName}
+                                  </span>
+                                  <span className="block break-all text-xs text-muted-foreground">
+                                    {member.email}
+                                  </span>
+                                </span>
+                                <input
+                                  className="h-4 w-4 rounded border-input focus-ring"
+                                  data-testid={`task-edit-assignee-${task.id}-${member.email}`}
+                                  defaultChecked={assignedUserIds.has(member.userId)}
+                                  name="assignedUserIds"
+                                  type="checkbox"
+                                  value={member.userId}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <Field label={labels.description}>
+                          <textarea
+                            className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm focus-ring"
+                            data-testid={`task-edit-description-${task.id}`}
+                            defaultValue={task.description ?? ""}
+                            maxLength={1000}
+                            name="description"
+                          />
+                        </Field>
+                        <Button
+                          data-testid={`task-save-${task.id}`}
+                          disabled={isTaskUpdateBusy || isPending}
+                          type="submit"
+                        >
+                          <Check aria-hidden="true" className="h-4 w-4" />
+                          {isTaskUpdateBusy ? labels.working : labels.saveTask}
+                        </Button>
+                      </form>
+                    ) : null}
                     {isExpenseFormOpen ? (
                       <form
                         className="grid gap-3 border-t border-border pt-3"

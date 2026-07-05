@@ -47,6 +47,11 @@ export const createCalendarEventSchema = z.object({
   recurrenceCount: recurrenceCountSchema,
 });
 
+export const updateCalendarEventSchema = createCalendarEventSchema.omit({
+  recurrenceFrequency: true,
+  recurrenceCount: true,
+});
+
 export const createTaskSchema = z.object({
   title: z.string().trim().min(2).max(120),
   description: optionalDescriptionSchema,
@@ -55,6 +60,11 @@ export const createTaskSchema = z.object({
   assignedUserIds: z.array(z.string().uuid()).max(20).default([]),
   recurrenceFrequency: recurrenceFrequencySchema.default("NONE"),
   recurrenceCount: recurrenceCountSchema,
+});
+
+export const updateTaskSchema = createTaskSchema.omit({
+  recurrenceFrequency: true,
+  recurrenceCount: true,
 });
 
 export const completeTaskSchema = z.object({
@@ -224,6 +234,24 @@ function sortTasksForWorkQueue(left: Task, right: Task) {
   }
 
   return right.createdAt.getTime() - left.createdAt.getTime();
+}
+
+function assertEventCanBeEdited(event: CalendarEvent, links: Array<{ linkedType: string }>) {
+  const lockedLink = links.find(
+    (link) => link.linkedType === "task" || link.linkedType === "debt_obligation",
+  );
+
+  if (lockedLink) {
+    throw new ApiError(
+      409,
+      "CALENDAR_EVENT_LOCKED",
+      "Linked task and repayment events must be changed from their source record.",
+      {
+        eventId: event.id,
+        linkedType: lockedLink.linkedType,
+      },
+    );
+  }
 }
 
 async function getAssignableMemberships(householdId: string, userIds: string[]) {
@@ -432,6 +460,156 @@ export async function createCalendarEventForHousehold(
   });
 }
 
+export async function updateCalendarEventForHousehold(
+  userId: string,
+  householdId: string,
+  eventId: string,
+  input: unknown,
+) {
+  const membership = await requireHouseholdWorkItemCreator(userId, householdId);
+  const parsed = updateCalendarEventSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Calendar event input is invalid.", parsed.error.flatten());
+  }
+
+  const data = parsed.data;
+  const startAt = dateTimeInputToUtc(data.startAt, "startAt");
+  const endAt = data.endAt ? dateTimeInputToUtc(data.endAt, "endAt") : undefined;
+
+  if (endAt && endAt < startAt) {
+    throw validationError("Event end time cannot be before the start time.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const event = await tx.calendarEvent.findFirst({
+      where: {
+        id: eventId,
+        householdId,
+      },
+    });
+
+    if (!event) {
+      throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+    }
+
+    const links = await tx.eventLink.findMany({
+      where: {
+        eventId,
+      },
+    });
+
+    assertEventCanBeEdited(event, links);
+
+    const updatedEvent = await tx.calendarEvent.update({
+      where: {
+        id: eventId,
+      },
+      data: {
+        title: data.title,
+        description: data.description ?? null,
+        type: data.type,
+        startAt,
+        endAt: endAt ?? null,
+        allDay: data.allDay,
+        timezone: membership.household.timezone,
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "calendar_event.updated",
+        entityType: "CalendarEvent",
+        entityId: eventId,
+        before: {
+          title: event.title,
+          type: event.type,
+          startAt: event.startAt.toISOString(),
+          endAt: event.endAt?.toISOString() ?? null,
+          allDay: event.allDay,
+          description: event.description,
+        },
+        after: {
+          title: updatedEvent.title,
+          type: updatedEvent.type,
+          startAt: updatedEvent.startAt.toISOString(),
+          endAt: updatedEvent.endAt?.toISOString() ?? null,
+          allDay: updatedEvent.allDay,
+          description: updatedEvent.description,
+        },
+      },
+    });
+
+    const [linkedEvent] = await attachLinksToEvents(tx, [updatedEvent]);
+
+    return linkedEvent!;
+  });
+}
+
+export async function deleteCalendarEventForHousehold(
+  userId: string,
+  householdId: string,
+  eventId: string,
+) {
+  await requireHouseholdWorkItemCreator(userId, householdId);
+
+  return prisma.$transaction(async (tx) => {
+    const event = await tx.calendarEvent.findFirst({
+      where: {
+        id: eventId,
+        householdId,
+      },
+    });
+
+    if (!event) {
+      throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+    }
+
+    const links = await tx.eventLink.findMany({
+      where: {
+        eventId,
+      },
+    });
+
+    assertEventCanBeEdited(event, links);
+
+    await tx.eventLink.deleteMany({
+      where: {
+        eventId,
+      },
+    });
+    await tx.calendarEvent.delete({
+      where: {
+        id: eventId,
+      },
+    });
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "calendar_event.deleted",
+        entityType: "CalendarEvent",
+        entityId: eventId,
+        before: {
+          title: event.title,
+          type: event.type,
+          startAt: event.startAt.toISOString(),
+          endAt: event.endAt?.toISOString() ?? null,
+          allDay: event.allDay,
+          linkedTypes: links.map((link) => link.linkedType),
+        },
+      },
+    });
+
+    return {
+      eventId,
+      deleted: true,
+    };
+  });
+}
+
 async function createTaskInstance(
   tx: Prisma.TransactionClient,
   input: {
@@ -609,6 +787,266 @@ export async function createTaskForHousehold(userId: string, householdId: string
     const [linkedTask] = await attachLinkedEventIdsToTasks(tx, [task]);
 
     return linkedTask!;
+  });
+}
+
+export async function updateTaskForHousehold(
+  userId: string,
+  householdId: string,
+  taskId: string,
+  input: unknown,
+) {
+  const membership = await requireHouseholdWorkItemCreator(userId, householdId);
+  const parsed = updateTaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Task input is invalid.", parsed.error.flatten());
+  }
+
+  const data = parsed.data;
+  const assignedUserIds = uniqueValues(
+    data.assignedUserIds.length > 0 ? data.assignedUserIds : [userId],
+  );
+  const dueAt = data.dueAt ? dateTimeInputToUtc(data.dueAt, "dueAt") : undefined;
+
+  await getAssignableMemberships(householdId, assignedUserIds);
+
+  return prisma.$transaction(async (tx) => {
+    const task = await tx.task.findFirst({
+      where: {
+        id: taskId,
+        householdId,
+      },
+      include: {
+        assignments: true,
+      },
+    });
+
+    if (!task) {
+      throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+    }
+
+    const linkedEventLinks = await tx.eventLink.findMany({
+      where: {
+        linkedType: "task",
+        linkedId: taskId,
+      },
+    });
+    const linkedEventIds = linkedEventLinks.map((link) => link.eventId);
+    const createdLinkedEventIds: string[] = [];
+    const deletedLinkedEventIds: string[] = [];
+
+    if (dueAt && linkedEventIds.length > 0) {
+      await tx.calendarEvent.updateMany({
+        where: {
+          id: {
+            in: linkedEventIds,
+          },
+          householdId,
+          type: CalendarEventType.TASK,
+        },
+        data: {
+          title: data.title,
+          description: data.description ?? null,
+          startAt: dueAt,
+          timezone: membership.household.timezone,
+          status: task.status,
+        },
+      });
+    } else if (dueAt) {
+      const linkedEvent = await tx.calendarEvent.create({
+        data: {
+          householdId,
+          type: CalendarEventType.TASK,
+          title: data.title,
+          description: data.description ?? null,
+          startAt: dueAt,
+          timezone: membership.household.timezone,
+          status: task.status,
+          createdByUserId: userId,
+        },
+      });
+
+      await tx.eventLink.create({
+        data: {
+          eventId: linkedEvent.id,
+          linkedType: "task",
+          linkedId: taskId,
+        },
+      });
+      createdLinkedEventIds.push(linkedEvent.id);
+    } else if (linkedEventIds.length > 0) {
+      await tx.eventLink.deleteMany({
+        where: {
+          eventId: {
+            in: linkedEventIds,
+          },
+        },
+      });
+      await tx.calendarEvent.deleteMany({
+        where: {
+          id: {
+            in: linkedEventIds,
+          },
+          householdId,
+          type: CalendarEventType.TASK,
+        },
+      });
+      deletedLinkedEventIds.push(...linkedEventIds);
+    }
+
+    await tx.taskAssignment.deleteMany({
+      where: {
+        taskId,
+      },
+    });
+    await tx.taskAssignment.createMany({
+      data: assignedUserIds.map((assignedUserId) => ({
+        taskId,
+        assignedUserId,
+        status: task.status === "COMPLETED" ? "COMPLETED" : "ASSIGNED",
+      })),
+    });
+
+    const updatedTask = await tx.task.update({
+      where: {
+        id: taskId,
+      },
+      data: {
+        title: data.title,
+        description: data.description ?? null,
+        priority: data.priority,
+        dueAt: dueAt ?? null,
+      },
+      include: {
+        assignments: true,
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "task.updated",
+        entityType: "Task",
+        entityId: taskId,
+        before: {
+          title: task.title,
+          description: task.description,
+          priority: task.priority,
+          dueAt: task.dueAt?.toISOString() ?? null,
+          assignedUserIds: task.assignments.map((assignment) => assignment.assignedUserId),
+          linkedEventIds,
+        },
+        after: {
+          title: updatedTask.title,
+          description: updatedTask.description,
+          priority: updatedTask.priority,
+          dueAt: updatedTask.dueAt?.toISOString() ?? null,
+          assignedUserIds,
+          createdLinkedEventIds,
+          deletedLinkedEventIds,
+        },
+      },
+    });
+
+    const [linkedTask] = await attachLinkedEventIdsToTasks(tx, [updatedTask]);
+
+    return linkedTask!;
+  });
+}
+
+export async function deleteTaskForHousehold(userId: string, householdId: string, taskId: string) {
+  await requireHouseholdWorkItemCreator(userId, householdId);
+
+  return prisma.$transaction(async (tx) => {
+    const task = await tx.task.findFirst({
+      where: {
+        id: taskId,
+        householdId,
+      },
+      include: {
+        assignments: true,
+      },
+    });
+
+    if (!task) {
+      throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+    }
+
+    const proposalLinks = await tx.taskExpenseProposalLink.findMany({
+      where: {
+        taskId,
+      },
+    });
+
+    if (proposalLinks.length > 0) {
+      throw new ApiError(
+        409,
+        "TASK_HAS_LINKED_PROPOSAL",
+        "Tasks with linked expense proposals cannot be deleted.",
+        {
+          taskId,
+          linkedProposalIds: proposalLinks.map((link) => link.proposalId),
+        },
+      );
+    }
+
+    const linkedEventLinks = await tx.eventLink.findMany({
+      where: {
+        linkedType: "task",
+        linkedId: taskId,
+      },
+    });
+    const linkedEventIds = linkedEventLinks.map((link) => link.eventId);
+
+    if (linkedEventIds.length > 0) {
+      await tx.eventLink.deleteMany({
+        where: {
+          eventId: {
+            in: linkedEventIds,
+          },
+        },
+      });
+      await tx.calendarEvent.deleteMany({
+        where: {
+          id: {
+            in: linkedEventIds,
+          },
+          householdId,
+          type: CalendarEventType.TASK,
+        },
+      });
+    }
+
+    await tx.task.delete({
+      where: {
+        id: taskId,
+      },
+    });
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "task.deleted",
+        entityType: "Task",
+        entityId: taskId,
+        before: {
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          priority: task.priority,
+          dueAt: task.dueAt?.toISOString() ?? null,
+          assignedUserIds: task.assignments.map((assignment) => assignment.assignedUserId),
+          linkedEventIds,
+        },
+      },
+    });
+
+    return {
+      taskId,
+      deleted: true,
+    };
   });
 }
 

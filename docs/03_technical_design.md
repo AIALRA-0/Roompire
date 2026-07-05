@@ -221,7 +221,7 @@ The locked rate used by a proposal must be copied into the proposal/share/ledger
 
 ## Calendar/task design
 
-Use FullCalendar in the frontend and recurrence rules stored in the backend.
+Use backend-stored recurrence rules with materialized event/task instances for the current MVP. The localized calendar workspace renders list/day/week/month views from the loaded materialized events.
 
 Event types:
 
@@ -242,7 +242,7 @@ Events link to domain records via polymorphic `event_links`:
 - task
 - recurring template
 
-Background jobs generate upcoming recurrence instances.
+Task due dates create linked `TASK` calendar events. Updating a task creates, updates, or removes that linked event so the task stays authoritative. Direct calendar edits are allowed for standalone materialized events; task-linked and debt-obligation-linked events are locked and must be changed from their source record.
 
 ## Notifications
 
