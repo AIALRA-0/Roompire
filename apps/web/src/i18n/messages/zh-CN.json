@@ -300,6 +300,19 @@
     "apiBoundaryHint": "此页面使用和 REST 端点相同的成员校验。",
     "errorFallback": "请求失败"
   },
+  "Notifications": {
+    "title": "通知",
+    "hint": "需要你关注的近期家庭动态。",
+    "unread": "{count} 条未读",
+    "noNotifications": "暂无通知",
+    "markRead": "标为已读",
+    "read": "已读",
+    "openProposal": "打开提案",
+    "expenseProposalAssignedTitle": "需要审批",
+    "expenseProposalAssignedBody": "{title} 分配给你 {amount} {currency}。",
+    "unknownTitle": "Roompire 更新",
+    "unknownBody": "有一条家庭动态可查看。"
+  },
   "InvitePage": {
     "title": "接受家庭邀请",
     "body": "以 {email} 加入 {householdName}。",

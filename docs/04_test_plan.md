@@ -76,6 +76,7 @@ Before Playwright starts the dev server, `pnpm e2e:prepare` resets only allowed 
 
 - User signs in.
 - User updates display name, preferred locale, and notification preferences.
+- User sees assigned proposal notifications in the in-app center and can mark them read.
 - Creates household.
 - Invites another member.
 - Member accepts invite.
@@ -91,10 +92,11 @@ Before Playwright starts the dev server, `pnpm e2e:prepare` resets only allowed 
 5. Uploads or attaches receipt mock.
 6. System locks FX rate by expense date.
 7. Debtor sees pending approval.
-8. Debtor approves share.
-9. Payer confirmation exists.
-10. Formal ledger obligation appears.
-11. Dashboard shows updated who-owes-whom.
+8. Debtor receives an in-app notification for the assigned share.
+9. Debtor approves share.
+10. Payer confirmation exists.
+11. Formal ledger obligation appears.
+12. Dashboard shows updated who-owes-whom.
 
 ### Expense proposal rejection path
 

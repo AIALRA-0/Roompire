@@ -300,6 +300,19 @@
     "apiBoundaryHint": "The page uses the same membership checks as the REST endpoints.",
     "errorFallback": "Request failed"
   },
+  "Notifications": {
+    "title": "Notifications",
+    "hint": "Recent household updates that need your attention.",
+    "unread": "{count} unread",
+    "noNotifications": "No notifications yet",
+    "markRead": "Mark read",
+    "read": "Read",
+    "openProposal": "Open proposal",
+    "expenseProposalAssignedTitle": "Approval needed",
+    "expenseProposalAssignedBody": "{title} assigned you {amount} {currency}.",
+    "unknownTitle": "Roompire update",
+    "unknownBody": "A household update is available."
+  },
   "InvitePage": {
     "title": "Accept household invite",
     "body": "Join {householdName} as {email}.",

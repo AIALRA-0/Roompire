@@ -20,6 +20,7 @@ import { getTranslations } from "next-intl/server";
 import { ExpenseWorkspace } from "@/components/expense-workspace";
 import { IdentityWorkspace } from "@/components/identity-workspace";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { NotificationCenter } from "@/components/notification-center";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/routing";
@@ -37,6 +38,7 @@ export default async function AppPage({ params }: PageProps) {
   const common = await getTranslations({ locale, namespace: "Common" });
   const identity = await getTranslations({ locale, namespace: "Identity" });
   const expense = await getTranslations({ locale, namespace: "Expense" });
+  const notifications = await getTranslations({ locale, namespace: "Notifications" });
   const model = await getDashboardModel();
   const activeHouseholdName = model.activeHousehold?.name ?? t("title");
 
@@ -237,6 +239,23 @@ export default async function AppPage({ params }: PageProps) {
       CANCELLED: expense("statusCancelled"),
     },
   };
+  const notificationLabels = {
+    title: notifications("title"),
+    hint: notifications("hint"),
+    unread: notifications("unread", { count: "{count}" }),
+    noNotifications: notifications("noNotifications"),
+    markRead: notifications("markRead"),
+    read: notifications("read"),
+    openProposal: notifications("openProposal"),
+    expenseProposalAssignedTitle: notifications("expenseProposalAssignedTitle"),
+    expenseProposalAssignedBody: notifications("expenseProposalAssignedBody", {
+      amount: "{amount}",
+      currency: "{currency}",
+      title: "{title}",
+    }),
+    unknownTitle: notifications("unknownTitle"),
+    unknownBody: notifications("unknownBody"),
+  };
   const memberNamesByUserId = new Map(
     model.members.map((member) => [
       member.userId,
@@ -363,6 +382,14 @@ export default async function AppPage({ params }: PageProps) {
                   {nav("ops")}
                 </Link>
               </Button>
+            </div>
+
+            <div className="mt-6">
+              <NotificationCenter
+                labels={notificationLabels}
+                locale={locale}
+                notifications={model.notifications}
+              />
             </div>
 
             <div className="mt-6">

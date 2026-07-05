@@ -1511,6 +1511,142 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("profile-taskRemindersEnabled")).not.toBeChecked();
   });
 
+  test("expense proposal assignment creates an in-app notification", async ({ page }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `notify-owner+${suffix}@example.test`;
+    const debtorEmail = `notify-debtor+${suffix}@example.test`;
+    const householdName = `Notify House ${suffix}`;
+    const proposalTitle = `Notify Dinner ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "Notify Owner E2E");
+    const householdResponse = await page.request.post("/api/v1/households", {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+      },
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(householdResponse.ok()).toBeTruthy();
+    const householdPayload = (await householdResponse.json()) as {
+      household: { id: string };
+    };
+    const householdId = householdPayload.household.id;
+    const invitePayload = await createInviteWithRetry(
+      page,
+      householdId,
+      {
+        email: debtorEmail,
+        role: "MEMBER",
+      },
+      ownerEmail,
+    );
+
+    await setDevSessionWithRetry(page, debtorEmail, "Notify Debtor E2E");
+    const acceptResponse = await page.request.post("/api/v1/invites/accept", {
+      data: {
+        token: invitePayload.token,
+      },
+      headers: {
+        "x-roompire-dev-user-email": debtorEmail,
+      },
+    });
+    expect(acceptResponse.ok()).toBeTruthy();
+
+    const membersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(membersResponse.ok()).toBeTruthy();
+    const membersPayload = (await membersResponse.json()) as {
+      members: Array<{ userId: string; email: string }>;
+    };
+    const debtorUserId = membersPayload.members.find(
+      (member) => member.email === debtorEmail,
+    )?.userId;
+    expect(debtorUserId).toBeTruthy();
+    if (!debtorUserId) {
+      throw new Error("Expected notification debtor user id.");
+    }
+
+    const proposalResponse = await page.request.post(
+      `/api/v1/households/${householdId}/expenses/proposals`,
+      {
+        data: {
+          title: proposalTitle,
+          categoryId: null,
+          expenseDate: "2026-07-05",
+          originalAmount: "18",
+          originalCurrency: "CNY",
+          participantUserIds: [debtorUserId],
+          splitMethod: "EQUAL",
+        },
+        headers: {
+          "Idempotency-Key": `notify-proposal-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(proposalResponse.ok()).toBeTruthy();
+    const proposalPayload = (await proposalResponse.json()) as {
+      proposal: { id: string };
+    };
+
+    const notificationsResponse = await getApiWithRetry(page, "/api/v1/notifications", {
+      headers: {
+        "x-roompire-dev-user-email": debtorEmail,
+      },
+    });
+    expect(notificationsResponse.ok()).toBeTruthy();
+    const notificationsPayload = (await notificationsResponse.json()) as {
+      unreadCount: number;
+      notifications: Array<{
+        id: string;
+        type: string;
+        readAt: string | null;
+        payload: { proposalId: string; proposalTitle: string; amount: string; currency: string };
+      }>;
+    };
+    expect(notificationsPayload.unreadCount).toBe(1);
+    expect(notificationsPayload.notifications[0]).toEqual(
+      expect.objectContaining({
+        type: "EXPENSE_PROPOSAL_ASSIGNED",
+        readAt: null,
+        payload: expect.objectContaining({
+          proposalId: proposalPayload.proposal.id,
+          proposalTitle,
+          amount: "9",
+          currency: "CNY",
+        }),
+      }),
+    );
+
+    await setDevSessionWithRetry(page, debtorEmail, "Notify Debtor E2E");
+    await page.goto("/en-US/app");
+    const notificationRow = page.getByTestId("notification-row-EXPENSE_PROPOSAL_ASSIGNED").first();
+    await expect(page.getByTestId("notification-center")).toContainText("1 unread");
+    await expect(notificationRow).toContainText("Approval needed");
+    await expect(notificationRow).toContainText(`${proposalTitle} assigned you 9 CNY.`);
+
+    const readResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/notifications/") &&
+        response.request().method() === "PATCH",
+    );
+    await notificationRow.getByRole("button", { name: "Mark read" }).click();
+    const readResponse = await readResponsePromise;
+    expect(readResponse.ok()).toBeTruthy();
+    await expect(notificationRow).toContainText("Read");
+    await expect(page.getByTestId("notification-center")).toContainText("0 unread");
+  });
+
   test("owner updates settings and manages a linked invitee", async ({ page }, testInfo) => {
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
     const ownerEmail = `owner+${suffix}@example.test`;

@@ -427,6 +427,44 @@ components:
       required: [user]
       properties:
         user: { $ref: "#/components/schemas/User" }
+    Notification:
+      type: object
+      required: [id, householdId, type, titleKey, bodyKey, payload, readAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        type:
+          type: string
+          enum: [EXPENSE_PROPOSAL_ASSIGNED]
+        titleKey: { type: string }
+        bodyKey: { type: string }
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt: { type: string, format: date-time }
+    NotificationsListResponse:
+      type: object
+      required: [notifications, unreadCount]
+      properties:
+        notifications:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+        unreadCount: { type: integer, minimum: 0 }
+    UpdateNotificationRequest:
+      type: object
+      required: [read]
+      properties:
+        read: { type: boolean }
+    NotificationResponse:
+      type: object
+      required: [notification]
+      properties:
+        notification: { $ref: "#/components/schemas/Notification" }
     Household:
       type: object
       required:
@@ -1827,6 +1865,55 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401":
           description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /notifications:
+    get:
+      summary: List current user's in-app notifications
+      description: Returns notifications for households where the current user is still an active member.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationsListResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /notifications/{notificationId}:
+    patch:
+      summary: Mark a current user's notification read or unread
+      parameters:
+        - in: path
+          name: notificationId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateNotificationRequest" }
+      responses:
+        "200":
+          description: Notification updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Notification not found or inaccessible
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

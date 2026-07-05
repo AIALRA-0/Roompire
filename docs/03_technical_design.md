@@ -246,6 +246,12 @@ Delivery channels:
 - Web Push later
 - WeChat subscription message later
 
+Current implemented subset:
+
+- `GET /api/v1/notifications` lists the current user's recent in-app notifications across active household memberships.
+- `PATCH /api/v1/notifications/{notificationId}` marks one scoped notification read or unread.
+- Creating an expense proposal writes `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the target user's in-app and proposal preferences allow it.
+
 Use queue workers for scheduled reminders and recurring generation.
 
 ## Auth strategy

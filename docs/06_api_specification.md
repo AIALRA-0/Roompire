@@ -60,6 +60,13 @@ Current private-deployment MVP: when site-level Basic Auth is configured, verifi
 
 Current user settings implementation: `GET /users/me` returns the authenticated user's display name, preferred locale, and notification preferences. `PATCH /users/me` updates display name, preferred locale, and in-app/email/proposal/settlement/task reminder preference switches. Email delivery remains dormant until an email provider is configured.
 
+### Notifications
+
+- `GET /notifications`
+- `PATCH /notifications/{notificationId}`
+
+Current implementation: `GET /notifications` returns recent in-app notifications for households where the current user is still active, plus an unread count. `PATCH /notifications/{notificationId}` toggles the scoped notification read state. Expense proposal creation emits `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the recipient's in-app and proposal preference switches are enabled.
+
 ### Households
 
 - `GET /households`

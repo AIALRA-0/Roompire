@@ -15,6 +15,7 @@ import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
 import { assertFilesReadyForProposal } from "@/server/files/service";
 import { resolveFxRateLock } from "@/server/fx/rates";
+import { createExpenseProposalAssignedNotifications } from "@/server/notifications/service";
 import { requireActiveMembership, requireExpenseProposalCreator } from "@/server/permissions/rbac";
 
 const currencySchema = z
@@ -772,6 +773,18 @@ async function createExpenseProposalRecord(
         sourceCalendarEventId: prepared.sourceCalendarEventId ?? null,
       },
     },
+  });
+
+  await createExpenseProposalAssignedNotifications(tx, {
+    householdId: prepared.householdId,
+    proposalId: proposal.id,
+    proposalTitle: proposal.title,
+    actorUserId: prepared.userId,
+    shares: proposal.shares.map((share) => ({
+      debtorUserId: share.debtorUserId,
+      shareSettlementAmount: share.shareSettlementAmount,
+      settlementCurrency: share.settlementCurrency,
+    })),
   });
 
   return tx.expenseProposal.findUniqueOrThrow({

@@ -7,6 +7,7 @@ import {
   listExpenseProposalsForHousehold,
 } from "@/server/expenses/service";
 import { listHouseholdsForUser } from "@/server/households/service";
+import { listNotificationsForUser } from "@/server/notifications/service";
 import {
   canCorrectLedger,
   canCreateExpenseProposal,
@@ -17,9 +18,10 @@ import { getUserSettings } from "@/server/users/service";
 
 export async function getDashboardModel() {
   const user = await requirePageUser();
-  const [householdMemberships, userSettings] = await Promise.all([
+  const [householdMemberships, userSettings, notificationResult] = await Promise.all([
     listHouseholdsForUser(user.id),
     getUserSettings(user.id),
+    listNotificationsForUser(user.id),
   ]);
   const activeMembership = householdMemberships[0] ?? null;
   const activeHousehold = activeMembership?.household ?? null;
@@ -28,6 +30,8 @@ export async function getDashboardModel() {
     return {
       user,
       userSettings,
+      notifications: notificationResult.notifications,
+      unreadNotificationCount: notificationResult.unreadCount,
       householdMemberships,
       activeHousehold: null,
       activeMembership: null,
@@ -106,6 +110,8 @@ export async function getDashboardModel() {
   return {
     user,
     userSettings,
+    notifications: notificationResult.notifications,
+    unreadNotificationCount: notificationResult.unreadCount,
     householdMemberships,
     activeHousehold,
     activeMembership,
