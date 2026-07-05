@@ -577,6 +577,27 @@ Fields:
 - `created_at`
 - `updated_at`
 
+### notification_push_subscriptions
+
+Fields:
+
+- `id`
+- `user_id`
+- `endpoint` unique
+- `p256dh`
+- `auth`
+- `expires_at` nullable
+- `user_agent` nullable
+- `disabled_at` nullable soft-disable marker
+- `last_seen_at`
+- `created_at`
+- `updated_at`
+
+Indexes:
+
+- `(user_id, disabled_at)` for current-user subscription settings and delivery fanout.
+- `(last_seen_at)` for future stale subscription cleanup.
+
 ### audit_events
 
 Fields:

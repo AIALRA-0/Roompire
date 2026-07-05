@@ -70,9 +70,12 @@ Current user settings implementation: `GET /users/me` returns the authenticated 
 ### Notifications
 
 - `GET /notifications`
+- `GET /notifications/push-subscriptions`
+- `POST /notifications/push-subscriptions`
+- `DELETE /notifications/push-subscriptions`
 - `PATCH /notifications/{notificationId}`
 
-Current implementation: `GET /notifications` returns recent in-app notifications for households where the current user is still active, plus an unread count and `page` metadata (`limit`, `nextCursor`, `hasMore`) for cursor pagination. `PATCH /notifications/{notificationId}` toggles the scoped notification read state. Expense proposal creation emits `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the recipient's in-app and proposal preference switches are enabled. The scheduled server-side jobs run recurring expense proposal generation before `notifications:send-reminders`, which emits task due/overdue, repayment due/overdue, and settlement confirmation reminder notifications; the public notification API remains read/update only.
+Current implementation: `GET /notifications` returns recent in-app notifications for households where the current user is still active, plus an unread count and `page` metadata (`limit`, `nextCursor`, `hasMore`) for cursor pagination. `PATCH /notifications/{notificationId}` toggles the scoped notification read state. `GET /notifications/push-subscriptions` reports Web Push readiness, public VAPID key, delivery mode, and the current user's active subscription count. `POST /notifications/push-subscriptions` upserts the current browser subscription when Web Push is configured; `DELETE /notifications/push-subscriptions` soft-disables the current user's matching endpoint. Expense proposal creation emits `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the recipient's in-app and proposal preference switches are enabled, then best-effort dispatches Web Push to the newly created notification rows when browser subscriptions exist. The scheduled server-side jobs run recurring expense proposal generation before `notifications:send-reminders`, which emits task due/overdue, repayment due/overdue, and settlement confirmation reminder notifications and best-effort Web Push for new rows; the public notification creation surface remains server-owned.
 
 ### Households
 

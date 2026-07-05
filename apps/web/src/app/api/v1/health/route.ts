@@ -3,6 +3,7 @@ import { prisma } from "@/server/db/prisma";
 import { resolveExportSigningSecret } from "@/server/exports/service";
 import { resolveFileStorageConfig } from "@/server/files/storage-config";
 import { resolveConfiguredFxProvider } from "@/server/fx/rates";
+import { resolveWebPushConfig } from "@/server/notifications/push";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export async function GET() {
     exports: "ok",
     fx: "ok",
     storage: "ok",
+    webPush: "disabled",
   };
 
   try {
@@ -42,11 +44,18 @@ export async function GET() {
     checks.fx = "error";
   }
 
+  try {
+    checks.webPush = resolveWebPushConfig() ? "ok" : "disabled";
+  } catch {
+    checks.webPush = "error";
+  }
+
   const status: HealthStatus =
     checks.database === "ok" &&
     checks.storage === "ok" &&
     checks.fx === "ok" &&
-    checks.exports === "ok"
+    checks.exports === "ok" &&
+    checks.webPush !== "error"
       ? "ok"
       : "unhealthy";
 

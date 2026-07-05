@@ -104,7 +104,8 @@ The smoke test verifies:
 Browser E2E separately verifies service worker registration and the offline shell. The
 service worker caches only the offline shell, manifest/icon, and immutable Next.js
 static assets; `/api/` requests remain network-only so household and ledger data are
-not served from stale cache.
+not served from stale cache. It also handles Web Push notification events; this does
+not change the cache allowlist.
 
 It also writes `ops/status/latest-smoke.json` without credentials. Run `./scripts/collect_ops_status.sh` after a successful smoke test to fold that result into `ops/status/ops-status.json` for the authenticated ops dashboard.
 
@@ -144,7 +145,7 @@ systemctl start roompire-housekeeping.service
 systemctl list-timers 'roompire-*'
 ```
 
-## Recurring Expenses and In-App Reminders
+## Recurring Expenses and Reminders
 
 Run recurring expense proposal generation and task/debt/settlement reminder delivery manually when validating a deployment. In production, run them through the Compose migrator container so `DATABASE_URL=postgres:5432` resolves inside the Docker network:
 
@@ -152,7 +153,18 @@ Run recurring expense proposal generation and task/debt/settlement reminder deli
 docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.nginx.example.yml --profile migrate run --rm migrate sh -lc "pnpm recurring-expenses:generate && pnpm notifications:send-reminders"
 ```
 
-For local development, `pnpm recurring-expenses:generate` and `pnpm notifications:send-reminders` are still fine. Recurring expense generation creates at most one pending proposal per due template-backed event; reminder delivery emits in-app notifications only, respects user notification preferences, targets active household members, and uses unique notification `dedupeKey` values so repeated runs do not duplicate reminders.
+For local development, `pnpm recurring-expenses:generate` and `pnpm notifications:send-reminders` are still fine. Recurring expense generation creates at most one pending proposal per due template-backed event; reminder delivery emits in-app notifications, respects user notification preferences, targets active household members, and uses unique notification `dedupeKey` values so repeated runs do not duplicate reminders. When `ROOMPIRE_WEB_PUSH_PUBLIC_KEY` and `ROOMPIRE_WEB_PUSH_PRIVATE_KEY` are configured together, newly created assignment/reminder rows are also dispatched to active browser PushManager subscriptions. Leave both VAPID keys empty to keep Web Push disabled; partial or invalid Web Push configuration makes `/api/v1/health` unhealthy.
+
+Web Push production configuration is optional:
+
+```bash
+ROOMPIRE_WEB_PUSH_PUBLIC_KEY=...
+ROOMPIRE_WEB_PUSH_PRIVATE_KEY=...
+ROOMPIRE_WEB_PUSH_SUBJECT=mailto:admin@example.com
+ROOMPIRE_WEB_PUSH_DELIVERY_MODE=send
+```
+
+Use `ROOMPIRE_WEB_PUSH_DELIVERY_MODE=dry-run` only for E2E or deployment validation where subscriptions should be accepted without sending through a push service.
 
 Install the hourly recurring expense and reminder timer on the self-hosted server:
 

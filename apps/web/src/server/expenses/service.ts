@@ -18,6 +18,7 @@ import { assertFilesReadyForProposal } from "@/server/files/service";
 import { resolveFxRateLock } from "@/server/fx/rates";
 import { assertLedgerPeriodOpen } from "@/server/ledger/service";
 import { createExpenseProposalAssignedNotifications } from "@/server/notifications/service";
+import { dispatchWebPushForNotifications } from "@/server/notifications/push";
 import { paginateRows, paginationQueryFields } from "@/server/pagination";
 import {
   requireActiveMembership,
@@ -633,7 +634,7 @@ export async function createExpenseCategoryForHousehold(
     throw validationError("Expense category input is invalid.", parsed.error.flatten());
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const category = await tx.expenseCategory.create({
       data: {
         householdId,
@@ -667,6 +668,8 @@ export async function createExpenseCategoryForHousehold(
 
     return category;
   });
+
+  return result;
 }
 
 export async function updateExpenseCategoryForHousehold(
@@ -690,7 +693,7 @@ export async function updateExpenseCategoryForHousehold(
     throw new ApiError(404, "NOT_FOUND", "Resource not found.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const category = await tx.expenseCategory.update({
       where: { id: categoryId },
       data: {
@@ -732,6 +735,8 @@ export async function updateExpenseCategoryForHousehold(
 
     return category;
   });
+
+  return result;
 }
 
 export async function archiveExpenseCategoryForHousehold(
@@ -748,7 +753,7 @@ export async function archiveExpenseCategoryForHousehold(
     throw new ApiError(404, "NOT_FOUND", "Resource not found.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const category = await tx.expenseCategory.update({
       where: { id: categoryId },
       data: { isActive: false },
@@ -780,6 +785,8 @@ export async function archiveExpenseCategoryForHousehold(
 
     return category;
   });
+
+  return result;
 }
 
 export async function createExpenseTagForHousehold(
@@ -1307,7 +1314,7 @@ async function createExpenseProposalRecord(
     },
   });
 
-  await createExpenseProposalAssignedNotifications(tx, {
+  const notificationIds = await createExpenseProposalAssignedNotifications(tx, {
     householdId: prepared.householdId,
     proposalId: proposal.id,
     proposalTitle: proposal.title,
@@ -1319,12 +1326,33 @@ async function createExpenseProposalRecord(
     })),
   });
 
-  return tx.expenseProposal.findUniqueOrThrow({
+  const detailedProposal = await tx.expenseProposal.findUniqueOrThrow({
     where: {
       id: proposal.id,
     },
     include: expenseProposalDetailInclude,
   });
+
+  return {
+    proposal: detailedProposal,
+    notificationIds,
+  };
+}
+
+async function dispatchProposalPushNotifications<T>({
+  notificationIds,
+  proposal,
+}: {
+  notificationIds: string[];
+  proposal: T;
+}) {
+  try {
+    await dispatchWebPushForNotifications(notificationIds);
+  } catch {
+    // Browser push is a progressive enhancement; proposal creation remains authoritative.
+  }
+
+  return proposal;
 }
 
 export async function createExpenseProposalForHousehold(
@@ -1346,7 +1374,9 @@ export async function createExpenseProposalForHousehold(
     parsed.data,
   );
 
-  return prisma.$transaction((tx) => createExpenseProposalRecord(tx, prepared));
+  const result = await prisma.$transaction((tx) => createExpenseProposalRecord(tx, prepared));
+
+  return dispatchProposalPushNotifications(result);
 }
 
 export async function createExpenseProposalCommentForHousehold(
@@ -1494,7 +1524,7 @@ export async function createExpenseProposalFromTaskForHousehold(
   );
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const existingLink = await tx.taskExpenseProposalLink.findUnique({
         where: {
           taskId,
@@ -1512,7 +1542,8 @@ export async function createExpenseProposalFromTaskForHousehold(
         );
       }
 
-      const proposal = await createExpenseProposalRecord(tx, prepared);
+      const recordResult = await createExpenseProposalRecord(tx, prepared);
+      const proposal = recordResult.proposal;
       const link = await tx.taskExpenseProposalLink.create({
         data: {
           taskId,
@@ -1552,8 +1583,10 @@ export async function createExpenseProposalFromTaskForHousehold(
         },
       });
 
-      return proposal;
+      return recordResult;
     });
+
+    return dispatchProposalPushNotifications(result);
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       throw new ApiError(
@@ -1639,7 +1672,7 @@ export async function createExpenseProposalFromCalendarEventForHousehold(
     calendarEvent.id,
   );
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const existingLink = await tx.eventLink.findFirst({
       where: {
         eventId,
@@ -1658,7 +1691,8 @@ export async function createExpenseProposalFromCalendarEventForHousehold(
       );
     }
 
-    const proposal = await createExpenseProposalRecord(tx, prepared);
+    const recordResult = await createExpenseProposalRecord(tx, prepared);
+    const proposal = recordResult.proposal;
     const link = await tx.eventLink.create({
       data: {
         eventId,
@@ -1681,8 +1715,10 @@ export async function createExpenseProposalFromCalendarEventForHousehold(
       },
     });
 
-    return proposal;
+    return recordResult;
   });
+
+  return dispatchProposalPushNotifications(result);
 }
 
 export async function approveExpenseShareForHousehold(
@@ -1703,7 +1739,7 @@ export async function approveExpenseShareForHousehold(
     throw validationError("Expense share approval input is invalid.", parsed.error.flatten());
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const share = await tx.expenseShare.findFirst({
       where: {
         id: shareId,
@@ -1898,6 +1934,8 @@ export async function approveExpenseShareForHousehold(
       },
     });
   });
+
+  return result;
 }
 
 export async function rejectExpenseShareForHousehold(
@@ -2183,7 +2221,7 @@ export async function reviseExpenseProposalForHousehold(
     },
   );
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const alreadyRevised = await tx.expenseProposal.findFirst({
       where: {
         householdId,
@@ -2203,7 +2241,8 @@ export async function reviseExpenseProposalForHousehold(
       );
     }
 
-    const revision = await createExpenseProposalRecord(tx, prepared);
+    const recordResult = await createExpenseProposalRecord(tx, prepared);
+    const revision = recordResult.proposal;
 
     await tx.expenseProposal.update({
       where: {
@@ -2258,8 +2297,10 @@ export async function reviseExpenseProposalForHousehold(
       },
     });
 
-    return revision;
+    return recordResult;
   });
+
+  return dispatchProposalPushNotifications(result);
 }
 
 export type ExpenseProposalWithRelations = Awaited<

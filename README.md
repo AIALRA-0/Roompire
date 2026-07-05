@@ -15,8 +15,8 @@ Phase 0 bootstrap is implemented:
 - Landing page at `/` via locale redirect, localized pages at `/en-US` and `/zh-CN`.
 - Dashboard shell at `/en-US/app` and `/zh-CN/app`.
 - Protected-state example at `/[locale]/app/forbidden`.
-- PWA manifest, icon, service worker registration, and a safe offline shell that avoids
-  caching API/financial data.
+- PWA manifest, icon, service worker registration, safe offline shell caching, and optional
+  browser push notifications without caching API/financial data.
 - Prisma/PostgreSQL schema, initial migration, deterministic seed data.
 - Docker Compose for Postgres and Redis.
 - Vitest money split unit tests.
@@ -56,10 +56,10 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Owner/admin ledger period APIs support closing/reopening months; closed periods block approval maturity, settlements, adjustments, and reversals for posting dates in that month.
 - Owner/admin ledger correction APIs support manual adjustments and reversal of unallocated open obligations with append-only ledger transactions.
 - Calendar/task APIs and `/[locale]/app/calendar` page expose cursor-expandable event/task lists, let owners/admins/members create, edit, and delete one-off or finite recurring calendar events, switch event list/day/week/month views, create/assign/edit/delete one-off or recurring tasks, auto-link due tasks to `TASK` calendar events, complete tasks with linked event status updates, create linked pending expense proposals from tasks, and configure recurring expense events that auto-generate one pending proposal when due.
-- The dashboard notification center shows proposal assignments plus idempotent scheduled jobs for recurring expense proposal generation and in-app reminders for due/overdue tasks, due/overdue repayments, and stale settlement confirmations; notification and dashboard proposal lists include cursor pagination metadata plus load-more controls.
+- The dashboard notification center shows proposal assignments plus idempotent scheduled jobs for recurring expense proposal generation and reminders for due/overdue tasks, due/overdue repayments, and stale settlement confirmations; optional Web Push can mirror those in-app notifications through user-owned browser subscriptions, and notification/dashboard proposal lists include cursor pagination metadata plus load-more controls.
 - API abuse controls rate-limit private site-gate failures, local dev-session switching, invite creation/acceptance, file upload intents, proposal comments, and share approve/reject/request-changes endpoints; unsafe browser-style API mutations with cross-site request metadata are rejected before route handlers run.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current paginated list/create/detail/revision proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject/request-changes idempotency, notification list/update, balance, paginated obligation and ledger transaction lists, ledger period close, paginated settlement history, settlement suggestion, ledger correction, paginated calendar event create/update/delete with recurring expense templates, paginated task create/update/delete/complete, and task-to-expense proposal endpoints.
+- OpenAPI covers the current paginated list/create/detail/revision proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject/request-changes idempotency, notification list/update and browser push subscription endpoints, balance, paginated obligation and ledger transaction lists, ledger period close, paginated settlement history, settlement suggestion, ledger correction, paginated calendar event create/update/delete with recurring expense templates, paginated task create/update/delete/complete, health, and task-to-expense proposal endpoints.
 
 ## Development
 

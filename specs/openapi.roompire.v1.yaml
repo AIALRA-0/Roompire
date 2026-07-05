@@ -532,6 +532,56 @@ components:
       required: [notification]
       properties:
         notification: { $ref: "#/components/schemas/Notification" }
+    PushSubscriptionSettingsResponse:
+      type: object
+      required: [configured, publicKey, deliveryMode, activeSubscriptionCount]
+      properties:
+        configured: { type: boolean }
+        publicKey:
+          type: string
+          nullable: true
+          description: VAPID public key for browser PushManager subscription.
+        deliveryMode:
+          type: string
+          enum: [send, dry-run, disabled]
+        activeSubscriptionCount: { type: integer, minimum: 0 }
+    PushSubscriptionRequest:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint: { type: string, format: uri, maxLength: 2048 }
+        expirationTime:
+          type: integer
+          nullable: true
+          description: Browser PushSubscription expiration time in milliseconds since epoch.
+        keys:
+          type: object
+          required: [p256dh, auth]
+          properties:
+            p256dh: { type: string, minLength: 16, maxLength: 512 }
+            auth: { type: string, minLength: 8, maxLength: 512 }
+    PushSubscription:
+      type: object
+      required: [id, endpoint, active]
+      properties:
+        id: { type: string, format: uuid }
+        endpoint: { type: string, format: uri }
+        active: { type: boolean }
+    PushSubscriptionResponse:
+      type: object
+      required: [subscription]
+      properties:
+        subscription: { $ref: "#/components/schemas/PushSubscription" }
+    DeletePushSubscriptionRequest:
+      type: object
+      required: [endpoint]
+      properties:
+        endpoint: { type: string, format: uri, maxLength: 2048 }
+    DeletePushSubscriptionResponse:
+      type: object
+      required: [disabledCount]
+      properties:
+        disabledCount: { type: integer, minimum: 0 }
     Household:
       type: object
       required:
@@ -2193,6 +2243,24 @@ components:
       required: [status]
       properties:
         status: { $ref: "#/components/schemas/OpsStatusSnapshot" }
+    HealthResponse:
+      type: object
+      required: [status, checks, timestamp, durationMs]
+      properties:
+        status:
+          type: string
+          enum: [ok, unhealthy]
+        checks:
+          type: object
+          required: [database, exports, fx, storage, webPush]
+          properties:
+            database: { type: string, enum: [ok, error] }
+            exports: { type: string, enum: [ok, error] }
+            fx: { type: string, enum: [ok, error] }
+            storage: { type: string, enum: [ok, error] }
+            webPush: { type: string, enum: [ok, disabled, error] }
+        timestamp: { type: string, format: date-time }
+        durationMs: { type: integer, minimum: 0 }
 paths:
   /session:
     get:
@@ -2296,6 +2364,74 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /notifications/push-subscriptions:
+    get:
+      summary: Get browser push subscription settings
+      description: Returns whether Web Push is configured, the VAPID public key when enabled, delivery mode, and the current user's active subscription count.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PushSubscriptionSettingsResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      summary: Register or refresh a browser push subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushSubscriptionRequest" }
+      responses:
+        "201":
+          description: Subscription saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PushSubscriptionResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/CsrfForbidden" }
+        "503":
+          description: Web Push is not configured
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      summary: Disable a browser push subscription for the current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeletePushSubscriptionRequest" }
+      responses:
+        "200":
+          description: Subscription disabled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeletePushSubscriptionResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/CsrfForbidden" }
   /notifications/{notificationId}:
     patch:
       summary: Mark a current user's notification read or unread
@@ -2342,6 +2478,21 @@ paths:
       responses:
         "200": { description: Developer session set }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /health:
+    get:
+      summary: Get application health
+      description: Returns app dependency health, including database, storage, export signing, FX provider configuration, and optional Web Push configuration.
+      responses:
+        "200":
+          description: Healthy or optional delivery channels disabled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+        "503":
+          description: Required dependency or configured optional channel is unhealthy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
   /ops/status:
     get:
       summary: Get server ops health

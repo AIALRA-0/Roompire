@@ -31,7 +31,8 @@ the offline shell, app icon, manifest, and immutable Next.js static assets. Navi
 requests are network-first and fall back to `/offline` only when the browser is
 offline. API routes, signed downloads, and image optimization requests are
 network-only so household, ledger, settlement, and audit data are never served from a
-stale client cache.
+stale client cache. The same worker handles Web Push `push` and `notificationclick`
+events without broadening the HTTP cache surface.
 
 ## Monorepo structure
 
@@ -253,21 +254,23 @@ Initial notification model:
 
 - `notifications`
 - `notification_preferences` for per-user in-app/email/proposal/settlement/task reminder defaults
+- `notification_push_subscriptions` for user-owned browser PushManager subscriptions
 
 Delivery channels:
 
 - in-app MVP, gated by preferences
+- Web Push optional progressive enhancement, gated by VAPID configuration and browser permission
 - email later
-- Web Push later
 - WeChat subscription message later
 
 Current implemented subset:
 
 - `GET /api/v1/notifications` lists the current user's in-app notifications across active household memberships with cursor pagination metadata for dashboard load-more behavior.
 - `PATCH /api/v1/notifications/{notificationId}` marks one scoped notification read or unread.
+- `GET/POST/DELETE /api/v1/notifications/push-subscriptions` exposes Web Push readiness, registers or refreshes the current browser subscription, and disables a subscription for the current user.
 - Creating an expense proposal writes `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the target user's in-app and proposal preferences allow it.
 - `pnpm recurring-expenses:generate` is an idempotent recurring-expense job. It emits one pending proposal per due open template-backed recurring expense event, then leaves debtor approval to the normal expense flow.
-- `pnpm notifications:send-reminders` is an idempotent in-app reminder job. It emits task due/overdue, debt due/overdue, and stale settlement confirmation notifications through fixed `dedupeKey` values, respects in-app/topic preferences, and only targets currently active household members.
+- `pnpm notifications:send-reminders` is an idempotent reminder job. It emits task due/overdue, debt due/overdue, and stale settlement confirmation notifications through fixed `dedupeKey` values, respects in-app/topic preferences, only targets currently active household members, and best-effort dispatches Web Push for newly created notification rows when configured.
 
 Use queue workers for future higher-volume scheduled work. The current self-hosted production deployment runs recurring expense generation first and reminder delivery second through the same systemd timer, then surfaces timer/service health in the ops snapshot.
 
@@ -347,6 +350,7 @@ Use Docker-first as the stable baseline. Optimize edge deployment later if neede
   - database health
   - queue health
   - storage health
+  - Web Push VAPID configuration
 
 ## Security architecture
 

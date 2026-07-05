@@ -5,6 +5,7 @@ import { prisma } from "@/server/db/prisma";
 import { listHouseholdsForUser } from "@/server/households/service";
 import { paginateRows, paginationQueryFields } from "@/server/pagination";
 import { defaultNotificationPreferences } from "@/server/users/service";
+import { dispatchWebPushForNotifications, type WebPushDispatchSummary } from "./push";
 
 export type NotificationTopic = "proposal" | "settlement" | "task";
 export type ReminderClassification = "DUE_SOON" | "OVERDUE";
@@ -33,6 +34,7 @@ type ReminderRunSummary = {
   created: number;
   dryRun: boolean;
   byType: Record<string, { attempted: number; created: number }>;
+  push: WebPushDispatchSummary;
 };
 
 export type NotificationSummary = {
@@ -143,6 +145,14 @@ function createEmptyReminderSummary(dryRun: boolean): ReminderRunSummary {
     created: 0,
     dryRun,
     byType: {},
+    push: {
+      configured: false,
+      deliveryMode: "disabled",
+      attempted: 0,
+      sent: 0,
+      failed: 0,
+      disabledSubscriptions: 0,
+    },
   };
 }
 
@@ -210,8 +220,18 @@ function debtReminderType(classification: ReminderClassification) {
   return classification === "OVERDUE" ? "DEBT_OVERDUE" : "DEBT_DUE_SOON";
 }
 
+function isUniqueConstraintError(error: unknown) {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}
+
 async function createReminderRows(rows: ReminderNotificationRow[], summary: ReminderRunSummary) {
   const rowsByType = new Map<string, ReminderNotificationRow[]>();
+  const notificationIds: string[] = [];
 
   for (const row of rows) {
     addAttemptedReminder(summary, row.type);
@@ -219,17 +239,27 @@ async function createReminderRows(rows: ReminderNotificationRow[], summary: Remi
   }
 
   if (summary.dryRun) {
-    return;
+    return notificationIds;
   }
 
   for (const [type, typeRows] of rowsByType.entries()) {
-    const result = await prisma.notification.createMany({
-      data: typeRows,
-      skipDuplicates: true,
-    });
+    for (const row of typeRows) {
+      try {
+        const notification = await prisma.notification.create({
+          data: row,
+        });
 
-    addCreatedReminders(summary, type, result.count);
+        notificationIds.push(notification.id);
+        addCreatedReminders(summary, type, 1);
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) {
+          throw error;
+        }
+      }
+    }
   }
+
+  return notificationIds;
 }
 
 export function shouldCreateInAppNotification(
@@ -277,7 +307,7 @@ export async function createExpenseProposalAssignedNotifications(
   const debtorUserIds = [...new Set(input.shares.map((share) => share.debtorUserId))];
 
   if (debtorUserIds.length === 0) {
-    return;
+    return [];
   }
 
   const preferences = await tx.notificationPreference.findMany({
@@ -311,12 +341,18 @@ export async function createExpenseProposalAssignedNotifications(
     }));
 
   if (rows.length === 0) {
-    return;
+    return [];
   }
 
-  await tx.notification.createMany({
-    data: rows,
-  });
+  const createdNotifications = await Promise.all(
+    rows.map((row) =>
+      tx.notification.create({
+        data: row,
+      }),
+    ),
+  );
+
+  return createdNotifications.map((notification) => notification.id);
 }
 
 export async function sendReminderNotifications(
@@ -520,7 +556,11 @@ export async function sendReminderNotifications(
     });
   }
 
-  await createReminderRows(rows, summary);
+  const notificationIds = await createReminderRows(rows, summary);
+
+  if (!options.dryRun) {
+    summary.push = await dispatchWebPushForNotifications(notificationIds);
+  }
 
   return summary;
 }

@@ -78,6 +78,7 @@ Use this checklist before declaring a milestone complete.
 - [x] Audit event API returns cursor pagination metadata, the audit page can load larger result windows, and audit exports keep a full-history query path.
 - [x] Ledger obligation, ledger transaction, and settlement list APIs return cursor pagination metadata; the ledger page can load larger obligation/transaction result windows while balances/actions/exports keep full-history query paths.
 - [x] Calendar event and task list APIs return cursor pagination metadata; the calendar page can load larger event/task windows.
+- [x] Browser push subscription APIs expose configuration state, register/disable current-user endpoints, and keep notification creation server-owned.
 
 ## Deployment/backup
 

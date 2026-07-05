@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Bell, Check, ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, BellOff, BellRing, Check, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -25,6 +25,14 @@ type NotificationLabels = {
   markRead: string;
   read: string;
   working: string;
+  pushEnabled: string;
+  pushDisabled: string;
+  pushEnable: string;
+  pushDisable: string;
+  pushUnsupported: string;
+  pushNotConfigured: string;
+  pushPermissionDenied: string;
+  pushError: string;
   openProposal: string;
   openCalendar: string;
   openLedger: string;
@@ -64,11 +72,42 @@ type NotificationsListResponse = {
   page: PageInfo;
 };
 
+type PushSettingsResponse = {
+  configured: boolean;
+  publicKey: string | null;
+};
+
+type PushStatus =
+  | "checking"
+  | "active"
+  | "inactive"
+  | "unsupported"
+  | "not-configured"
+  | "permission-denied"
+  | "error";
+
 type ApiErrorPayload = {
   error?: {
     message?: string;
   };
 };
+
+function browserSupportsPush() {
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+
+function base64UrlToUint8Array(value: string) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = `${value}${padding}`.replaceAll("-", "+").replaceAll("_", "/");
+  const raw = window.atob(base64);
+  const output = new Uint8Array(raw.length);
+
+  for (let index = 0; index < raw.length; index += 1) {
+    output[index] = raw.charCodeAt(index);
+  }
+
+  return output;
+}
 
 function asPayloadRecord(payload: unknown) {
   return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
@@ -211,9 +250,209 @@ export function NotificationCenter({
   const [currentUnreadCount, setCurrentUnreadCount] = useState(unreadCount);
   const [pendingNotificationId, setPendingNotificationId] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [pushStatus, setPushStatus] = useState<PushStatus>("checking");
+  const [pushPublicKey, setPushPublicKey] = useState<string | null>(null);
+  const [isPushBusy, setIsPushBusy] = useState(false);
   const unreadLabel = formatTemplate(labels.unread, {
     count: String(currentUnreadCount),
   });
+
+  async function pushRegistration() {
+    const existing = await navigator.serviceWorker.getRegistration("/");
+
+    return existing ?? navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  }
+
+  async function saveBrowserPushSubscription(subscription: PushSubscription) {
+    const json = subscription.toJSON();
+
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+      throw new Error(labels.pushError);
+    }
+
+    const response = await fetch("/api/v1/notifications/push-subscriptions", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        endpoint: json.endpoint,
+        expirationTime: json.expirationTime ?? null,
+        keys: {
+          p256dh: json.keys.p256dh,
+          auth: json.keys.auth,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const payload: unknown = response.headers.get("content-type")?.includes("application/json")
+        ? await response.json()
+        : null;
+      const errorPayload =
+        payload && typeof payload === "object" ? (payload as ApiErrorPayload) : null;
+
+      throw new Error(errorPayload?.error?.message ?? labels.pushError);
+    }
+  }
+
+  async function loadPushStatus() {
+    if (!browserSupportsPush()) {
+      setPushStatus("unsupported");
+      return;
+    }
+
+    const response = await fetch("/api/v1/notifications/push-subscriptions", {
+      credentials: "same-origin",
+    });
+    const settings = (await response.json()) as PushSettingsResponse;
+
+    if (!response.ok) {
+      setPushStatus("error");
+      return;
+    }
+
+    if (!settings.configured || !settings.publicKey) {
+      setPushPublicKey(null);
+      setPushStatus("not-configured");
+      return;
+    }
+
+    setPushPublicKey(settings.publicKey);
+
+    if (Notification.permission === "denied") {
+      setPushStatus("permission-denied");
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    const subscription = await registration?.pushManager.getSubscription();
+
+    if (subscription) {
+      await saveBrowserPushSubscription(subscription);
+      setPushStatus("active");
+      return;
+    }
+
+    setPushStatus("inactive");
+  }
+
+  useEffect(() => {
+    let isMounted = true;
+    const timeoutId = window.setTimeout(() => {
+      void loadPushStatus().catch(() => {
+        if (isMounted) {
+          setPushStatus("error");
+        }
+      });
+    }, 0);
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function pushStatusText() {
+    if (pushStatus === "active") {
+      return labels.pushEnabled;
+    }
+
+    if (pushStatus === "inactive") {
+      return labels.pushDisabled;
+    }
+
+    if (pushStatus === "unsupported") {
+      return labels.pushUnsupported;
+    }
+
+    if (pushStatus === "not-configured") {
+      return labels.pushNotConfigured;
+    }
+
+    if (pushStatus === "permission-denied") {
+      return labels.pushPermissionDenied;
+    }
+
+    if (pushStatus === "error") {
+      return labels.pushError;
+    }
+
+    return labels.working;
+  }
+
+  async function enablePush() {
+    if (!pushPublicKey || !browserSupportsPush()) {
+      return;
+    }
+
+    setIsPushBusy(true);
+
+    try {
+      const permission =
+        Notification.permission === "default"
+          ? await Notification.requestPermission()
+          : Notification.permission;
+
+      if (permission !== "granted") {
+        setPushStatus(permission === "denied" ? "permission-denied" : "inactive");
+        return;
+      }
+
+      const registration = await pushRegistration();
+      const existing = await registration.pushManager.getSubscription();
+      const subscription =
+        existing ??
+        (await registration.pushManager.subscribe({
+          applicationServerKey: base64UrlToUint8Array(pushPublicKey),
+          userVisibleOnly: true,
+        }));
+
+      await saveBrowserPushSubscription(subscription);
+      setPushStatus("active");
+    } catch (error) {
+      console.error(error);
+      setPushStatus("error");
+    } finally {
+      setIsPushBusy(false);
+    }
+  }
+
+  async function disablePush() {
+    if (!browserSupportsPush()) {
+      return;
+    }
+
+    setIsPushBusy(true);
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration("/");
+      const subscription = await registration?.pushManager.getSubscription();
+
+      if (subscription?.endpoint) {
+        await fetch("/api/v1/notifications/push-subscriptions", {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            endpoint: subscription.endpoint,
+          }),
+        });
+        await subscription.unsubscribe();
+      }
+
+      setPushStatus("inactive");
+    } catch (error) {
+      console.error(error);
+      setPushStatus("error");
+    } finally {
+      setIsPushBusy(false);
+    }
+  }
 
   async function loadMore() {
     if (!pagination.nextCursor) {
@@ -316,6 +555,9 @@ export function NotificationCenter({
     });
   }
 
+  const canEnablePush = pushStatus === "inactive" && Boolean(pushPublicKey);
+  const canDisablePush = pushStatus === "active";
+
   return (
     <section className="rounded-lg border border-border bg-card" data-testid="notification-center">
       <div className="flex flex-col gap-3 border-b border-border p-5 sm:flex-row sm:items-start sm:justify-between">
@@ -326,7 +568,37 @@ export function NotificationCenter({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{labels.hint}</p>
         </div>
-        <Badge variant={currentUnreadCount > 0 ? "warning" : "neutral"}>{unreadLabel}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={currentUnreadCount > 0 ? "warning" : "neutral"}>{unreadLabel}</Badge>
+          <Badge
+            data-testid="push-status"
+            variant={pushStatus === "active" ? "success" : "neutral"}
+          >
+            {pushStatusText()}
+          </Badge>
+          <Button
+            data-testid="push-toggle"
+            disabled={isPushBusy || (!canEnablePush && !canDisablePush)}
+            onClick={() => {
+              if (canDisablePush) {
+                void disablePush();
+                return;
+              }
+
+              void enablePush();
+            }}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {canDisablePush ? (
+              <BellOff aria-hidden="true" className="h-4 w-4" />
+            ) : (
+              <BellRing aria-hidden="true" className="h-4 w-4" />
+            )}
+            {isPushBusy ? labels.working : canDisablePush ? labels.pushDisable : labels.pushEnable}
+          </Button>
+        </div>
       </div>
       <div className="divide-y divide-border">
         {items.length === 0 ? (

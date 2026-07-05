@@ -94,3 +94,66 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(cacheFirst(request));
   }
 });
+
+self.addEventListener("push", (event) => {
+  if (!event.data) {
+    return;
+  }
+
+  event.waitUntil(
+    (async () => {
+      let payload;
+
+      try {
+        payload = event.data.json();
+      } catch {
+        payload = {
+          title: "Roompire",
+          body: event.data.text(),
+        };
+      }
+
+      const title = typeof payload.title === "string" ? payload.title : "Roompire";
+      const body = typeof payload.body === "string" ? payload.body : "";
+      const url =
+        typeof payload.url === "string" && payload.url.startsWith("/") ? payload.url : "/en-US/app";
+      const tag = typeof payload.tag === "string" ? payload.tag : "roompire";
+
+      await self.registration.showNotification(title, {
+        badge: "/icon.svg",
+        body,
+        data: {
+          url,
+        },
+        icon: "/icon.svg",
+        tag,
+      });
+    })(),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  event.waitUntil(
+    (async () => {
+      const targetUrl =
+        typeof event.notification.data?.url === "string" &&
+        event.notification.data.url.startsWith("/")
+          ? new URL(event.notification.data.url, self.location.origin).href
+          : new URL("/en-US/app", self.location.origin).href;
+      const clientList = await clients.matchAll({
+        includeUncontrolled: true,
+        type: "window",
+      });
+
+      for (const client of clientList) {
+        if ("focus" in client && client.url === targetUrl) {
+          return client.focus();
+        }
+      }
+
+      return clients.openWindow(targetUrl);
+    })(),
+  );
+});

@@ -56,7 +56,9 @@ Before Playwright starts the dev server, `pnpm e2e:prepare` resets only allowed 
 
 PWA browser coverage must verify that the service worker registers, serves the
 offline shell during network loss, and keeps `/api/` requests network-only instead of
-caching household or ledger data.
+caching household or ledger data. Notification browser coverage should mock
+PushManager/Notification permission in E2E, register a subscription through the real
+dashboard control, and verify reminder jobs can report dry-run Web Push delivery.
 
 ### 4. Accessibility tests
 
@@ -80,7 +82,7 @@ caching household or ledger data.
 
 - User signs in.
 - User updates display name, preferred locale, and notification preferences.
-- User sees assigned proposal notifications in the in-app center and can mark them read.
+- User sees assigned proposal notifications in the in-app center, can enable/disable a browser push subscription when configured, and can mark notifications read.
 - Creates household.
 - Invites another member.
 - Member accepts invite.

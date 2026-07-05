@@ -2069,6 +2069,7 @@ test.describe("Roompire real browser smoke", () => {
     const householdName = `Notify House ${suffix}`;
     const proposalTitle = `Notify Dinner ${suffix}`;
     const taskTitle = `Notify overdue task ${suffix}`;
+    const pushEndpoint = `https://push.example.test/roompire/${suffix}`;
 
     await setDevSessionWithRetry(page, ownerEmail, "Notify Owner E2E");
     const householdResponse = await page.request.post("/api/v1/households", {
@@ -2107,6 +2108,98 @@ test.describe("Roompire real browser smoke", () => {
       },
     });
     expect(acceptResponse.ok()).toBeTruthy();
+
+    await page.addInitScript((endpoint) => {
+      const subscription = {
+        endpoint,
+        expirationTime: null,
+        options: {
+          userVisibleOnly: true,
+        },
+        toJSON() {
+          return {
+            endpoint,
+            expirationTime: null,
+            keys: {
+              auth: "test-auth-secret",
+              p256dh: "test-p256dh-public-key",
+            },
+          };
+        },
+        unsubscribe: async () => true,
+      };
+      const state: { subscription: typeof subscription | null } = {
+        subscription: null,
+      };
+      const registration = {
+        pushManager: {
+          getSubscription: async () => state.subscription,
+          subscribe: async () => {
+            state.subscription = subscription;
+
+            return subscription;
+          },
+        },
+      };
+
+      Object.defineProperty(window, "PushManager", {
+        configurable: true,
+        value: function PushManager() {},
+      });
+      Object.defineProperty(window, "Notification", {
+        configurable: true,
+        value: {
+          permission: "granted",
+          requestPermission: async () => "granted",
+        },
+      });
+      Object.defineProperty(Navigator.prototype, "serviceWorker", {
+        configurable: true,
+        get() {
+          return {
+            getRegistration: async () => registration,
+            ready: Promise.resolve(registration),
+            register: async () => registration,
+          };
+        },
+      });
+    }, pushEndpoint);
+
+    await setDevSessionWithRetry(page, debtorEmail, "Notify Debtor E2E");
+    await page.goto("/en-US/app");
+    await expect(page.getByTestId("push-status")).toContainText("Push off");
+    const pushSaveResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/v1/notifications/push-subscriptions") &&
+        response.request().method() === "POST",
+    );
+    await page.getByTestId("push-toggle").click();
+    const pushSaveResponse = await pushSaveResponsePromise;
+    expect(pushSaveResponse.status()).toBe(201);
+    await expect(page.getByTestId("push-status")).toContainText("Push on");
+    const pushSettingsResponse = await getApiWithRetry(
+      page,
+      "/api/v1/notifications/push-subscriptions",
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(pushSettingsResponse.ok()).toBeTruthy();
+    await expect
+      .poll(async () => {
+        const payload = (await (
+          await getApiWithRetry(page, "/api/v1/notifications/push-subscriptions", {
+            headers: {
+              "x-roompire-dev-user-email": debtorEmail,
+            },
+          })
+        ).json()) as { activeSubscriptionCount: number; configured: boolean };
+
+        return payload;
+      })
+      .toEqual(expect.objectContaining({ activeSubscriptionCount: 1, configured: true }));
 
     const membersResponse = await getApiWithRetry(
       page,
@@ -2247,13 +2340,28 @@ test.describe("Roompire real browser smoke", () => {
     const firstReminderRun = execFileSync("pnpm", reminderArgs, {
       cwd: process.cwd(),
       encoding: "utf8",
-      env: reminderEnv,
+      env: {
+        ...reminderEnv,
+        ROOMPIRE_WEB_PUSH_PUBLIC_KEY:
+          "BLWLPeBEQMnSMUoWw9trJBrQ4Y-1YLMh0yHGGoHEpOn0froOtaAxy1vk-ojyQ0MQqKeHNs_lHkadpY_-f-3WhQ4",
+        ROOMPIRE_WEB_PUSH_PRIVATE_KEY: "0MH4IFLn4Wfr-BGwO0K-o5YtRjO7QRstseIcoqgzLIA",
+        ROOMPIRE_WEB_PUSH_SUBJECT: "mailto:e2e@roompire.test",
+        ROOMPIRE_WEB_PUSH_DELIVERY_MODE: "dry-run",
+      },
     });
     expect(firstReminderRun).toContain("ok reminders");
+    expect(firstReminderRun).toContain('"deliveryMode":"dry-run"');
     const secondReminderRun = execFileSync("pnpm", reminderArgs, {
       cwd: process.cwd(),
       encoding: "utf8",
-      env: reminderEnv,
+      env: {
+        ...reminderEnv,
+        ROOMPIRE_WEB_PUSH_PUBLIC_KEY:
+          "BLWLPeBEQMnSMUoWw9trJBrQ4Y-1YLMh0yHGGoHEpOn0froOtaAxy1vk-ojyQ0MQqKeHNs_lHkadpY_-f-3WhQ4",
+        ROOMPIRE_WEB_PUSH_PRIVATE_KEY: "0MH4IFLn4Wfr-BGwO0K-o5YtRjO7QRstseIcoqgzLIA",
+        ROOMPIRE_WEB_PUSH_SUBJECT: "mailto:e2e@roompire.test",
+        ROOMPIRE_WEB_PUSH_DELIVERY_MODE: "dry-run",
+      },
     });
     expect(secondReminderRun).toContain('"created":0');
 
