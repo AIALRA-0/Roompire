@@ -1386,12 +1386,16 @@ components:
           statusFile,
           disk,
           dockerStorage,
+          opsStatusTimer,
+          opsStatusService,
           backupTimer,
           backupService,
           housekeepingTimer,
           housekeepingService,
           backupEncryption,
           backupOffsite,
+          smokeTimer,
+          smokeService,
           latestSmoke,
         ]
       properties:
@@ -1463,6 +1467,42 @@ components:
               type: string
               format: date-time
               nullable: true
+            error:
+              type: string
+              nullable: true
+        opsStatusTimer:
+          type: object
+          required: [name, activeState, enabledState, nextElapse, lastTrigger, status, error]
+          properties:
+            name: { type: string, example: roompire-ops-status.timer }
+            activeState: { type: string, example: active }
+            enabledState: { type: string, example: enabled }
+            nextElapse:
+              type: string
+              nullable: true
+            lastTrigger:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        opsStatusService:
+          type: object
+          required:
+            [name, activeState, result, execMainStatus, startedAt, finishedAt, status, error]
+          properties:
+            name: { type: string, example: roompire-ops-status.service }
+            activeState: { type: string, example: inactive }
+            result: { type: string, example: success }
+            execMainStatus: { type: string, example: "0" }
+            startedAt:
+              type: string
+              nullable: true
+            finishedAt:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
             error:
               type: string
               nullable: true
@@ -1617,6 +1657,42 @@ components:
               type: string
               format: date-time
               nullable: true
+            error:
+              type: string
+              nullable: true
+        smokeTimer:
+          type: object
+          required: [name, activeState, enabledState, nextElapse, lastTrigger, status, error]
+          properties:
+            name: { type: string, example: roompire-smoke.timer }
+            activeState: { type: string, example: active }
+            enabledState: { type: string, example: enabled }
+            nextElapse:
+              type: string
+              nullable: true
+            lastTrigger:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        smokeService:
+          type: object
+          required:
+            [name, activeState, result, execMainStatus, startedAt, finishedAt, status, error]
+          properties:
+            name: { type: string, example: roompire-smoke.service }
+            activeState: { type: string, example: inactive }
+            result: { type: string, example: success }
+            execMainStatus: { type: string, example: "0" }
+            startedAt:
+              type: string
+              nullable: true
+            finishedAt:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
             error:
               type: string
               nullable: true

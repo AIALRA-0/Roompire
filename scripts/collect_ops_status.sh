@@ -8,8 +8,13 @@ const { spawnSync } = require("node:child_process");
 
 const outputPath = process.env.ROOMPIRE_OPS_STATUS_FILE_HOST || "ops/status/ops-status.json";
 const diskPath = process.env.ROOMPIRE_OPS_DISK_PATH || "/";
+const opsStatusTimerName = process.env.ROOMPIRE_OPS_STATUS_TIMER || "roompire-ops-status.timer";
+const opsStatusServiceName =
+  process.env.ROOMPIRE_OPS_STATUS_SERVICE || "roompire-ops-status.service";
 const backupTimerName = process.env.ROOMPIRE_BACKUP_TIMER || "roompire-backup.timer";
 const backupServiceName = process.env.ROOMPIRE_BACKUP_SERVICE || "roompire-backup.service";
+const smokeTimerName = process.env.ROOMPIRE_SMOKE_TIMER || "roompire-smoke.timer";
+const smokeServiceName = process.env.ROOMPIRE_SMOKE_SERVICE || "roompire-smoke.service";
 const housekeepingTimerName =
   process.env.ROOMPIRE_HOUSEKEEPING_TIMER || "roompire-housekeeping.timer";
 const housekeepingServiceName =
@@ -151,6 +156,22 @@ function collectBackupTimer() {
 
 function collectBackupService() {
   return collectSystemdService(backupServiceName);
+}
+
+function collectOpsStatusTimer() {
+  return collectSystemdTimer(opsStatusTimerName);
+}
+
+function collectOpsStatusService() {
+  return collectSystemdService(opsStatusServiceName);
+}
+
+function collectSmokeTimer() {
+  return collectSystemdTimer(smokeTimerName);
+}
+
+function collectSmokeService() {
+  return collectSystemdService(smokeServiceName);
 }
 
 function collectHousekeepingTimer() {
@@ -676,8 +697,12 @@ const snapshot = {
   generatedAt,
   disk: collectDisk(),
   dockerStorage: collectDockerStorage(),
+  opsStatusTimer: collectOpsStatusTimer(),
+  opsStatusService: collectOpsStatusService(),
   backupTimer: collectBackupTimer(),
   backupService: collectBackupService(),
+  smokeTimer: collectSmokeTimer(),
+  smokeService: collectSmokeService(),
   housekeepingTimer: collectHousekeepingTimer(),
   housekeepingService: collectHousekeepingService(),
   backupEncryption: collectBackupEncryption(),

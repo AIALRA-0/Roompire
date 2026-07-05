@@ -200,8 +200,12 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_unknown: ops("warningDiskUnknown"),
     docker_storage_unknown: ops("warningDockerStorageUnknown"),
     docker_reclaimable_high: ops("warningDockerReclaimableHigh"),
+    ops_status_timer_attention: ops("warningOpsStatusTimer"),
+    ops_status_service_attention: ops("warningOpsStatusService"),
     backup_timer_attention: ops("warningBackupTimer"),
     backup_service_attention: ops("warningBackupService"),
+    smoke_timer_attention: ops("warningSmokeTimer"),
+    smoke_service_attention: ops("warningSmokeService"),
     housekeeping_timer_attention: ops("warningHousekeepingTimer"),
     housekeeping_service_attention: ops("warningHousekeepingService"),
     backup_encryption_disabled: ops("warningBackupEncryptionDisabled"),
@@ -782,6 +786,52 @@ export default async function OpsPage({ params }: PageProps) {
                     label={ops("checkedAt")}
                     value={formatDateTime(locale, status.latestSmoke.generatedAt)}
                   />
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">{ops("timer")}</span>
+                      <Badge
+                        data-testid="ops-smoke-timer-status"
+                        variant={healthVariant(status.smokeTimer.status)}
+                      >
+                        {healthLabel(ops, status.smokeTimer.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow label={ops("timerName")} value={status.smokeTimer.name} />
+                      <MetricRow label={ops("activeState")} value={status.smokeTimer.activeState} />
+                      <MetricRow
+                        label={ops("enabledState")}
+                        value={status.smokeTimer.enabledState}
+                      />
+                      <MetricRow
+                        label={ops("nextRun")}
+                        value={formatDateTime(locale, status.smokeTimer.nextElapse)}
+                      />
+                      <MetricRow
+                        label={ops("lastRun")}
+                        value={formatDateTime(locale, status.smokeTimer.lastTrigger)}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">{ops("service")}</span>
+                      <Badge variant={healthVariant(status.smokeService.status)}>
+                        {healthLabel(ops, status.smokeService.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow label={ops("serviceResult")} value={status.smokeService.result} />
+                      <MetricRow
+                        label={ops("serviceExitCode")}
+                        value={status.smokeService.execMainStatus}
+                      />
+                      <MetricRow
+                        label={ops("serviceFinishedAt")}
+                        value={formatDateTime(locale, status.smokeService.finishedAt)}
+                      />
+                    </div>
+                  </div>
                   {status.latestSmoke.checks.length > 0 ? (
                     <div className="mt-2 grid gap-2">
                       {status.latestSmoke.checks.map((check) => (
@@ -802,6 +852,11 @@ export default async function OpsPage({ params }: PageProps) {
                   )}
                   {status.latestSmoke.message ? (
                     <p className="text-sm text-rose-700">{status.latestSmoke.message}</p>
+                  ) : null}
+                  {status.smokeTimer.error || status.smokeService.error ? (
+                    <p className="text-sm text-rose-700">
+                      {status.smokeTimer.error ?? status.smokeService.error}
+                    </p>
                   ) : null}
                 </div>
               </div>
@@ -826,6 +881,47 @@ export default async function OpsPage({ params }: PageProps) {
                   {status.statusFile.error ? (
                     <p className="mt-2 text-sm text-rose-700">{status.statusFile.error}</p>
                   ) : null}
+                  <div className="mt-4 border-t border-border pt-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">
+                        {ops("snapshotRefresh")}
+                      </span>
+                      <Badge
+                        data-testid="ops-status-timer-status"
+                        variant={healthVariant(status.opsStatusTimer.status)}
+                      >
+                        {healthLabel(ops, status.opsStatusTimer.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <MetricRow label={ops("timerName")} value={status.opsStatusTimer.name} />
+                      <MetricRow
+                        label={ops("nextRun")}
+                        value={formatDateTime(locale, status.opsStatusTimer.nextElapse)}
+                      />
+                      <MetricRow
+                        label={ops("lastRun")}
+                        value={formatDateTime(locale, status.opsStatusTimer.lastTrigger)}
+                      />
+                      <MetricRow
+                        label={ops("serviceResult")}
+                        value={status.opsStatusService.result}
+                      />
+                      <MetricRow
+                        label={ops("serviceExitCode")}
+                        value={status.opsStatusService.execMainStatus}
+                      />
+                      <MetricRow
+                        label={ops("serviceFinishedAt")}
+                        value={formatDateTime(locale, status.opsStatusService.finishedAt)}
+                      />
+                    </div>
+                    {status.opsStatusTimer.error || status.opsStatusService.error ? (
+                      <p className="mt-3 text-sm text-rose-700">
+                        {status.opsStatusTimer.error ?? status.opsStatusService.error}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </section>

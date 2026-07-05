@@ -182,6 +182,25 @@ async function writeOpsStatusFixture() {
           checkedAt: generatedAt,
           error: null,
         },
+        opsStatusTimer: {
+          name: "roompire-ops-status.timer",
+          activeState: "active",
+          enabledState: "enabled",
+          nextElapse: "2026-07-05T04:45:00.000Z",
+          lastTrigger: "2026-07-05T04:30:00.000Z",
+          status: "ok",
+          error: null,
+        },
+        opsStatusService: {
+          name: "roompire-ops-status.service",
+          activeState: "inactive",
+          result: "success",
+          execMainStatus: "0",
+          startedAt: "2026-07-05T04:30:00.000Z",
+          finishedAt: "2026-07-05T04:30:05.000Z",
+          status: "ok",
+          error: null,
+        },
         backupTimer: {
           name: "roompire-backup.timer",
           activeState: "active",
@@ -247,6 +266,25 @@ async function writeOpsStatusFixture() {
             "/srv/aialra/backups/roompire/postgres/roompire_20260704T235250Z.dump.enc.sha256",
           status: "ok",
           checkedAt: generatedAt,
+          error: null,
+        },
+        smokeTimer: {
+          name: "roompire-smoke.timer",
+          activeState: "active",
+          enabledState: "enabled",
+          nextElapse: "2026-07-05T05:07:00.000Z",
+          lastTrigger: "2026-07-05T04:07:00.000Z",
+          status: "ok",
+          error: null,
+        },
+        smokeService: {
+          name: "roompire-smoke.service",
+          activeState: "inactive",
+          result: "success",
+          execMainStatus: "0",
+          startedAt: "2026-07-05T04:07:00.000Z",
+          finishedAt: "2026-07-05T04:07:02.000Z",
+          status: "ok",
           error: null,
         },
         latestSmoke: {
@@ -1285,6 +1323,8 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-backup-offsite-mode")).toContainText("Local mount");
     await expect(page.getByTestId("ops-backup-offsite-artifacts")).toContainText("6");
     await expect(page.getByTestId("ops-smoke-status")).toContainText("Passed");
+    await expect(page.getByTestId("ops-smoke-timer-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-status-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-status-file-card")).toContainText("Loaded");
 
     const opsResponse = await getApiWithRetry(page, "/api/v1/ops/status");
@@ -1298,6 +1338,8 @@ test.describe("Roompire real browser smoke", () => {
           status: string;
           images: { totalCount: number; activeCount: number };
         };
+        opsStatusTimer: { activeState: string; enabledState: string };
+        opsStatusService: { result: string; execMainStatus: string };
         housekeepingTimer: { activeState: string; enabledState: string };
         housekeepingService: { result: string; execMainStatus: string };
         backupEncryption: {
@@ -1311,6 +1353,8 @@ test.describe("Roompire real browser smoke", () => {
           artifactCount: number;
           status: string;
         };
+        smokeTimer: { activeState: string; enabledState: string };
+        smokeService: { result: string; execMainStatus: string };
         latestSmoke: { status: string; checks: Array<{ path: string }> };
       };
     };
@@ -1322,6 +1366,12 @@ test.describe("Roompire real browser smoke", () => {
         status: "ok",
         images: expect.objectContaining({ totalCount: 4, activeCount: 3 }),
       }),
+    );
+    expect(opsPayload.status.opsStatusTimer).toEqual(
+      expect.objectContaining({ activeState: "active", enabledState: "enabled" }),
+    );
+    expect(opsPayload.status.opsStatusService).toEqual(
+      expect.objectContaining({ result: "success", execMainStatus: "0" }),
     );
     expect(opsPayload.status.housekeepingTimer).toEqual(
       expect.objectContaining({ activeState: "active", enabledState: "enabled" }),
@@ -1343,6 +1393,12 @@ test.describe("Roompire real browser smoke", () => {
         artifactCount: 6,
         status: "ok",
       }),
+    );
+    expect(opsPayload.status.smokeTimer).toEqual(
+      expect.objectContaining({ activeState: "active", enabledState: "enabled" }),
+    );
+    expect(opsPayload.status.smokeService).toEqual(
+      expect.objectContaining({ result: "success", execMainStatus: "0" }),
     );
     expect(opsPayload.status.latestSmoke).toEqual(
       expect.objectContaining({

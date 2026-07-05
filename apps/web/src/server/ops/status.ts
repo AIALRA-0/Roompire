@@ -60,6 +60,25 @@ export type OpsStatusSnapshot = {
     checkedAt: string | null;
     error: string | null;
   };
+  opsStatusTimer: {
+    name: string;
+    activeState: string;
+    enabledState: string;
+    nextElapse: string | null;
+    lastTrigger: string | null;
+    status: HealthState;
+    error: string | null;
+  };
+  opsStatusService: {
+    name: string;
+    activeState: string;
+    result: string;
+    execMainStatus: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+    status: HealthState;
+    error: string | null;
+  };
   backupTimer: {
     name: string;
     activeState: string;
@@ -70,6 +89,25 @@ export type OpsStatusSnapshot = {
     error: string | null;
   };
   backupService: {
+    name: string;
+    activeState: string;
+    result: string;
+    execMainStatus: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+    status: HealthState;
+    error: string | null;
+  };
+  smokeTimer: {
+    name: string;
+    activeState: string;
+    enabledState: string;
+    nextElapse: string | null;
+    lastTrigger: string | null;
+    status: HealthState;
+    error: string | null;
+  };
+  smokeService: {
     name: string;
     activeState: string;
     result: string;
@@ -345,12 +383,28 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("docker_reclaimable_high");
   }
 
+  if (status.opsStatusTimer.status !== "ok") {
+    warnings.push("ops_status_timer_attention");
+  }
+
+  if (status.opsStatusService.status === "warning") {
+    warnings.push("ops_status_service_attention");
+  }
+
   if (status.backupTimer.status !== "ok") {
     warnings.push("backup_timer_attention");
   }
 
   if (status.backupService.status === "warning") {
     warnings.push("backup_service_attention");
+  }
+
+  if (status.smokeTimer.status !== "ok") {
+    warnings.push("smoke_timer_attention");
+  }
+
+  if (status.smokeService.status === "warning") {
+    warnings.push("smoke_service_attention");
   }
 
   if (status.housekeepingTimer.status !== "ok") {
@@ -411,6 +465,10 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawBackupTimer = isRecord(raw.backupTimer) ? raw.backupTimer : {};
   const rawBackupService = isRecord(raw.backupService) ? raw.backupService : {};
   const rawDockerStorage = isRecord(raw.dockerStorage) ? raw.dockerStorage : {};
+  const rawOpsStatusTimer = isRecord(raw.opsStatusTimer) ? raw.opsStatusTimer : {};
+  const rawOpsStatusService = isRecord(raw.opsStatusService) ? raw.opsStatusService : {};
+  const rawSmokeTimer = isRecord(raw.smokeTimer) ? raw.smokeTimer : {};
+  const rawSmokeService = isRecord(raw.smokeService) ? raw.smokeService : {};
   const rawHousekeepingTimer = isRecord(raw.housekeepingTimer) ? raw.housekeepingTimer : {};
   const rawHousekeepingService = isRecord(raw.housekeepingService) ? raw.housekeepingService : {};
   const rawBackupEncryption = isRecord(raw.backupEncryption) ? raw.backupEncryption : {};
@@ -450,6 +508,25 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       checkedAt: nullableStringValue(rawDockerStorage.checkedAt),
       error: nullableStringValue(rawDockerStorage.error),
     },
+    opsStatusTimer: {
+      name: stringValue(rawOpsStatusTimer.name, "roompire-ops-status.timer"),
+      activeState: stringValue(rawOpsStatusTimer.activeState, "unknown"),
+      enabledState: stringValue(rawOpsStatusTimer.enabledState, "unknown"),
+      nextElapse: nullableStringValue(rawOpsStatusTimer.nextElapse),
+      lastTrigger: nullableStringValue(rawOpsStatusTimer.lastTrigger),
+      status: healthStateValue(rawOpsStatusTimer.status),
+      error: nullableStringValue(rawOpsStatusTimer.error),
+    },
+    opsStatusService: {
+      name: stringValue(rawOpsStatusService.name, "roompire-ops-status.service"),
+      activeState: stringValue(rawOpsStatusService.activeState, "unknown"),
+      result: stringValue(rawOpsStatusService.result, "unknown"),
+      execMainStatus: stringValue(rawOpsStatusService.execMainStatus, "unknown"),
+      startedAt: nullableStringValue(rawOpsStatusService.startedAt),
+      finishedAt: nullableStringValue(rawOpsStatusService.finishedAt),
+      status: healthStateValue(rawOpsStatusService.status),
+      error: nullableStringValue(rawOpsStatusService.error),
+    },
     backupTimer: {
       name: stringValue(rawBackupTimer.name, "roompire-backup.timer"),
       activeState: stringValue(rawBackupTimer.activeState, "unknown"),
@@ -468,6 +545,25 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       finishedAt: nullableStringValue(rawBackupService.finishedAt),
       status: healthStateValue(rawBackupService.status),
       error: nullableStringValue(rawBackupService.error),
+    },
+    smokeTimer: {
+      name: stringValue(rawSmokeTimer.name, "roompire-smoke.timer"),
+      activeState: stringValue(rawSmokeTimer.activeState, "unknown"),
+      enabledState: stringValue(rawSmokeTimer.enabledState, "unknown"),
+      nextElapse: nullableStringValue(rawSmokeTimer.nextElapse),
+      lastTrigger: nullableStringValue(rawSmokeTimer.lastTrigger),
+      status: healthStateValue(rawSmokeTimer.status),
+      error: nullableStringValue(rawSmokeTimer.error),
+    },
+    smokeService: {
+      name: stringValue(rawSmokeService.name, "roompire-smoke.service"),
+      activeState: stringValue(rawSmokeService.activeState, "unknown"),
+      result: stringValue(rawSmokeService.result, "unknown"),
+      execMainStatus: stringValue(rawSmokeService.execMainStatus, "unknown"),
+      startedAt: nullableStringValue(rawSmokeService.startedAt),
+      finishedAt: nullableStringValue(rawSmokeService.finishedAt),
+      status: healthStateValue(rawSmokeService.status),
+      error: nullableStringValue(rawSmokeService.error),
     },
     housekeepingTimer: {
       name: stringValue(rawHousekeepingTimer.name, "roompire-housekeeping.timer"),
@@ -637,6 +733,25 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",
     },
+    opsStatusTimer: {
+      name: process.env.ROOMPIRE_OPS_STATUS_TIMER?.trim() || "roompire-ops-status.timer",
+      activeState: "unknown",
+      enabledState: "unknown",
+      nextElapse: null,
+      lastTrigger: null,
+      status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    opsStatusService: {
+      name: process.env.ROOMPIRE_OPS_STATUS_SERVICE?.trim() || "roompire-ops-status.service",
+      activeState: "unknown",
+      result: "unknown",
+      execMainStatus: "unknown",
+      startedAt: null,
+      finishedAt: null,
+      status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
     backupOffsite: {
       mode: "unknown" as const,
       configured: false,
@@ -650,6 +765,25 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       latestArtifact: null,
       status: "unknown" as const,
       checkedAt: new Date().toISOString(),
+      error: "Host status file has not been generated.",
+    },
+    smokeTimer: {
+      name: process.env.ROOMPIRE_SMOKE_TIMER?.trim() || "roompire-smoke.timer",
+      activeState: "unknown",
+      enabledState: "unknown",
+      nextElapse: null,
+      lastTrigger: null,
+      status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    smokeService: {
+      name: process.env.ROOMPIRE_SMOKE_SERVICE?.trim() || "roompire-smoke.service",
+      activeState: "unknown",
+      result: "unknown",
+      execMainStatus: "unknown",
+      startedAt: null,
+      finishedAt: null,
+      status: "unknown" as const,
       error: "Host status file has not been generated.",
     },
     latestSmoke: normalizeSmoke(null),
