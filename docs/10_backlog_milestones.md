@@ -168,7 +168,7 @@ Current implemented subset for audit/statistics: mutation flows emit `AuditEvent
 - Backup script.
 - Restore script/drill.
 
-Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, optional Caddy reverse proxy profile, host-nginx localhost binding for the live self-hosted server, migration and demo-seed profiles, authenticated `/api/v1/health`, S3-compatible private receipt storage wiring, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, encrypted backup/restore drills, ops health snapshots, scheduled housekeeping, and real-domain smoke tests against `roompire.aialra.online`. Remaining deployment hardening is capacity planning, off-host backup copy/passphrase escrow, and eventual long-term auth provider selection.
+Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, optional Caddy reverse proxy profile, host-nginx localhost binding for the live self-hosted server, migration and demo-seed profiles, authenticated `/api/v1/health`, PWA manifest plus safe service-worker shell caching with API/data requests left network-only, S3-compatible private receipt storage wiring, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, encrypted backup/restore drills, ops health snapshots, scheduled housekeeping, and real-domain smoke tests against `roompire.aialra.online`. Remaining deployment hardening is capacity planning, off-host backup copy/passphrase escrow, and eventual long-term auth provider selection.
 
 ### P1
 

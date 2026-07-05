@@ -54,6 +54,10 @@ E2E must interact with the real webpage using accessible selectors and stable `d
 
 Before Playwright starts the dev server, `pnpm e2e:prepare` resets only allowed Roompire dev/test/e2e databases, applies migrations, and loads deterministic seed data. This keeps repeated local and CI browser runs isolated; set `ROOMPIRE_E2E_SKIP_DB_RESET=true` only when an already-prepared database is being reused intentionally.
 
+PWA browser coverage must verify that the service worker registers, serves the
+offline shell during network loss, and keeps `/api/` requests network-only instead of
+caching household or ledger data.
+
 ### 4. Accessibility tests
 
 - Basic axe checks on primary pages.

@@ -15,7 +15,8 @@ Phase 0 bootstrap is implemented:
 - Landing page at `/` via locale redirect, localized pages at `/en-US` and `/zh-CN`.
 - Dashboard shell at `/en-US/app` and `/zh-CN/app`.
 - Protected-state example at `/[locale]/app/forbidden`.
-- PWA manifest and icon.
+- PWA manifest, icon, service worker registration, and a safe offline shell that avoids
+  caching API/financial data.
 - Prisma/PostgreSQL schema, initial migration, deterministic seed data.
 - Docker Compose for Postgres and Redis.
 - Vitest money split unit tests.

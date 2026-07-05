@@ -97,6 +97,11 @@ The smoke test verifies:
 - authenticated API health at `/api/v1/health`
 - PWA manifest at `/manifest.webmanifest`
 
+Browser E2E separately verifies service worker registration and the offline shell. The
+service worker caches only the offline shell, manifest/icon, and immutable Next.js
+static assets; `/api/` requests remain network-only so household and ledger data are
+not served from stale cache.
+
 It also writes `ops/status/latest-smoke.json` without credentials. Run `./scripts/collect_ops_status.sh` after a successful smoke test to fold that result into `ops/status/ops-status.json` for the authenticated ops dashboard.
 
 If TLS is being bootstrapped and the certificate is not valid yet, `CURL_INSECURE=true ./scripts/smoke_production.sh` can be used for diagnosis only.

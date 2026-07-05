@@ -24,6 +24,15 @@ Next.js App Router
 
 If the app grows, split API/worker into separate services while preserving OpenAPI contract.
 
+## PWA shell caching
+
+The web app registers a conservative service worker from `/sw.js`. It precaches only
+the offline shell, app icon, manifest, and immutable Next.js static assets. Navigation
+requests are network-first and fall back to `/offline` only when the browser is
+offline. API routes, signed downloads, and image optimization requests are
+network-only so household, ledger, settlement, and audit data are never served from a
+stale client cache.
+
 ## Monorepo structure
 
 ```text

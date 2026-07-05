@@ -1274,6 +1274,55 @@ test.describe("Roompire real browser smoke", () => {
     }
   });
 
+  test("PWA service worker serves offline shell without caching API data", async ({
+    context,
+    page,
+  }) => {
+    await page.goto("/en-US");
+    await expect(page.getByRole("heading", { name: "Roompire" })).toBeVisible();
+
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+
+    const onlineApiResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(onlineApiResponse.ok()).toBeTruthy();
+
+    await context.setOffline(true);
+    const offlineApiResult = await page.evaluate(async () => {
+      try {
+        await fetch("/api/v1/session");
+        return "resolved";
+      } catch {
+        return "rejected";
+      }
+    });
+    expect(offlineApiResult).toBe("rejected");
+
+    const cachedPaths = await page.evaluate(async () => {
+      const cacheNames = await caches.keys();
+      const paths: string[] = [];
+
+      for (const cacheName of cacheNames) {
+        const cache = await caches.open(cacheName);
+        const requests = await cache.keys();
+        paths.push(...requests.map((request) => new URL(request.url).pathname));
+      }
+
+      return paths;
+    });
+    expect(cachedPaths).toContain("/offline");
+    expect(cachedPaths).not.toContain("/api/v1/session");
+
+    await page.goto("/en-US/app", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "You are offline" })).toBeVisible();
+    await expect(page.getByText("当前网络不可用")).toBeVisible();
+
+    await context.setOffline(false);
+  });
+
   test("mobile user sees zh-CN shell and protected-route failure state", async ({ page }) => {
     await page.goto("/zh-CN");
 
