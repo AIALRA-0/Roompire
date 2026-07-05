@@ -3,6 +3,7 @@ import {
   ApprovalDecision,
   CalendarEventType,
   ExpenseProposalStatus,
+  FxPolicy,
   LedgerTransactionType,
   Prisma,
   Role,
@@ -384,6 +385,40 @@ function assertFxLockReady(proposal: {
   }
 }
 
+async function resolveHouseholdFxRateLock(input: {
+  baseCurrency: string;
+  quoteCurrency: string;
+  date: Date;
+  manualRate?: Decimal.Value | null;
+  policy: FxPolicy;
+}) {
+  if (input.baseCurrency === input.quoteCurrency) {
+    return resolveFxRateLock(input);
+  }
+
+  if (input.policy === FxPolicy.MANUAL_RATE_WITH_APPROVAL && !input.manualRate) {
+    throw new ApiError(
+      400,
+      "FX_MANUAL_RATE_REQUIRED",
+      "This household requires a manual FX rate for cross-currency proposals.",
+    );
+  }
+
+  if (
+    input.policy === FxPolicy.ORIGINAL_CURRENCY_DEBT ||
+    input.policy === FxPolicy.FX_DIFFERENCE_ADJUSTMENT
+  ) {
+    throw new ApiError(
+      409,
+      "FX_POLICY_NOT_SUPPORTED",
+      "This household FX policy is not supported for proposal creation yet.",
+      { fxPolicy: input.policy },
+    );
+  }
+
+  return resolveFxRateLock(input);
+}
+
 async function assertCategoryBelongsToHousehold(categoryId: string, householdId: string) {
   const category = await prisma.expenseCategory.findFirst({
     where: {
@@ -540,11 +575,12 @@ async function prepareExpenseProposalCreate(
   const originalCurrency = data.originalCurrency;
   const expenseDate = dateOnlyToUtc(data.expenseDate);
   const dueDate = data.dueDate ? dateOnlyToUtc(data.dueDate) : undefined;
-  const fxLock = await resolveFxRateLock({
+  const fxLock = await resolveHouseholdFxRateLock({
     baseCurrency: originalCurrency,
     quoteCurrency: settlementCurrency,
     date: expenseDate,
     manualRate: data.fxRate,
+    policy: household.fxPolicy,
   });
   const fxRate = fxLock.rate;
   const settlementAmount = originalAmount.mul(fxRate);

@@ -77,13 +77,13 @@ Current implemented subset across expense branches: category defaults, dashboard
 - Manual fallback.
 - FX tests.
 
-Current implemented subset for FX: proposal/revision/task-expense creation locks same-currency rates as `1`, resolves cross-currency rates from cached `FxRate` rows, fetches and stores Frankfurter historical rates when configured and cache misses, preserves explicit manual `fxRate` fallback, stores provider/rate/rate date/locked timestamp on proposals, validates provider configuration in health checks, and covers provider parsing plus cached USD/CNY locking in browser E2E. Provider failover and manual-rate approval workflow remain backlog items.
+Current implemented subset for FX: proposal/revision/task-expense/event-expense creation locks same-currency rates as `1`, resolves cross-currency rates from cached `FxRate` rows, fetches and stores Frankfurter historical rates when configured and cache misses, preserves explicit manual `fxRate` fallback under `LOCK_AT_EXPENSE_DATE`, lets owner/admin household settings require `MANUAL_RATE_WITH_APPROVAL` for every cross-currency proposal path, stores provider/rate/rate date/locked timestamp on proposals, validates provider configuration in health checks, and covers provider parsing, cached USD/CNY locking, and manual-policy enforcement in browser E2E. Provider failover, more currencies, original-currency debt, and FX-difference adjustment workflows remain backlog items.
 
 ### P1
 
 - Provider failover.
 - More currencies.
-- Household FX policy settings.
+- Original-currency debt and FX-difference adjustment household policies.
 
 ## Epic 4 — Formal ledger
 

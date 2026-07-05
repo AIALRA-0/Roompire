@@ -10,6 +10,7 @@ import { splitByWeights, splitEqual } from "@/lib/money/split";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
 type SplitMethod = "EQUAL" | "EXACT" | "PERCENTAGE" | "SHARES";
+type FxPolicy = "LOCK_AT_EXPENSE_DATE" | "MANUAL_RATE_WITH_APPROVAL";
 type ProposalStatus =
   | "DRAFT"
   | "SUBMITTED"
@@ -63,6 +64,8 @@ type ExpenseLabels = {
   originalCurrency: string;
   settlementCurrency: string;
   fxRate: string;
+  fxRateHintAutomatic: string;
+  fxRateHintManual: string;
   debtors: string;
   payerShareIncluded: string;
   splitMethod: string;
@@ -96,6 +99,7 @@ type ExpenseWorkspaceProps = {
   locale: string;
   currentUserEmail: string;
   activeHouseholdId: string | null;
+  activeHouseholdFxPolicy: FxPolicy;
   settlementCurrency: string | null;
   canCreateExpenseProposals: boolean;
   categories: ExpenseCategorySummary[];
@@ -221,6 +225,7 @@ export function ExpenseWorkspace({
   locale,
   currentUserEmail,
   activeHouseholdId,
+  activeHouseholdFxPolicy,
   settlementCurrency,
   canCreateExpenseProposals,
   categories,
@@ -243,6 +248,11 @@ export function ExpenseWorkspace({
     [currentUserEmail, members],
   );
   const isDisabled = !activeHouseholdId || !canCreateExpenseProposals || debtorOptions.length === 0;
+  const isCrossCurrency =
+    Boolean(settlementCurrency) &&
+    originalCurrencyInput.trim().toUpperCase() !== settlementCurrency;
+  const isManualFxRateRequired =
+    activeHouseholdFxPolicy === "MANUAL_RATE_WITH_APPROVAL" && isCrossCurrency;
   const splitPreview = useMemo(() => {
     const selectedDebtors = debtorOptions.filter((member) =>
       selectedDebtorIds.includes(member.userId),
@@ -601,10 +611,16 @@ export function ExpenseWorkspace({
                 min="0.000001"
                 name="fxRate"
                 onChange={(event) => setFxRateInput(event.target.value)}
+                required={isManualFxRateRequired}
                 step="0.000001"
                 type="number"
                 value={fxRateInput}
               />
+              <span className="text-xs text-muted-foreground">
+                {activeHouseholdFxPolicy === "MANUAL_RATE_WITH_APPROVAL"
+                  ? labels.fxRateHintManual
+                  : labels.fxRateHintAutomatic}
+              </span>
             </Field>
           </div>
 

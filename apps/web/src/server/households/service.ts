@@ -39,12 +39,7 @@ export const updateHouseholdSchema = z.object({
     .trim()
     .regex(/^[A-Z]{3}$/),
   defaultLocale: z.enum(["en-US", "zh-CN"]),
-  fxPolicy: z.enum([
-    "LOCK_AT_EXPENSE_DATE",
-    "ORIGINAL_CURRENCY_DEBT",
-    "MANUAL_RATE_WITH_APPROVAL",
-    "FX_DIFFERENCE_ADJUSTMENT",
-  ]),
+  fxPolicy: z.enum(["LOCK_AT_EXPENSE_DATE", "MANUAL_RATE_WITH_APPROVAL"]),
   approvalPolicy: z.enum(["PAYER_AND_EACH_DEBTOR", "ALL_PARTICIPANTS", "PAYER_ONLY"]),
   clearingPolicy: z.enum(["DIRECT_ONLY", "HOUSEHOLD_NETTING"]),
 });

@@ -38,7 +38,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 
 - Owners, admins, and members can create submitted expense proposals from the dashboard.
 - Proposal creation records the proposal, primary payer, pending debtor shares, locked FX metadata, and an audit event.
-- Cross-currency proposals can omit `fxRate`; Roompire locks the expense-date rate from the `FxRate` cache or configured FX provider, while explicit manual rates remain supported as a fallback.
+- Cross-currency proposals can omit `fxRate` under the default household FX policy; Roompire locks the expense-date rate from the `FxRate` cache or configured FX provider. Households can switch to manual FX approval, which requires a reviewed `fxRate` for every cross-currency proposal.
 - Dashboard proposal creation supports equal, exact-amount, percentage, and share-unit splits with a live split preview; proposal detail pages show the chosen method and stored split basis.
 - Proposal creation supports private receipt attachments through local disk in development or S3-compatible storage in production, with short-lived signed download URLs on proposal detail.
 - Proposal detail pages support member comments, receipt attachment/download, revision submission for disputed/rejected proposals, and a submitted/approval/rejection/change-request/receipt/comment timeline.

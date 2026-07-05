@@ -113,7 +113,7 @@ For a smaller first implementation, `apps/web` can contain route handlers and se
 ```text
 1. User creates proposal
 2. System validates split math and permissions
-3. System locks FX rate for expense date
+3. System locks FX rate for expense date, or requires a manual rate when the household uses manual FX approval
 4. Proposal is submitted
 5. Required parties review
 6. Debtor B approves B share
@@ -218,7 +218,7 @@ Implementation priorities:
 3. Secondary provider.
 4. Manual rate with approval.
 
-The locked rate used by a proposal must be copied into the proposal/share/ledger context, not merely referenced as mutable external state.
+The locked rate used by a proposal must be copied into the proposal/share/ledger context, not merely referenced as mutable external state. Current household settings expose `LOCK_AT_EXPENSE_DATE` and `MANUAL_RATE_WITH_APPROVAL`; original-currency debt and FX-difference adjustment require additional ledger semantics before they are selectable.
 
 ## Calendar/task design
 

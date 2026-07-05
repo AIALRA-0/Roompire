@@ -195,7 +195,7 @@ Current implementation also exposes `GET /households/{householdId}/audit-events`
 }
 ```
 
-For cross-currency proposals, `fxRate` is optional. When it is omitted, the server locks the expense-date rate from the `FxRate` cache or configured provider and copies `fxRate`, `fxRateDate`, `fxProvider`, and `fxLockedAt` into the proposal. Clients may still send `fxRate` as a manual override when provider lookup is unavailable or a reviewed manual rate is required.
+For cross-currency proposals, `fxRate` is optional under `LOCK_AT_EXPENSE_DATE`. When it is omitted, the server locks the expense-date rate from the `FxRate` cache or configured provider and copies `fxRate`, `fxRateDate`, `fxProvider`, and `fxLockedAt` into the proposal. Clients may still send `fxRate` as a manual override when provider lookup is unavailable. When a household uses `MANUAL_RATE_WITH_APPROVAL`, cross-currency proposal, task-expense, and event-expense creation require `fxRate` and store `fxProvider=manual-entry`. `ORIGINAL_CURRENCY_DEBT` and `FX_DIFFERENCE_ADJUSTMENT` remain schema/backlog policies and are not accepted by household settings yet.
 
 Current implementation also accepts advanced split inputs through `participantShares`:
 

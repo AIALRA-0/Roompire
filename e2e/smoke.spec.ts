@@ -2000,12 +2000,17 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("settings-household-timezone").fill("America/New_York");
     await page.getByTestId("settings-household-currency").fill("USD");
     await page.getByTestId("settings-household-locale").selectOption("zh-CN");
-    await page.getByTestId("settings-household-fx-policy").selectOption("ORIGINAL_CURRENCY_DEBT");
+    await page
+      .getByTestId("settings-household-fx-policy")
+      .selectOption("MANUAL_RATE_WITH_APPROVAL");
     await page.getByTestId("settings-household-approval-policy").selectOption("ALL_PARTICIPANTS");
     await page.getByTestId("settings-household-clearing-policy").selectOption("HOUSEHOLD_NETTING");
     await page.getByRole("button", { name: "Save settings" }).click();
 
     await expect(page.getByRole("heading", { name: updatedName })).toBeVisible();
+    await expect(page.getByTestId("settings-household-fx-policy")).toHaveValue(
+      "MANUAL_RATE_WITH_APPROVAL",
+    );
 
     await page.getByLabel("Invite email").fill(inviteeEmail);
     await page.getByLabel("Invite role").selectOption("MEMBER");
@@ -2043,6 +2048,160 @@ test.describe("Roompire real browser smoke", () => {
     );
     await expect(page.getByText("Member removed")).toBeVisible();
     await expect(page.getByText(inviteeEmail)).toHaveCount(0);
+  });
+
+  test("manual FX household policy requires and records a manual rate", async ({
+    page,
+  }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `fx-owner+${suffix}@example.test`;
+    const debtorEmail = `fx-debtor+${suffix}@example.test`;
+    const householdName = `FX Policy House ${suffix}`;
+    const proposalTitle = `Manual FX Dinner ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "FX Owner E2E");
+    await page.goto("/en-US/app");
+    await page.getByTestId("create-household-name").fill(householdName);
+    await page.getByTestId("create-household-timezone").fill("America/Los_Angeles");
+    await page.getByTestId("create-household-currency").fill("CNY");
+    await clickHouseholdCreateWithRetry(page);
+    await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
+
+    const sessionResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(sessionResponse.ok()).toBeTruthy();
+    const sessionPayload = (await sessionResponse.json()) as {
+      household: { id: string } | null;
+    };
+    const householdId = sessionPayload.household?.id;
+    expect(householdId).toBeTruthy();
+    if (!householdId) {
+      throw new Error("Expected manual FX household id.");
+    }
+
+    await page
+      .getByTestId("settings-household-fx-policy")
+      .selectOption("MANUAL_RATE_WITH_APPROVAL");
+    const settingsResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/v1/households/${householdId}`) &&
+        response.request().method() === "PATCH",
+    );
+    await page.getByRole("button", { name: "Save settings" }).click();
+    const settingsResponse = await settingsResponsePromise;
+    expect(settingsResponse.ok()).toBeTruthy();
+    await expect(page.getByText("Settings saved")).toBeVisible();
+    await expect(page.getByText("Required for cross-currency proposals")).toBeVisible();
+
+    const invitePayload = await createInviteWithRetry(
+      page,
+      householdId,
+      {
+        email: debtorEmail,
+        role: "MEMBER",
+      },
+      ownerEmail,
+    );
+
+    await setDevSessionWithRetry(page, debtorEmail, "FX Debtor E2E");
+    const acceptResponse = await page.request.post("/api/v1/invites/accept", {
+      data: {
+        token: invitePayload.token,
+      },
+      headers: {
+        "x-roompire-dev-user-email": debtorEmail,
+      },
+    });
+    expect(acceptResponse.ok()).toBeTruthy();
+
+    const membersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(membersResponse.ok()).toBeTruthy();
+    const membersPayload = (await membersResponse.json()) as {
+      members: Array<{ userId: string; email: string }>;
+    };
+    const debtorUserId = membersPayload.members.find(
+      (member) => member.email === debtorEmail,
+    )?.userId;
+    expect(debtorUserId).toBeTruthy();
+    if (!debtorUserId) {
+      throw new Error("Expected manual FX debtor user id.");
+    }
+
+    const missingRateResponse = await page.request.post(
+      `/api/v1/households/${householdId}/expenses/proposals`,
+      {
+        data: {
+          title: `${proposalTitle} missing rate`,
+          categoryId: null,
+          expenseDate: "2026-07-06",
+          originalAmount: "30",
+          originalCurrency: "USD",
+          participantUserIds: [debtorUserId],
+          splitMethod: "EQUAL",
+        },
+        headers: {
+          "Idempotency-Key": `manual-fx-missing-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(missingRateResponse.status()).toBe(400);
+    const missingRatePayload = (await missingRateResponse.json()) as {
+      error: { code: string };
+    };
+    expect(missingRatePayload.error.code).toBe("FX_MANUAL_RATE_REQUIRED");
+
+    await setDevSessionWithRetry(page, ownerEmail, "FX Owner E2E");
+    await page.goto("/en-US/app");
+    await page.getByTestId("expense-title").fill(proposalTitle);
+    await page.getByTestId("expense-merchant").fill("Manual FX Cafe");
+    await page.getByTestId("expense-date").fill("2026-07-06");
+    await page.getByTestId("expense-amount").fill("30");
+    await page.getByTestId("expense-original-currency").fill("USD");
+    await expect(page.getByTestId("expense-fx-rate")).toHaveAttribute("required", "");
+    await page.getByTestId("expense-fx-rate").fill("7.3");
+    await page.getByTestId(`expense-debtor-${debtorEmail}`).check();
+    await expect(page.getByTestId(`expense-split-preview-${debtorEmail}`)).toContainText(
+      "CNY 109.5",
+    );
+
+    const proposalResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/v1/households/${householdId}/expenses/proposals`) &&
+        response.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Submit proposal" }).click();
+    const proposalResponse = await proposalResponsePromise;
+    expect(proposalResponse.status()).toBe(201);
+    const proposalPayload = (await proposalResponse.json()) as {
+      proposal: {
+        title: string;
+        fxPolicy: string;
+        fxProvider: string;
+        fxRate: string;
+        settlementAmount: string;
+        shares: Array<{ shareSettlementAmount: string }>;
+      };
+    };
+    expect(proposalPayload.proposal).toMatchObject({
+      title: proposalTitle,
+      fxPolicy: "MANUAL_RATE_WITH_APPROVAL",
+      fxProvider: "manual-entry",
+      fxRate: "7.3",
+      settlementAmount: "219",
+    });
+    expect(proposalPayload.proposal.shares[0]).toMatchObject({
+      shareSettlementAmount: "109.5",
+    });
+    await expect(page.getByText("Proposal submitted")).toBeVisible();
+    await expect(page.getByText(proposalTitle)).toBeVisible();
   });
 
   test("owner transfers ownership and preserves self-removal guard", async ({ page }, testInfo) => {

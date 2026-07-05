@@ -131,9 +131,7 @@ export default async function AppPage({ params }: PageProps) {
     clearingDirectOnly: identity("clearingDirectOnly"),
     clearingHouseholdNetting: identity("clearingHouseholdNetting"),
     fxLockExpenseDate: identity("fxLockExpenseDate"),
-    fxOriginalCurrency: identity("fxOriginalCurrency"),
     fxManualApproval: identity("fxManualApproval"),
-    fxDifferenceAdjustment: identity("fxDifferenceAdjustment"),
     householdSettings: identity("householdSettings"),
     householdSettingsHint: identity("householdSettingsHint"),
     saveSettings: identity("saveSettings"),
@@ -204,6 +202,8 @@ export default async function AppPage({ params }: PageProps) {
     originalCurrency: expense("originalCurrency"),
     settlementCurrency: expense("settlementCurrency"),
     fxRate: expense("fxRate"),
+    fxRateHintAutomatic: expense("fxRateHintAutomatic"),
+    fxRateHintManual: expense("fxRateHintManual"),
     debtors: expense("debtors"),
     payerShareIncluded: expense("payerShareIncluded"),
     splitMethod: expense("splitMethod"),
@@ -460,6 +460,11 @@ export default async function AppPage({ params }: PageProps) {
                   debtorCount: proposal.shares.length,
                 }))}
                 settlementCurrency={model.activeHousehold?.settlementCurrency ?? null}
+                activeHouseholdFxPolicy={
+                  model.activeHousehold?.fxPolicy === "MANUAL_RATE_WITH_APPROVAL"
+                    ? "MANUAL_RATE_WITH_APPROVAL"
+                    : "LOCK_AT_EXPENSE_DATE"
+                }
               />
             </div>
 

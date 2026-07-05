@@ -614,7 +614,7 @@ Pending approval items per user.
 2. `expense_shares.status = MATURED_TO_LEDGER` requires non-null `ledger_obligation_id`.
 3. Formal debt balances only use `debt_obligations` and `settlements`, not proposal totals.
 4. Ledger transaction reversal never updates original transaction; it references original.
-5. FX fields must be non-null when original currency differs from settlement currency under `LOCK_AT_EXPENSE_DATE`.
+5. FX fields must be non-null when original currency differs from settlement currency under `LOCK_AT_EXPENSE_DATE` or `MANUAL_RATE_WITH_APPROVAL`; manual-policy proposals must record `fx_provider = manual-entry`.
 6. Every mutating transaction emits an `audit_events` row.
 7. Audit event hashes must verify against the previous household event hash before the audit chain is considered intact.
 8. Month close prevents formal ledger writes in the closed posting month until the period is reopened; corrections must be posted in an open period.
