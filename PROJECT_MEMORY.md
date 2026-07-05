@@ -193,6 +193,13 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 ## Last session verification
 
+- 2026-07-05 Audit pagination:
+  - Branch/commit: `feat/audit-pagination` / `dd7546e feat: paginate audit events`, pushed to `origin/feat/audit-pagination`.
+  - Verification passed before deployment: `pnpm db:generate`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test` (11 files, 45 tests), `pnpm build`, `git diff --check`, and full `pnpm e2e` (46 browser tests across desktop/mobile).
+  - Production deployment from the self-hosted server used Docker Compose only, without SSH: built `web` and `migrate`, ran `prisma migrate deploy` with no pending migrations, recreated `roompire-web-1`, and confirmed the container healthy on `127.0.0.1:18300`.
+  - Real-domain smoke passed for `https://roompire.aialra.online`: `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`. Live audit pagination validation through the production gate returned session 200, `GET /audit-events?limit=1` with `page.hasMore=true`, a matching `nextCursor`, a second cursor page with a different event, invalid cursor 400, verified audit hash chain, and `/en-US/app/audit?limit=1` rendered the load-more control.
+  - GitHub Actions passed for the pushed commit: CI https://github.com/AIALRA-0/Roompire/actions/runs/28748173882 and E2E https://github.com/AIALRA-0/Roompire/actions/runs/28748173901.
+  - Docker build cache was pruned after deployment (`2.552GB` reclaimed); root disk was back to about `6.5G` free / `97%` used afterward.
 - 2026-07-05 Dashboard list pagination:
   - Added `apps/web/src/server/pagination.ts` plus unit coverage for `limit + 1` cursor paging; proposal and notification list services now accept `cursor`/`limit`, validate UUID cursors, and return `page` metadata while preserving the existing `proposals` and `notifications` arrays.
   - Dashboard proposal queue and in-app notification center now start with five rows and expose localized en-US/zh-CN load-more controls that call the real paginated APIs.
