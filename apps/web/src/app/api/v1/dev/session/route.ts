@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiErrorResponse, validationError } from "@/server/api/errors";
 import { ensureUserForDevSession, SESSION_COOKIE_NAME } from "@/server/auth/session";
+import { enforceRateLimit, rateLimitSubjectFromRequest } from "@/server/rate-limit/service";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,11 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       throw validationError("Developer session input is invalid.", parsed.error.flatten());
     }
+
+    await enforceRateLimit({
+      scope: "devSession",
+      subject: `${rateLimitSubjectFromRequest(request)}:${parsed.data.email}`,
+    });
 
     const user = await ensureUserForDevSession(parsed.data.email, parsed.data.displayName);
     const response = NextResponse.json({

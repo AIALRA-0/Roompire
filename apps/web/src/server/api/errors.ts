@@ -6,13 +6,21 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details?: ErrorDetails;
+  readonly headers?: HeadersInit;
 
-  constructor(status: number, code: string, message: string, details?: ErrorDetails) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details?: ErrorDetails,
+    headers?: HeadersInit,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.headers = headers;
   }
 }
 
@@ -26,7 +34,7 @@ export function apiErrorResponse(error: unknown) {
           details: error.details,
         },
       },
-      { status: error.status },
+      { headers: error.headers, status: error.status },
     );
   }
 

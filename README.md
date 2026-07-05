@@ -57,6 +57,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Owner/admin ledger correction APIs support manual adjustments and reversal of unallocated open obligations with append-only ledger transactions.
 - Calendar/task APIs and `/[locale]/app/calendar` page let owners/admins/members create, edit, and delete one-off or finite recurring calendar events, switch event list/day/week/month views, create/assign/edit/delete one-off or recurring tasks, auto-link due tasks to `TASK` calendar events, complete tasks with linked event status updates, create linked pending expense proposals from tasks, and configure recurring expense events that auto-generate one pending proposal when due.
 - The dashboard notification center shows proposal assignments plus idempotent scheduled jobs for recurring expense proposal generation and in-app reminders for due/overdue tasks, due/overdue repayments, and stale settlement confirmations.
+- API abuse controls rate-limit private site-gate failures, local dev-session switching, invite creation/acceptance, file upload intents, proposal comments, and share approve/reject/request-changes endpoints.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
 - OpenAPI covers the current list/create/detail/revision proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject/request-changes idempotency, balance, obligation, ledger transaction, ledger period close, settlement, settlement suggestion, ledger correction, calendar event create/update/delete with recurring expense templates, task create/update/delete/complete, and task-to-expense proposal endpoints.
 
@@ -123,6 +124,7 @@ For public/staging deployments, configure site-level Basic Auth and private file
 - `ROOMPIRE_SITE_GATE_SESSION_EMAIL` when the gate username is not the desired app user email
 - `ROOMPIRE_FX_PROVIDER=frankfurter` for live historical FX lookup, or `cache-only` to require preloaded `FxRate` rows/manual rates
 - `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` plus `ROOMPIRE_S3_*` settings for R2/S3/MinIO private receipt storage
+- `ROOMPIRE_RATE_LIMITS_ENABLED=true` plus optional `ROOMPIRE_RATE_LIMIT_*` limits/window overrides for invite, upload-intent, comment, and share-decision abuse controls
 
 Leave either username or password unset to disable the gate locally. In production, a verified site-gate request maps to the app user email from `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or from the gate username when the username is already an email address. Do not commit real gate credentials; set the shared deployment credentials only in the target server, CI, or hosting platform secret store.
 

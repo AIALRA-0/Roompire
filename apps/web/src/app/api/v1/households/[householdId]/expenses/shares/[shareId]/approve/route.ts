@@ -4,6 +4,7 @@ import { requireApiUser } from "@/server/auth/session";
 import { approveExpenseShareForHousehold } from "@/server/expenses/service";
 import { serializeExpenseProposal } from "@/server/expenses/serializers";
 import { requireIdempotencyKey, runIdempotentMutation } from "@/server/idempotency/service";
+import { enforceRateLimit } from "@/server/rate-limit/service";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       request.headers.get("idempotency-key"),
       "share decisions",
     );
+    await enforceRateLimit({
+      householdId,
+      scope: "shareDecision",
+      subject: user.id,
+    });
     const body = await readJsonBodyOrEmpty(request);
     const response = await runIdempotentMutation({
       key: idempotencyKey,

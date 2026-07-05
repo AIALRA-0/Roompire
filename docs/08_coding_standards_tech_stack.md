@@ -117,7 +117,7 @@
 - Never log secrets.
 - Never store full payment credentials.
 - Use signed URLs for private files.
-- Add rate limiting on auth/invite endpoints.
+- Keep fixed-window rate limiting on site-gate failures, dev-session switching, invite creation/acceptance, file upload intents, proposal comments, and share decisions.
 - Use CSRF protection if cookie auth.
 
 ## Build-vs-buy rules

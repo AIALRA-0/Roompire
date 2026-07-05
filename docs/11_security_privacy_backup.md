@@ -158,13 +158,17 @@ At least before production launch:
 
 ## Rate limiting
 
-Apply to:
+Current implementation uses fixed-window limits for the single-container self-hosted deployment. Failed site-gate Basic Auth attempts are limited in the Next proxy before pages/API routes are reached. API routes return `429 RATE_LIMITED` with `Retry-After`, `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers when a scoped limit is exceeded. Limits are enabled by default and can be disabled with `ROOMPIRE_RATE_LIMITS_ENABLED=false` during emergency maintenance; per-scope `ROOMPIRE_RATE_LIMIT_*_LIMIT` and `ROOMPIRE_RATE_LIMIT_*_WINDOW_SECONDS` variables tune thresholds.
+
+Applied to:
 
 - auth requests
 - invite creation/acceptance
 - file presign endpoints
 - comment endpoints
-- approval endpoints if abuse detected
+- share approve/reject/request-changes endpoints
+
+Future horizontal scaling should move the counter store from the current in-process map to Redis or another shared low-latency store so limits remain global across multiple web instances.
 
 ## Compliance posture
 

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { apiErrorResponse, validationError } from "@/server/api/errors";
 import { requireApiUser } from "@/server/auth/session";
 import { createFileUploadIntentForHousehold, serializeFile } from "@/server/files/service";
+import { enforceRateLimit } from "@/server/rate-limit/service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,6 +23,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId } = await context.params;
+    await enforceRateLimit({
+      householdId,
+      scope: "filePresign",
+      subject: user.id,
+    });
     const body = await readJsonBody(request);
     const file = await createFileUploadIntentForHousehold(user.id, householdId, body);
 

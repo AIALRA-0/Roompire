@@ -39,7 +39,7 @@
 - Notification preferences.
 - In-app notification center.
 
-Current implemented subset for identity/household: dev-session and site-gate-backed MVP auth, user profile settings, notification preference persistence, a browser-session active household switcher, a dashboard in-app notification center for assigned proposal shares plus scheduled task/debt/settlement reminders with read/unread state, household create/read/update, membership directory, invite token/code acceptance, owner/admin role management and removal guards, explicit owner-only ownership transfer that demotes the previous owner to admin, and RBAC checks across household-scoped APIs. Long-term multi-user auth provider selection remains a backlog item.
+Current implemented subset for identity/household: dev-session and site-gate-backed MVP auth, in-process rate limits for site-gate failures plus dev-session/invite mutation abuse controls, user profile settings, notification preference persistence, a browser-session active household switcher, a dashboard in-app notification center for assigned proposal shares plus scheduled task/debt/settlement reminders with read/unread state, household create/read/update, membership directory, invite token/code acceptance, owner/admin role management and removal guards, explicit owner-only ownership transfer that demotes the previous owner to admin, and RBAC checks across household-scoped APIs. Long-term multi-user auth provider selection remains a backlog item.
 
 ## Epic 2 — Expense proposals
 
@@ -64,7 +64,7 @@ Current implemented subset for identity/household: dev-session and site-gate-bac
 - Revision flow.
 - Dispute state.
 
-Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, receipt upload/attachment with private signed download URLs on local disk or S3-compatible storage, post-submission receipt attachment from proposal detail, proposal submission, debtor-only approve/reject/request-changes actions, disputed/rejected proposal revision/resubmit with supersedes links, proposal comments, proposal detail pages with split basis and a submitted/approval/change-request/receipt/comment timeline, ledger maturity for approved shares, task-generated pending proposals, and event-generated pending proposals.
+Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, receipt upload/attachment with private signed download URLs on local disk or S3-compatible storage, post-submission receipt attachment from proposal detail, proposal submission, rate limits for file upload intents, comments, and share approve/reject/request-changes mutations, debtor-only approve/reject/request-changes actions, disputed/rejected proposal revision/resubmit with supersedes links, proposal comments, proposal detail pages with split basis and a submitted/approval/change-request/receipt/comment timeline, ledger maturity for approved shares, task-generated pending proposals, and event-generated pending proposals.
 
 ## Epic 3 — FX
 
@@ -163,7 +163,7 @@ Current implemented subset for audit/statistics: mutation flows emit `AuditEvent
 - Backup script.
 - Restore script/drill.
 
-Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, optional Caddy reverse proxy profile, host-nginx localhost binding for the live self-hosted server, migration and demo-seed profiles, authenticated `/api/v1/health`, PWA manifest plus safe service-worker shell caching with API/data requests left network-only, S3-compatible private receipt storage wiring, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, encrypted backup/restore drills, ops health snapshots, scheduled housekeeping, scheduled recurring expense proposal generation, scheduled in-app reminder delivery, and real-domain smoke tests against `roompire.aialra.online`. Remaining deployment hardening is capacity planning, off-host backup copy/passphrase escrow, and eventual long-term auth provider selection.
+Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, optional Caddy reverse proxy profile, host-nginx localhost binding for the live self-hosted server, migration and demo-seed profiles, authenticated `/api/v1/health`, PWA manifest plus safe service-worker shell caching with API/data requests left network-only, S3-compatible private receipt storage wiring, production environment template with rate-limit overrides, backup/restore scripts, upload-volume backup script, smoke-test script, encrypted backup/restore drills, ops health snapshots, scheduled housekeeping, scheduled recurring expense proposal generation, scheduled in-app reminder delivery, and real-domain smoke tests against `roompire.aialra.online`. Remaining deployment hardening is capacity planning, off-host backup copy/passphrase escrow, and eventual long-term auth provider selection.
 
 ### P1
 

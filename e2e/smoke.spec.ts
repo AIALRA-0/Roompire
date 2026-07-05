@@ -874,6 +874,53 @@ test.describe("Roompire real browser smoke", () => {
     await setDevSessionWithRetry(page, "alice@example.test", "Alice");
   });
 
+  test("API mutations return 429 when rate limited", async ({ page }, testInfo) => {
+    const devSessionLimit = 120;
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const headers = {
+      "x-forwarded-for": `rate-limit-${suffix}`,
+    };
+    const body = {
+      displayName: "Rate Limit E2E",
+      email: `rate-limit+${suffix}@example.test`,
+    };
+
+    for (let attempt = 0; attempt < devSessionLimit; attempt += 1) {
+      const response = await page.request.post("/api/v1/dev/session", {
+        data: body,
+        headers,
+      });
+
+      expect(response.ok()).toBeTruthy();
+    }
+
+    const blockedResponse = await page.request.post("/api/v1/dev/session", {
+      data: body,
+      headers,
+    });
+    const blockedPayload = (await blockedResponse.json()) as {
+      error: {
+        code: string;
+        details: {
+          limit: number;
+          retryAfterSeconds: number;
+          scope: string;
+        };
+      };
+    };
+
+    expect(blockedResponse.status()).toBe(429);
+    expect(blockedResponse.headers()["retry-after"]).toBeTruthy();
+    expect(blockedResponse.headers()["ratelimit-limit"]).toBe(String(devSessionLimit));
+    expect(blockedResponse.headers()["ratelimit-remaining"]).toBe("0");
+    expect(blockedPayload.error.code).toBe("RATE_LIMITED");
+    expect(blockedPayload.error.details).toMatchObject({
+      limit: devSessionLimit,
+      scope: "devSession",
+    });
+    expect(blockedPayload.error.details.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
   test("desktop user opens landing page and navigates to dashboard", async ({ page }) => {
     await page.goto("/en-US");
 

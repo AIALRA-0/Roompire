@@ -33,8 +33,12 @@ Set these values in `.env.production` through the server's secret-management wor
 - `ROOMPIRE_SITE_GATE_USERNAME`
 - `ROOMPIRE_SITE_GATE_PASSWORD`
 - `ROOMPIRE_SITE_GATE_SESSION_EMAIL` if the gate username is not the app user email
+- `ROOMPIRE_RATE_LIMITS_ENABLED`
+- `ROOMPIRE_RATE_LIMIT_*_LIMIT` / `ROOMPIRE_RATE_LIMIT_*_WINDOW_SECONDS` optional abuse-control overrides
 
 Do not commit real production credentials. The public site gate stays enabled when both `ROOMPIRE_SITE_GATE_USERNAME` and `ROOMPIRE_SITE_GATE_PASSWORD` are set. Verified gate requests become the Roompire app user identified by `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or by the gate username when the username is already an email address.
+
+API route rate limits are enabled by default for invite creation/acceptance, local dev-session switching, file upload intents, proposal comments, and share approve/reject/request-changes. A failed site-gate Basic Auth limiter also protects the private gate before app routes execute. The current self-hosted deployment runs one web container, so counters live in process memory; keep `ROOMPIRE_RATE_LIMITS_ENABLED=true` unless emergency maintenance requires a temporary bypass.
 
 `ROOMPIRE_FILE_STORAGE_PROVIDER=local` stores private receipts in the Docker `roompire_uploads` volume. `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` stores private receipts in an S3-compatible bucket such as Cloudflare R2, AWS S3, or MinIO. Use `ROOMPIRE_S3_FORCE_PATH_STYLE=true` for MinIO/path-style endpoints when required by the provider.
 

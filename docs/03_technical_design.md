@@ -354,7 +354,7 @@ Use Docker-first as the stable baseline. Optimize edge deployment later if neede
 - Private object storage keys.
 - Signed URLs for attachments.
 - CSRF protection for cookie-based auth.
-- Rate limiting for auth/invite endpoints.
+- Fixed-window rate limiting for site-gate failures, dev-session switching, invite creation/acceptance, file upload intents, proposal comments, and share decisions.
 - No secrets in client bundle.
 - No sensitive payment credentials.
 

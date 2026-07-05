@@ -2,12 +2,17 @@ import { NextResponse, type NextRequest } from "next/server";
 import { apiErrorResponse } from "@/server/api/errors";
 import { requireApiUser } from "@/server/auth/session";
 import { acceptInviteForUser } from "@/server/households/service";
+import { enforceRateLimit } from "@/server/rate-limit/service";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireApiUser(request);
+    await enforceRateLimit({
+      scope: "inviteAccept",
+      subject: user.id,
+    });
     const body: unknown = await request.json();
     const { membership } = await acceptInviteForUser(user.id, body);
 
