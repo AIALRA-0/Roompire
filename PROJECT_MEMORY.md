@@ -73,6 +73,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Backup encryption visibility slice implemented on branch `ops/backup-encryption-status`: `collect_ops_status.sh` now records backup encryption configuration, passphrase-file presence, encrypted/plaintext artifact counts, checksum sidecar coverage, and latest encrypted artifact; `/api/v1/ops/status` and `/[locale]/app/ops` expose those fields without leaking secret values.
 - File manifest backup slice implemented on branch `ops/file-storage-manifest-backups`: `scripts/backup_file_manifest.sh` exports database `File` rows and storage configuration into a JSON manifest, `backup_all.sh` includes that manifest with PostgreSQL and upload-volume backups, and encrypted production runs write only `.json.enc` manifest artifacts plus `.sha256` sidecars.
 - Scheduled housekeeping slice implemented on branch `ops/scheduled-housekeeping`: `server_housekeeping.sh` has category switches for unattended cleanup, and `roompire-housekeeping.timer` runs conservative daily cleanup for targeted `/tmp` leftovers, Docker/build cache, journal archives, and ops status refresh while skipping current checkout artifacts by default.
+- Housekeeping ops visibility slice implemented on branch `ops/housekeeping-status`: `collect_ops_status.sh` records `roompire-housekeeping.timer` and service state, `/api/v1/ops/status` and `/[locale]/app/ops` expose the housekeeping card, OpenAPI and E2E fixtures cover the new fields, and the live site shows housekeeping as OK while disk high-usage remains the only expected ops warning.
 
 ## Current phase
 
@@ -131,6 +132,7 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 | 2026-07-05 | Surface backup encryption health in ops snapshots           | Encrypted backups are only useful if drift is visible; the ops page should show config/artifact health from host-generated JSON while keeping secret values outside web requests and repo files.    |
 | 2026-07-05 | Export file metadata manifests with daily backups           | Receipt object recovery needs more than bytes in a volume or bucket; each backup should carry a DB-derived file manifest that can reconcile provider, bucket, object key, MIME, size, and hashes.   |
 | 2026-07-05 | Schedule conservative housekeeping on the server            | Disk pressure has repeatedly affected builds/tests; routine cache and journal cleanup should run under systemd, avoid live data/volumes, and skip current checkout artifacts unless manual.         |
+| 2026-07-05 | Surface housekeeping health in ops snapshots                | Scheduled cleanup only helps if timer/service drift is visible to the owner; the host snapshot can expose systemd state without giving the web container host command privileges.                   |
 
 ## Open questions for later human review
 
@@ -142,12 +144,21 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 ## Next recommended tasks
 
 1. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
-2. Continue root-disk capacity planning; production now has roughly 6.5GB free after cleanup, but `/` is still about 97% used and ops health intentionally warns with `disk_high_usage`.
+2. Continue root-disk capacity planning; production now has roughly 5.4GB free after post-deploy cleanup, but `/` is still about 98% used and ops health intentionally warns with `disk_high_usage`.
 3. Add off-host backup copy and passphrase escrow once private production data grows beyond the initial household.
 4. Design an explicit household clearing policy only if guidance-only netted suggestions should become executable later.
 
 ## Last session verification
 
+- 2026-07-05 Housekeeping ops visibility:
+  - Updated `scripts/collect_ops_status.sh` so host snapshots include `roompire-housekeeping.timer` active/enabled state, next/last run, and `roompire-housekeeping.service` result/exit/timestamps.
+  - Extended `OpsStatusSnapshot`, `/api/v1/ops/status`, OpenAPI, localized ops UI, and targeted Playwright fixture/assertions to expose housekeeping health without web-request-time host commands.
+  - Fixed the live ops card layout after screenshot review by using a 2-column desktop grid with 4 columns only on very wide screens and by truncating long metric values inside their cards.
+  - `bash -n`, `git diff --check`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm build`, and targeted Playwright on Chromium desktop/mobile for owner ops review plus viewer denial all passed.
+  - Production web image was rebuilt and `roompire-web-1` was recreated on the local self-hosted server behind host nginx at `127.0.0.1:18300`; Postgres and Redis stayed healthy and no migration was needed.
+  - Real-domain smoke passed for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`; authenticated `/api/v1/ops/status` returned `housekeepingTimer.status=ok`, `housekeepingService.status=ok`, `latestSmoke.status=passed`, and warnings only for `disk_high_usage`.
+  - Authenticated real-browser smoke opened `https://roompire.aialra.online/en-US/app/ops`, verified housekeeping `OK`, smoke `Passed`, no card overlap or horizontal overflow at 1440px, and refreshed screenshot `output/playwright/roompire-ops-housekeeping-live.png`.
+  - Conservative housekeeping reclaimed 2.566GB of Docker build cache after deployment; root disk ended around 5.4GB free / 98% used.
 - 2026-07-05 Scheduled housekeeping:
   - Added category switches to `scripts/server_housekeeping.sh` so unattended runs can skip current checkout artifacts while still managing targeted `/tmp` leftovers, Docker prune, builder cache, journal vacuuming, optional uv cache cleanup, optional old browser-workspace artifacts, and ops-status refresh.
   - Added `ops/systemd/roompire-housekeeping.service` and `.timer`; the timer is daily with randomized delay and uses conservative cleanup defaults.

@@ -4,6 +4,7 @@ out/
 coverage/
 playwright-report/
 test-results/
+output/
 .roompire_uploads/
 apps/web/.roompire_uploads/
 ops/status/*.json

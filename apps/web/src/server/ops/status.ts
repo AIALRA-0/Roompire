@@ -67,6 +67,25 @@ export type OpsStatusSnapshot = {
     status: HealthState;
     error: string | null;
   };
+  housekeepingTimer: {
+    name: string;
+    activeState: string;
+    enabledState: string;
+    nextElapse: string | null;
+    lastTrigger: string | null;
+    status: HealthState;
+    error: string | null;
+  };
+  housekeepingService: {
+    name: string;
+    activeState: string;
+    result: string;
+    execMainStatus: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+    status: HealthState;
+    error: string | null;
+  };
   backupEncryption: {
     backupRoot: string;
     configured: BackupEncryptionMode;
@@ -265,6 +284,14 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("backup_service_attention");
   }
 
+  if (status.housekeepingTimer.status !== "ok") {
+    warnings.push("housekeeping_timer_attention");
+  }
+
+  if (status.housekeepingService.status === "warning") {
+    warnings.push("housekeeping_service_attention");
+  }
+
   if (status.backupEncryption.configured !== "enabled") {
     warnings.push("backup_encryption_disabled");
   }
@@ -308,6 +335,8 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawDisk = isRecord(raw.disk) ? raw.disk : {};
   const rawBackupTimer = isRecord(raw.backupTimer) ? raw.backupTimer : {};
   const rawBackupService = isRecord(raw.backupService) ? raw.backupService : {};
+  const rawHousekeepingTimer = isRecord(raw.housekeepingTimer) ? raw.housekeepingTimer : {};
+  const rawHousekeepingService = isRecord(raw.housekeepingService) ? raw.housekeepingService : {};
   const rawBackupEncryption = isRecord(raw.backupEncryption) ? raw.backupEncryption : {};
   const availableBytes = numberValue(rawDisk.availableBytes);
   const usedPercent = numberValue(rawDisk.usedPercent);
@@ -350,6 +379,25 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       finishedAt: nullableStringValue(rawBackupService.finishedAt),
       status: healthStateValue(rawBackupService.status),
       error: nullableStringValue(rawBackupService.error),
+    },
+    housekeepingTimer: {
+      name: stringValue(rawHousekeepingTimer.name, "roompire-housekeeping.timer"),
+      activeState: stringValue(rawHousekeepingTimer.activeState, "unknown"),
+      enabledState: stringValue(rawHousekeepingTimer.enabledState, "unknown"),
+      nextElapse: nullableStringValue(rawHousekeepingTimer.nextElapse),
+      lastTrigger: nullableStringValue(rawHousekeepingTimer.lastTrigger),
+      status: healthStateValue(rawHousekeepingTimer.status),
+      error: nullableStringValue(rawHousekeepingTimer.error),
+    },
+    housekeepingService: {
+      name: stringValue(rawHousekeepingService.name, "roompire-housekeeping.service"),
+      activeState: stringValue(rawHousekeepingService.activeState, "unknown"),
+      result: stringValue(rawHousekeepingService.result, "unknown"),
+      execMainStatus: stringValue(rawHousekeepingService.execMainStatus, "unknown"),
+      startedAt: nullableStringValue(rawHousekeepingService.startedAt),
+      finishedAt: nullableStringValue(rawHousekeepingService.finishedAt),
+      status: healthStateValue(rawHousekeepingService.status),
+      error: nullableStringValue(rawHousekeepingService.error),
     },
     backupEncryption: {
       backupRoot: stringValue(rawBackupEncryption.backupRoot, "/srv/aialra/backups/roompire"),
@@ -432,6 +480,25 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
     },
     backupService: {
       name: process.env.ROOMPIRE_BACKUP_SERVICE?.trim() || "roompire-backup.service",
+      activeState: "unknown",
+      result: "unknown",
+      execMainStatus: "unknown",
+      startedAt: null,
+      finishedAt: null,
+      status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    housekeepingTimer: {
+      name: process.env.ROOMPIRE_HOUSEKEEPING_TIMER?.trim() || "roompire-housekeeping.timer",
+      activeState: "unknown",
+      enabledState: "unknown",
+      nextElapse: null,
+      lastTrigger: null,
+      status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    housekeepingService: {
+      name: process.env.ROOMPIRE_HOUSEKEEPING_SERVICE?.trim() || "roompire-housekeeping.service",
       activeState: "unknown",
       result: "unknown",
       execMainStatus: "unknown",

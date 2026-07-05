@@ -10,6 +10,10 @@ const outputPath = process.env.ROOMPIRE_OPS_STATUS_FILE_HOST || "ops/status/ops-
 const diskPath = process.env.ROOMPIRE_OPS_DISK_PATH || "/";
 const backupTimerName = process.env.ROOMPIRE_BACKUP_TIMER || "roompire-backup.timer";
 const backupServiceName = process.env.ROOMPIRE_BACKUP_SERVICE || "roompire-backup.service";
+const housekeepingTimerName =
+  process.env.ROOMPIRE_HOUSEKEEPING_TIMER || "roompire-housekeeping.timer";
+const housekeepingServiceName =
+  process.env.ROOMPIRE_HOUSEKEEPING_SERVICE || "roompire-housekeeping.service";
 const backupRoot =
   process.env.ROOMPIRE_BACKUP_ROOT || process.env.BACKUP_ROOT || "/srv/aialra/backups/roompire";
 const smokeStatusPath = process.env.ROOMPIRE_SMOKE_STATUS_FILE || "ops/status/latest-smoke.json";
@@ -57,10 +61,10 @@ function nullableSystemdValue(value) {
   return value && value !== "n/a" ? value : null;
 }
 
-function collectBackupTimer() {
+function collectSystemdTimer(timerName) {
   const result = command("systemctl", [
     "show",
-    backupTimerName,
+    timerName,
     "--property=ActiveState",
     "--property=UnitFileState",
     "--property=NextElapseUSecRealtime",
@@ -69,7 +73,7 @@ function collectBackupTimer() {
 
   if (!result.ok) {
     return {
-      name: backupTimerName,
+      name: timerName,
       activeState: "unknown",
       enabledState: "unknown",
       nextElapse: null,
@@ -84,7 +88,7 @@ function collectBackupTimer() {
   const enabledState = values.UnitFileState || "unknown";
 
   return {
-    name: backupTimerName,
+    name: timerName,
     activeState,
     enabledState,
     nextElapse: nullableSystemdValue(values.NextElapseUSecRealtime),
@@ -94,10 +98,10 @@ function collectBackupTimer() {
   };
 }
 
-function collectBackupService() {
+function collectSystemdService(serviceName) {
   const result = command("systemctl", [
     "show",
-    backupServiceName,
+    serviceName,
     "--property=ActiveState",
     "--property=Result",
     "--property=ExecMainStatus",
@@ -107,7 +111,7 @@ function collectBackupService() {
 
   if (!result.ok) {
     return {
-      name: backupServiceName,
+      name: serviceName,
       activeState: "unknown",
       result: "unknown",
       execMainStatus: "unknown",
@@ -122,7 +126,7 @@ function collectBackupService() {
   const serviceResult = values.Result || "unknown";
 
   return {
-    name: backupServiceName,
+    name: serviceName,
     activeState: values.ActiveState || "unknown",
     result: serviceResult,
     execMainStatus: values.ExecMainStatus || "unknown",
@@ -131,6 +135,22 @@ function collectBackupService() {
     status: serviceResult === "success" ? "ok" : "warning",
     error: null,
   };
+}
+
+function collectBackupTimer() {
+  return collectSystemdTimer(backupTimerName);
+}
+
+function collectBackupService() {
+  return collectSystemdService(backupServiceName);
+}
+
+function collectHousekeepingTimer() {
+  return collectSystemdTimer(housekeepingTimerName);
+}
+
+function collectHousekeepingService() {
+  return collectSystemdService(housekeepingServiceName);
 }
 
 function parseUnitEnvironment(output) {
@@ -372,6 +392,8 @@ const snapshot = {
   disk: collectDisk(),
   backupTimer: collectBackupTimer(),
   backupService: collectBackupService(),
+  housekeepingTimer: collectHousekeepingTimer(),
+  housekeepingService: collectHousekeepingService(),
   backupEncryption: collectBackupEncryption(),
   latestSmoke: readLatestSmoke(),
 };

@@ -15,6 +15,7 @@ import {
   Settings,
   TimerReset,
   WalletCards,
+  Wrench,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { ApiError } from "@/server/api/errors";
@@ -144,6 +145,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_unknown: ops("warningDiskUnknown"),
     backup_timer_attention: ops("warningBackupTimer"),
     backup_service_attention: ops("warningBackupService"),
+    housekeeping_timer_attention: ops("warningHousekeepingTimer"),
+    housekeeping_service_attention: ops("warningHousekeepingService"),
     backup_encryption_disabled: ops("warningBackupEncryptionDisabled"),
     backup_encryption_missing_artifacts: ops("warningBackupEncryptionMissingArtifacts"),
     backup_plaintext_artifacts: ops("warningBackupPlaintextArtifacts"),
@@ -159,9 +162,14 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
 
 function MetricRow({ label, value, testId }: { label: string; value: string; testId?: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 text-sm" data-testid={testId}>
-      <span className="text-muted-foreground">{label}</span>
-      <span className="min-w-0 truncate text-right font-medium">{value}</span>
+    <div
+      className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] items-start gap-3 text-sm"
+      data-testid={testId}
+    >
+      <span className="min-w-0 text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate text-right font-medium" title={value}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -361,8 +369,11 @@ export default async function OpsPage({ params }: PageProps) {
               </div>
             </section>
 
-            <section className="mt-6 grid gap-6 xl:grid-cols-3">
-              <div className="rounded-lg border border-border bg-card" data-testid="ops-disk-card">
+            <section className="mt-6 grid gap-6 xl:grid-cols-2 2xl:grid-cols-4">
+              <div
+                className="min-w-0 rounded-lg border border-border bg-card"
+                data-testid="ops-disk-card"
+              >
                 <div className="flex items-center justify-between gap-3 border-b border-border p-5">
                   <div>
                     <h2 className="text-base font-semibold">{ops("disk")}</h2>
@@ -403,7 +414,7 @@ export default async function OpsPage({ params }: PageProps) {
               </div>
 
               <div
-                className="rounded-lg border border-border bg-card"
+                className="min-w-0 rounded-lg border border-border bg-card"
                 data-testid="ops-backup-card"
               >
                 <div className="flex items-center justify-between gap-3 border-b border-border p-5">
@@ -508,7 +519,79 @@ export default async function OpsPage({ params }: PageProps) {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-border bg-card" data-testid="ops-smoke-card">
+              <div
+                className="min-w-0 rounded-lg border border-border bg-card"
+                data-testid="ops-housekeeping-card"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-border p-5">
+                  <div>
+                    <h2 className="text-base font-semibold">{ops("housekeeping")}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{ops("housekeepingHint")}</p>
+                  </div>
+                  <Wrench aria-hidden="true" className="h-5 w-5 text-violet-700" />
+                </div>
+                <div className="grid gap-3 p-5">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm text-muted-foreground">{ops("timer")}</span>
+                    <Badge
+                      data-testid="ops-housekeeping-timer-status"
+                      variant={healthVariant(status.housekeepingTimer.status)}
+                    >
+                      {healthLabel(ops, status.housekeepingTimer.status)}
+                    </Badge>
+                  </div>
+                  <MetricRow label={ops("timerName")} value={status.housekeepingTimer.name} />
+                  <MetricRow
+                    label={ops("activeState")}
+                    value={status.housekeepingTimer.activeState}
+                  />
+                  <MetricRow
+                    label={ops("enabledState")}
+                    value={status.housekeepingTimer.enabledState}
+                  />
+                  <MetricRow
+                    label={ops("nextRun")}
+                    testId="ops-housekeeping-next-run"
+                    value={formatDateTime(locale, status.housekeepingTimer.nextElapse)}
+                  />
+                  <MetricRow
+                    label={ops("lastRun")}
+                    value={formatDateTime(locale, status.housekeepingTimer.lastTrigger)}
+                  />
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">{ops("service")}</span>
+                      <Badge variant={healthVariant(status.housekeepingService.status)}>
+                        {healthLabel(ops, status.housekeepingService.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("serviceResult")}
+                        value={status.housekeepingService.result}
+                      />
+                      <MetricRow
+                        label={ops("serviceExitCode")}
+                        value={status.housekeepingService.execMainStatus}
+                      />
+                      <MetricRow
+                        label={ops("serviceFinishedAt")}
+                        value={formatDateTime(locale, status.housekeepingService.finishedAt)}
+                      />
+                    </div>
+                  </div>
+                  {status.housekeepingTimer.error || status.housekeepingService.error ? (
+                    <p className="text-sm text-rose-700">
+                      {status.housekeepingTimer.error ?? status.housekeepingService.error}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div
+                className="min-w-0 rounded-lg border border-border bg-card"
+                data-testid="ops-smoke-card"
+              >
                 <div className="flex items-center justify-between gap-3 border-b border-border p-5">
                   <div>
                     <h2 className="text-base font-semibold">{ops("smoke")}</h2>

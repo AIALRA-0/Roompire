@@ -1373,6 +1373,8 @@ components:
           disk,
           backupTimer,
           backupService,
+          housekeepingTimer,
+          housekeepingService,
           backupEncryption,
           latestSmoke,
         ]
@@ -1442,6 +1444,42 @@ components:
             [name, activeState, result, execMainStatus, startedAt, finishedAt, status, error]
           properties:
             name: { type: string, example: roompire-backup.service }
+            activeState: { type: string, example: inactive }
+            result: { type: string, example: success }
+            execMainStatus: { type: string, example: "0" }
+            startedAt:
+              type: string
+              nullable: true
+            finishedAt:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        housekeepingTimer:
+          type: object
+          required: [name, activeState, enabledState, nextElapse, lastTrigger, status, error]
+          properties:
+            name: { type: string, example: roompire-housekeeping.timer }
+            activeState: { type: string, example: active }
+            enabledState: { type: string, example: enabled }
+            nextElapse:
+              type: string
+              nullable: true
+            lastTrigger:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        housekeepingService:
+          type: object
+          required:
+            [name, activeState, result, execMainStatus, startedAt, finishedAt, status, error]
+          properties:
+            name: { type: string, example: roompire-housekeeping.service }
             activeState: { type: string, example: inactive }
             result: { type: string, example: success }
             execMainStatus: { type: string, example: "0" }

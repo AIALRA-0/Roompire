@@ -164,6 +164,25 @@ async function writeOpsStatusFixture() {
           status: "ok",
           error: null,
         },
+        housekeepingTimer: {
+          name: "roompire-housekeeping.timer",
+          activeState: "active",
+          enabledState: "enabled",
+          nextElapse: "2026-07-05T03:35:00.000Z",
+          lastTrigger: "2026-07-04T03:35:00.000Z",
+          status: "ok",
+          error: null,
+        },
+        housekeepingService: {
+          name: "roompire-housekeeping.service",
+          activeState: "inactive",
+          result: "success",
+          execMainStatus: "0",
+          startedAt: "2026-07-04T03:35:00.000Z",
+          finishedAt: "2026-07-04T03:36:00.000Z",
+          status: "ok",
+          error: null,
+        },
         backupEncryption: {
           backupRoot: "/srv/aialra/backups/roompire",
           configured: "enabled",
@@ -1202,6 +1221,7 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-summary-status")).toContainText("OK");
     await expect(page.getByTestId("ops-disk-card")).toContainText("58 GB");
     await expect(page.getByTestId("ops-backup-timer-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-housekeeping-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-encryption-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-encryption-mode")).toContainText("Enabled");
     await expect(page.getByTestId("ops-backup-plaintext-artifacts")).toContainText("0");
@@ -1214,6 +1234,8 @@ test.describe("Roompire real browser smoke", () => {
       status: {
         source: string;
         summary: { status: string; warnings: string[] };
+        housekeepingTimer: { activeState: string; enabledState: string };
+        housekeepingService: { result: string; execMainStatus: string };
         backupEncryption: {
           configured: string;
           encryptedArtifacts: number;
@@ -1224,6 +1246,12 @@ test.describe("Roompire real browser smoke", () => {
     };
     expect(opsPayload.status.source).toBe("host_status_file");
     expect(opsPayload.status.summary).toEqual({ status: "ok", warnings: [] });
+    expect(opsPayload.status.housekeepingTimer).toEqual(
+      expect.objectContaining({ activeState: "active", enabledState: "enabled" }),
+    );
+    expect(opsPayload.status.housekeepingService).toEqual(
+      expect.objectContaining({ result: "success", execMainStatus: "0" }),
+    );
     expect(opsPayload.status.backupEncryption).toEqual(
       expect.objectContaining({
         configured: "enabled",
