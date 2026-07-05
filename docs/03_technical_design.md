@@ -292,7 +292,7 @@ Jobs must be idempotent.
 
 MVP recommended deployment:
 
-- Docker Compose on VPS or self-host server.
+- Docker Compose on the self-hosted server, with host nginx terminating TLS for the current live deployment.
 - Services:
   - web
   - postgres

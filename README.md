@@ -112,7 +112,7 @@ Set `ROOMPIRE_E2E_SKIP_DB_RESET=true` only when reusing an already-prepared data
 ## Deployment
 
 Docker-first deployment is the current production baseline for `roompire.aialra.online`.
-Use [`docs/14_deployment_runbook.md`](docs/14_deployment_runbook.md) for the VPS/Caddy/PostgreSQL/Redis deployment flow, backup commands, restore drill, and smoke checks.
+Use [`docs/14_deployment_runbook.md`](docs/14_deployment_runbook.md) for the self-hosted Docker/PostgreSQL/Redis deployment flow behind host nginx, backup commands, restore drill, and smoke checks.
 For public/staging deployments, configure site-level Basic Auth and private file storage through deployment secrets:
 
 - `ROOMPIRE_SITE_GATE_USERNAME`
@@ -125,25 +125,25 @@ Leave either username or password unset to disable the gate locally. In producti
 
 ## Document Map
 
-| File                                     | Purpose                                               |
-| ---------------------------------------- | ----------------------------------------------------- |
-| `AGENTS.md`                              | Non-negotiable agent rules and project constitution.  |
-| `PROJECT_MEMORY.md`                      | Persistent repo memory for Codex/context restoration. |
-| `docs/00_context_decisions.md`           | Product context, hard decisions, constraints.         |
-| `docs/01_project_plan.md`                | Milestones, phases, gates, risks.                     |
-| `docs/02_prd.md`                         | Product requirements document.                        |
-| `docs/03_technical_design.md`            | Architecture and system design.                       |
-| `docs/04_test_plan.md`                   | Testing strategy with real-browser E2E priority.      |
-| `docs/05_database_design.md`             | Data model, invariants, ledger rules.                 |
-| `docs/06_api_specification.md`           | REST API design narrative.                            |
-| `specs/openapi.roompire.v1.yaml`         | Initial OpenAPI contract skeleton.                    |
-| `docs/07_ui_ux_spec.md`                  | UI/UX specification and design system.                |
-| `docs/08_coding_standards_tech_stack.md` | Stack, code quality, conventions.                     |
-| `docs/09_agent_instructions_workflow.md` | Detailed agent workflow and GitHub process.           |
-| `docs/10_backlog_milestones.md`          | Prioritized backlog and release slices.               |
-| `docs/11_security_privacy_backup.md`     | Security, privacy, backup, recovery.                  |
-| `docs/12_acceptance_checklist.md`        | Definition of Done and acceptance gates.              |
-| `docs/14_deployment_runbook.md`          | Docker/VPS deployment, smoke, backup, restore.        |
+| File                                     | Purpose                                                |
+| ---------------------------------------- | ------------------------------------------------------ |
+| `AGENTS.md`                              | Non-negotiable agent rules and project constitution.   |
+| `PROJECT_MEMORY.md`                      | Persistent repo memory for Codex/context restoration.  |
+| `docs/00_context_decisions.md`           | Product context, hard decisions, constraints.          |
+| `docs/01_project_plan.md`                | Milestones, phases, gates, risks.                      |
+| `docs/02_prd.md`                         | Product requirements document.                         |
+| `docs/03_technical_design.md`            | Architecture and system design.                        |
+| `docs/04_test_plan.md`                   | Testing strategy with real-browser E2E priority.       |
+| `docs/05_database_design.md`             | Data model, invariants, ledger rules.                  |
+| `docs/06_api_specification.md`           | REST API design narrative.                             |
+| `specs/openapi.roompire.v1.yaml`         | Initial OpenAPI contract skeleton.                     |
+| `docs/07_ui_ux_spec.md`                  | UI/UX specification and design system.                 |
+| `docs/08_coding_standards_tech_stack.md` | Stack, code quality, conventions.                      |
+| `docs/09_agent_instructions_workflow.md` | Detailed agent workflow and GitHub process.            |
+| `docs/10_backlog_milestones.md`          | Prioritized backlog and release slices.                |
+| `docs/11_security_privacy_backup.md`     | Security, privacy, backup, recovery.                   |
+| `docs/12_acceptance_checklist.md`        | Definition of Done and acceptance gates.               |
+| `docs/14_deployment_runbook.md`          | Self-hosted Docker deployment, smoke, backup, restore. |
 
 ## Core Product Invariants
 

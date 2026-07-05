@@ -74,6 +74,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - File manifest backup slice implemented on branch `ops/file-storage-manifest-backups`: `scripts/backup_file_manifest.sh` exports database `File` rows and storage configuration into a JSON manifest, `backup_all.sh` includes that manifest with PostgreSQL and upload-volume backups, and encrypted production runs write only `.json.enc` manifest artifacts plus `.sha256` sidecars.
 - Scheduled housekeeping slice implemented on branch `ops/scheduled-housekeeping`: `server_housekeeping.sh` has category switches for unattended cleanup, and `roompire-housekeeping.timer` runs conservative daily cleanup for targeted `/tmp` leftovers, Docker/build cache, journal archives, and ops status refresh while skipping current checkout artifacts by default.
 - Housekeeping ops visibility slice implemented on branch `ops/housekeeping-status`: `collect_ops_status.sh` records `roompire-housekeeping.timer` and service state, `/api/v1/ops/status` and `/[locale]/app/ops` expose the housekeeping card, OpenAPI and E2E fixtures cover the new fields, and the live site shows housekeeping as OK while disk high-usage remains the only expected ops warning.
+- CI workflow hardening slice implemented on branch `chore/ci-workflow-hardening`: GitHub Actions now use pnpm `11.9.0`, CI/E2E push triggers include `ops/**`, E2E runs on feature/ops/chore pushes with explicit worker/port settings, workflow permissions/timeouts are constrained, and Playwright ops-status fixtures are isolated under `test-results/` instead of overwriting the live host ops snapshot.
 
 ## Current phase
 
@@ -133,6 +134,8 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 | 2026-07-05 | Export file metadata manifests with daily backups           | Receipt object recovery needs more than bytes in a volume or bucket; each backup should carry a DB-derived file manifest that can reconcile provider, bucket, object key, MIME, size, and hashes.   |
 | 2026-07-05 | Schedule conservative housekeeping on the server            | Disk pressure has repeatedly affected builds/tests; routine cache and journal cleanup should run under systemd, avoid live data/volumes, and skip current checkout artifacts unless manual.         |
 | 2026-07-05 | Surface housekeeping health in ops snapshots                | Scheduled cleanup only helps if timer/service drift is visible to the owner; the host snapshot can expose systemd state without giving the web container host command privileges.                   |
+| 2026-07-05 | Run CI and E2E on ops branches                              | Production-hardening branches change the real server contract, so GitHub Actions must cover `ops/**` pushes instead of only feature/fix/docs/test/chore branches.                                   |
+| 2026-07-05 | Isolate E2E ops-status fixtures from production snapshots   | The live web container reads `ops/status` from this checkout; browser tests must use a test-only status file so local E2E cannot replace the host-generated production snapshot.                    |
 
 ## Open questions for later human review
 
@@ -144,12 +147,21 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 ## Next recommended tasks
 
 1. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
-2. Continue root-disk capacity planning; production now has roughly 5.4GB free after post-deploy cleanup, but `/` is still about 98% used and ops health intentionally warns with `disk_high_usage`.
+2. Continue root-disk capacity planning; production now has roughly 4.6GB free after repeated builds/E2E runs, and ops health intentionally warns with disk pressure.
 3. Add off-host backup copy and passphrase escrow once private production data grows beyond the initial household.
 4. Design an explicit household clearing policy only if guidance-only netted suggestions should become executable later.
 
 ## Last session verification
 
+- 2026-07-05 CI workflow hardening:
+  - Updated `.github/workflows/ci.yml` and `.github/workflows/e2e.yml` to use pnpm `11.9.0`, include `ops/**` push triggers, add manual CI dispatch, set read-only workflow permissions, add job timeouts, and make the E2E Postgres health check explicit.
+  - Added E2E push coverage for feature/fix/test/chore/ops branches with explicit `ROOMPIRE_E2E_PORT=3100` and `ROOMPIRE_E2E_WORKERS=1`.
+  - Moved Playwright ops-status fixtures to `test-results/e2e-ops-status/ops-status.json` through `ROOMPIRE_OPS_STATUS_FILE`, preventing local E2E from overwriting the production `ops/status` bind mount used by the live web container.
+  - Updated README/backlog/technical design wording so deployment docs describe the current self-hosted server with host nginx rather than a separate VPS.
+  - Local CI-equivalent chain passed: `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build`.
+  - Targeted Playwright desktop/mobile ops test passed and proved host `ops/status/ops-status.json` stayed at the real host disk value while the test fixture contained the expected fake 42% disk data.
+  - Full `pnpm e2e` passed after the isolation change: 28 browser tests across Chromium desktop and mobile in 7.8 minutes.
+  - Real-domain smoke passed again for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`; `collect_ops_status.sh` restored/refreshed the live host snapshot and authenticated `/api/v1/ops/status` returned `latestSmoke.status=passed` with disk-pressure warnings.
 - 2026-07-05 Housekeeping ops visibility:
   - Updated `scripts/collect_ops_status.sh` so host snapshots include `roompire-housekeeping.timer` active/enabled state, next/last run, and `roompire-housekeeping.service` result/exit/timestamps.
   - Extended `OpsStatusSnapshot`, `/api/v1/ops/status`, OpenAPI, localized ops UI, and targeted Playwright fixture/assertions to expose housekeeping health without web-request-time host commands.

@@ -1,8 +1,14 @@
+import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 const e2ePort = process.env.ROOMPIRE_E2E_PORT ?? "3100";
 const e2eBaseUrl = `http://127.0.0.1:${e2ePort}`;
 const e2eWorkers = Number(process.env.ROOMPIRE_E2E_WORKERS ?? "1");
+const e2eOpsStatusFile =
+  process.env.ROOMPIRE_OPS_STATUS_FILE ??
+  resolve(process.cwd(), "test-results/e2e-ops-status/ops-status.json");
+
+process.env.ROOMPIRE_OPS_STATUS_FILE = e2eOpsStatusFile;
 
 export default defineConfig({
   testDir: "./e2e",

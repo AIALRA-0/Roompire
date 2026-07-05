@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 async function clickMemberMutationWithRetry(
@@ -126,10 +127,11 @@ async function getApiWithRetry(
 
 async function writeOpsStatusFixture() {
   const generatedAt = new Date().toISOString();
+  const statusFilePath = process.env.ROOMPIRE_OPS_STATUS_FILE ?? "ops/status/ops-status.json";
 
-  await mkdir("ops/status", { recursive: true });
+  await mkdir(dirname(statusFilePath), { recursive: true });
   await writeFile(
-    "ops/status/ops-status.json",
+    statusFilePath,
     `${JSON.stringify(
       {
         schemaVersion: 1,
