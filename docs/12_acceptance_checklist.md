@@ -73,6 +73,7 @@ Use this checklist before declaring a milestone complete.
 - [ ] Permission errors standardized.
 - [ ] Pagination used for lists.
 - [x] Dashboard proposal and notification lists expose cursor pagination metadata and load-more controls.
+- [x] Audit event API returns cursor pagination metadata, the audit page can load larger result windows, and audit exports keep a full-history query path.
 
 ## Deployment/backup
 

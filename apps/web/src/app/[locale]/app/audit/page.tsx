@@ -54,6 +54,32 @@ function shortHash(value: string | null) {
   return value ? `${value.slice(0, 12)}...` : null;
 }
 
+function auditLimitHref(
+  locale: Locale,
+  rawSearchParams: Record<string, string | string[] | undefined>,
+  limit: number,
+) {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(rawSearchParams)) {
+    if (key === "cursor" || key === "limit") {
+      continue;
+    }
+
+    const firstValue = firstSearchValue(value);
+
+    if (firstValue) {
+      params.set(key, firstValue);
+    }
+  }
+
+  params.set("limit", String(limit));
+
+  const query = params.toString();
+
+  return `/${locale}/app/audit${query ? `?${query}` : ""}`;
+}
+
 export default async function AuditPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
   const rawSearchParams = await searchParams;
@@ -81,6 +107,7 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
       member.displayNameOverride ?? member.user.displayName,
     ]),
   );
+  const limitOptions = ["25", "50", "100"];
   const filters = {
     action: firstSearchValue(rawSearchParams.action) ?? "",
     actorUserId: firstSearchValue(rawSearchParams.actorUserId) ?? "",
@@ -90,21 +117,30 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
     to: firstSearchValue(rawSearchParams.to) ?? "",
     limit: firstSearchValue(rawSearchParams.limit) ?? "50",
   };
-  const [events, chain] = activeHouseholdId
+  const selectedLimit = limitOptions.includes(filters.limit) ? Number(filters.limit) : 50;
+  const [eventResult, chain] = activeHouseholdId
     ? await Promise.all([
-        listAuditEventsForHousehold(model.user.id, activeHouseholdId, filters).then((items) =>
-          items.map(serializeAuditEvent),
-        ),
+        listAuditEventsForHousehold(model.user.id, activeHouseholdId, filters),
         verifyAuditHashChainForHousehold(model.user.id, activeHouseholdId).then(
           serializeAuditHashChain,
         ),
       ])
-    : [[], null];
+    : [
+        {
+          items: [],
+          page: {
+            limit: selectedLimit,
+            nextCursor: null,
+            hasMore: false,
+          },
+        },
+        null,
+      ];
+  const events = eventResult.items.map(serializeAuditEvent);
   const dateFormatter = new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   });
-  const limitOptions = ["25", "50", "100"];
   const chainStatusLabels = {
     VERIFIED: audit("chainVerified"),
     MISSING_HASHES: audit("chainMissingHashes"),
@@ -112,6 +148,9 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
   };
   const chainVariant =
     chain?.status === "VERIFIED" ? "success" : chain?.status === "BROKEN" ? "danger" : "warning";
+  const nextLimit = eventResult.page.hasMore
+    ? limitOptions.map(Number).find((limit) => limit > eventResult.page.limit)
+    : undefined;
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -432,6 +471,18 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
                   </p>
                 </div>
               )}
+              {nextLimit ? (
+                <div className="border-t border-border p-4 text-center">
+                  <Button asChild variant="outline">
+                    <Link
+                      data-testid="audit-load-more"
+                      href={auditLimitHref(locale, rawSearchParams, nextLimit)}
+                    >
+                      {audit("loadMore")}
+                    </Link>
+                  </Button>
+                </div>
+              ) : null}
             </section>
           </div>
         </section>

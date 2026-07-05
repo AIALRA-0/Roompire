@@ -117,7 +117,7 @@ export async function getDashboardModel() {
         status: "OPEN",
       },
     }),
-    listAuditEventsForHousehold(user.id, activeHousehold.id),
+    listAuditEventsForHousehold(user.id, activeHousehold.id, { limit: 4 }),
   ]);
 
   return {
@@ -137,7 +137,7 @@ export async function getDashboardModel() {
     pendingProposalCount,
     maturedObligationCount,
     upcomingTaskCount,
-    auditItems: auditItems.slice(0, 4),
+    auditItems: auditItems.items,
     canInviteMembers: canManageMembers(activeMembership.role),
     canManageMembers: canManageMembers(activeMembership.role),
     canCreateExpenseProposals: canCreateExpenseProposal(activeMembership.role),

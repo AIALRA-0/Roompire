@@ -501,6 +501,7 @@
     "before": "Before",
     "after": "After",
     "metadata": "Metadata",
+    "loadMore": "Load more",
     "noEvents": "No audit events yet",
     "noEventsHint": "Household actions will appear here as soon as proposals, approvals, files, ledger entries, or tasks change."
   },

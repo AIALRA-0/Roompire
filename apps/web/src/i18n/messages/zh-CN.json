@@ -501,6 +501,7 @@
     "before": "变更前",
     "after": "变更后",
     "metadata": "元数据",
+    "loadMore": "加载更多",
     "noEvents": "暂无审计事件",
     "noEventsHint": "提案、审批、文件、账本或任务发生变化后，相关家庭活动会显示在这里。"
   },

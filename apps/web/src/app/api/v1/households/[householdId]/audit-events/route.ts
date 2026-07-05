@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId } = await context.params;
-    const [events, chain] = await Promise.all([
+    const [result, chain] = await Promise.all([
       listAuditEventsForHousehold(
         user.id,
         householdId,
@@ -27,8 +27,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     ]);
 
     return NextResponse.json({
-      events: events.map(serializeAuditEvent),
+      events: result.items.map(serializeAuditEvent),
       chain: serializeAuditHashChain(chain),
+      page: result.page,
     });
   } catch (error) {
     return apiErrorResponse(error);

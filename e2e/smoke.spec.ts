@@ -1351,8 +1351,14 @@ test.describe("Roompire real browser smoke", () => {
         hashedEventCount: number;
         latestEventHash: string | null;
       };
+      page: {
+        limit: number;
+        nextCursor: string | null;
+        hasMore: boolean;
+      };
     };
     expect(auditPayload.events.length).toBeGreaterThan(0);
+    expect(auditPayload.page.limit).toBe(50);
     expect(auditPayload.chain.status).toBe("VERIFIED");
     expect(auditPayload.chain.hashedEventCount).toBe(auditPayload.chain.eventCount);
     expect(auditPayload.chain.latestEventHash).toMatch(/^[0-9a-f]{64}$/);
@@ -1363,6 +1369,42 @@ test.describe("Roompire real browser smoke", () => {
         entityType: "ExpenseProposal",
       }),
     );
+
+    const firstAuditPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/audit-events?limit=1`,
+    );
+    expect(firstAuditPageResponse.ok()).toBeTruthy();
+    const firstAuditPagePayload = (await firstAuditPageResponse.json()) as {
+      events: Array<{ id: string }>;
+      page: {
+        limit: number;
+        nextCursor: string | null;
+        hasMore: boolean;
+      };
+    };
+    expect(firstAuditPagePayload.events).toHaveLength(1);
+    expect(firstAuditPagePayload.page).toEqual({
+      limit: 1,
+      nextCursor: firstAuditPagePayload.events[0]!.id,
+      hasMore: true,
+    });
+
+    const secondAuditPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${sessionPayload.household!.id}/audit-events?limit=1&cursor=${firstAuditPagePayload.page.nextCursor}`,
+    );
+    expect(secondAuditPageResponse.ok()).toBeTruthy();
+    const secondAuditPagePayload = (await secondAuditPageResponse.json()) as {
+      events: Array<{ id: string }>;
+      page: {
+        limit: number;
+        nextCursor: string | null;
+        hasMore: boolean;
+      };
+    };
+    expect(secondAuditPagePayload.events).toHaveLength(1);
+    expect(secondAuditPagePayload.events[0]?.id).not.toBe(firstAuditPagePayload.events[0]!.id);
 
     const filteredAuditResponse = await getApiWithRetry(
       page,
@@ -1396,6 +1438,11 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByText("expense_proposal.seeded")).toBeVisible();
     await expect(page.getByTestId(`audit-event-hash-${auditPayload.events[0]!.id}`)).toContainText(
       /[0-9a-f]{64}/,
+    );
+    await page.goto("/en-US/app/audit?limit=1");
+    await expect(page.getByTestId("audit-load-more")).toHaveAttribute(
+      "href",
+      "/en-US/app/audit?limit=25",
     );
 
     await page.goto("/en-US/app/audit?action=export.created&entityType=Export&limit=25");

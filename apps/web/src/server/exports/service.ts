@@ -2,7 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { serializeAuditEvent } from "@/server/audit/serializers";
-import { listAuditEventsForHousehold } from "@/server/audit/service";
+import { listAllAuditEventsForHousehold } from "@/server/audit/service";
 import { prisma } from "@/server/db/prisma";
 import { serializeExpenseProposal } from "@/server/expenses/serializers";
 import { serializeLedgerObligation } from "@/server/ledger/serializers";
@@ -233,7 +233,7 @@ async function exportRecords(userId: string, householdId: string, dataset: Expor
   }
 
   if (dataset === "audit_events") {
-    return (await listAuditEventsForHousehold(userId, householdId)).map(serializeAuditEvent);
+    return (await listAllAuditEventsForHousehold(userId, householdId)).map(serializeAuditEvent);
   }
 
   return exportMembers(householdId);

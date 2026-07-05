@@ -197,12 +197,13 @@ components:
           nullable: true
     AuditEventListResponse:
       type: object
-      required: [events, chain]
+      required: [events, chain, page]
       properties:
         events:
           type: array
           items: { $ref: "#/components/schemas/AuditEvent" }
         chain: { $ref: "#/components/schemas/AuditHashChain" }
+        page: { $ref: "#/components/schemas/PageInfo" }
     AmountTotal:
       type: object
       required: [currency, amount]
@@ -4151,6 +4152,10 @@ paths:
           name: to
           schema: { type: string, format: date }
           description: Inclusive upper occurred-at bound. ISO date-time is also accepted.
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+          description: Cursor returned from the previous audit event page.
         - in: query
           name: limit
           schema: { type: integer, minimum: 1, maximum: 100, default: 50 }

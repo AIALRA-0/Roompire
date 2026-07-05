@@ -1,7 +1,8 @@
-import type { AuditEvent } from "@prisma/client";
+import type { AuditEvent, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
+import { paginateRows, paginationQueryFields } from "@/server/pagination";
 import { requireActiveMembership } from "@/server/permissions/rbac";
 
 export type AuditEventWithJson = AuditEvent;
@@ -34,7 +35,7 @@ export const auditEventQuerySchema = z.object({
   entityType: z.preprocess(emptyToUndefined, z.string().trim().max(80).optional()),
   from: z.preprocess(emptyToUndefined, z.string().trim().max(40).optional()),
   to: z.preprocess(emptyToUndefined, z.string().trim().max(40).optional()),
-  limit: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(100).default(50)),
+  ...paginationQueryFields(50),
 });
 
 export type AuditEventQuery = z.infer<typeof auditEventQuerySchema>;
@@ -59,6 +60,79 @@ function parseDateBound(value: string | undefined, boundary: "start" | "end") {
   return date;
 }
 
+function buildAuditEventWhere(
+  householdId: string,
+  query: AuditEventQuery,
+  cursorEvent?: Pick<AuditEvent, "id" | "occurredAt">,
+) {
+  const from = parseDateBound(query.from, "start");
+  const to = parseDateBound(query.to, "end");
+  const cursorWindow: Prisma.AuditEventWhereInput | undefined = cursorEvent
+    ? {
+        OR: [
+          {
+            occurredAt: {
+              lt: cursorEvent.occurredAt,
+            },
+          },
+          {
+            occurredAt: cursorEvent.occurredAt,
+            id: {
+              gt: cursorEvent.id,
+            },
+          },
+        ],
+      }
+    : undefined;
+
+  return {
+    householdId,
+    action: query.action
+      ? {
+          contains: query.action,
+          mode: "insensitive",
+        }
+      : undefined,
+    actorUserId: query.actorUserId,
+    entityId: query.entityId,
+    entityType: query.entityType
+      ? {
+          contains: query.entityType,
+          mode: "insensitive",
+        }
+      : undefined,
+    occurredAt:
+      from || to
+        ? {
+            gte: from,
+            lte: to,
+          }
+        : undefined,
+    AND: cursorWindow ? [cursorWindow] : undefined,
+  } satisfies Prisma.AuditEventWhereInput;
+}
+
+async function resolveAuditCursor(householdId: string, cursor: string | undefined) {
+  if (!cursor) {
+    return undefined;
+  }
+
+  const cursorEvent = await prisma.auditEvent.findUnique({
+    where: { id: cursor },
+    select: { id: true, householdId: true, occurredAt: true },
+  });
+
+  if (!cursorEvent || cursorEvent.householdId !== householdId) {
+    throw validationError("Audit event query is invalid.", {
+      fieldErrors: {
+        cursor: ["Invalid cursor."],
+      },
+    });
+  }
+
+  return cursorEvent;
+}
+
 export async function listAuditEventsForHousehold(
   userId: string,
   householdId: string,
@@ -71,36 +145,23 @@ export async function listAuditEventsForHousehold(
     throw validationError("Audit event query is invalid.", parsed.error.flatten());
   }
 
-  const from = parseDateBound(parsed.data.from, "start");
-  const to = parseDateBound(parsed.data.to, "end");
+  const cursorEvent = await resolveAuditCursor(householdId, parsed.data.cursor);
+
+  const events = await prisma.auditEvent.findMany({
+    where: buildAuditEventWhere(householdId, parsed.data, cursorEvent),
+    orderBy: [{ occurredAt: "desc" }, { id: "asc" }],
+    take: parsed.data.limit + 1,
+  });
+
+  return paginateRows(events, parsed.data.limit);
+}
+
+export async function listAllAuditEventsForHousehold(userId: string, householdId: string) {
+  await requireActiveMembership(userId, householdId);
 
   return prisma.auditEvent.findMany({
-    where: {
-      householdId,
-      action: parsed.data.action
-        ? {
-            contains: parsed.data.action,
-            mode: "insensitive",
-          }
-        : undefined,
-      actorUserId: parsed.data.actorUserId,
-      entityId: parsed.data.entityId,
-      entityType: parsed.data.entityType
-        ? {
-            contains: parsed.data.entityType,
-            mode: "insensitive",
-          }
-        : undefined,
-      occurredAt:
-        from || to
-          ? {
-              gte: from,
-              lte: to,
-            }
-          : undefined,
-    },
+    where: { householdId },
     orderBy: [{ occurredAt: "desc" }, { id: "asc" }],
-    take: parsed.data.limit,
   });
 }
 
