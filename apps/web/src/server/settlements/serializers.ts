@@ -1,4 +1,5 @@
 import type { SettlementWithRelations } from "./service";
+import { createFileDownloadPath } from "@/server/files/service";
 
 function dateToDateOnly(value: Date | null | undefined) {
   return value ? value.toISOString().slice(0, 10) : null;
@@ -33,6 +34,26 @@ export function serializeSettlement(settlement: SettlementWithRelations) {
       debtObligationId: allocation.debtObligationId,
       amountApplied: allocation.amountApplied.toString(),
     })),
+    files:
+      settlement.settlementFiles?.map((settlementFile) => {
+        const { downloadUrl, expiresAt } = createFileDownloadPath(
+          settlement.householdId,
+          settlementFile.file.id,
+        );
+
+        return {
+          id: settlementFile.file.id,
+          purpose: settlementFile.purpose,
+          uploadedByUserId: settlementFile.file.uploadedByUserId,
+          originalFilename: settlementFile.file.originalFilename,
+          mimeType: settlementFile.file.mimeType,
+          sizeBytes: settlementFile.file.sizeBytes,
+          sha256: settlementFile.file.sha256 === "pending" ? null : settlementFile.file.sha256,
+          createdAt: settlementFile.createdAt.toISOString(),
+          downloadUrl,
+          downloadExpiresAt: expiresAt,
+        };
+      }) ?? [],
   };
 }
 

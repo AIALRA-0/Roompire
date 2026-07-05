@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, SendHorizontal, X } from "lucide-react";
+import { Check, Download, Paperclip, SendHorizontal, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,9 @@ type SettlementLabels = {
   date: string;
   method: string;
   note: string;
+  evidence: string;
+  evidenceHint: string;
+  evidenceDownload: string;
   submitSettlement: string;
   settlementSubmitted: string;
   pendingSettlements: string;
@@ -58,6 +61,16 @@ type ApiErrorPayload = {
   };
 };
 
+type FileUploadIntentResponse = {
+  file: {
+    id: string;
+  };
+  upload: {
+    uploadUrl: string;
+    headers: Record<string, string>;
+  };
+};
+
 async function postSettlementMutation<T>(
   url: string,
   body: unknown,
@@ -82,6 +95,44 @@ async function postSettlementMutation<T>(
   }
 
   return payload as T;
+}
+
+async function uploadSettlementEvidenceFile(
+  householdId: string,
+  file: File,
+  errorFallback: string,
+) {
+  const intent = await postSettlementMutation<FileUploadIntentResponse>(
+    `/api/v1/households/${householdId}/files/presign-upload`,
+    {
+      originalFilename: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    },
+    errorFallback,
+  );
+  const uploadResponse = await fetch(intent.upload.uploadUrl, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: intent.upload.headers,
+    body: file,
+  });
+  const isJson = uploadResponse.headers.get("content-type")?.includes("application/json");
+  const payload: unknown = isJson ? await uploadResponse.json() : null;
+
+  if (!uploadResponse.ok) {
+    const errorPayload =
+      payload && typeof payload === "object" ? (payload as ApiErrorPayload) : null;
+    throw new Error(errorPayload?.error?.message ?? errorFallback);
+  }
+
+  return intent.file.id;
+}
+
+function evidenceFileFromForm(formData: FormData) {
+  const file = formData.get("evidence");
+
+  return file instanceof File && file.size > 0 ? file : null;
 }
 
 function memberName(memberNamesByUserId: Record<string, string>, userId: string) {
@@ -137,6 +188,11 @@ export function SettlementActions({
     const formData = new FormData(form);
 
     try {
+      const evidenceFile = evidenceFileFromForm(formData);
+      const fileIds = evidenceFile
+        ? [await uploadSettlementEvidenceFile(householdId, evidenceFile, labels.errorFallback)]
+        : [];
+
       await postSettlementMutation(
         `/api/v1/households/${householdId}/settlements`,
         {
@@ -146,6 +202,7 @@ export function SettlementActions({
           settlementDate: String(formData.get("settlementDate") ?? ""),
           method: String(formData.get("method") ?? ""),
           note: String(formData.get("note") ?? ""),
+          fileIds,
         },
         labels.errorFallback,
       );
@@ -168,6 +225,11 @@ export function SettlementActions({
     const formData = new FormData(form);
 
     try {
+      const evidenceFile = evidenceFileFromForm(formData);
+      const fileIds = evidenceFile
+        ? [await uploadSettlementEvidenceFile(householdId, evidenceFile, labels.errorFallback)]
+        : [];
+
       await postSettlementMutation(
         `/api/v1/households/${householdId}/settlements`,
         {
@@ -176,6 +238,7 @@ export function SettlementActions({
           settlementDate: String(formData.get("settlementDate") ?? ""),
           method: String(formData.get("method") ?? ""),
           note: String(formData.get("note") ?? ""),
+          fileIds,
         },
         labels.errorFallback,
       );
@@ -293,7 +356,7 @@ export function SettlementActions({
                       />
                     </label>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
                     <label className="grid gap-1.5 text-sm font-medium">
                       <span>{labels.note}</span>
                       <input
@@ -302,6 +365,19 @@ export function SettlementActions({
                         maxLength={500}
                         name="note"
                       />
+                    </label>
+                    <label className="grid gap-1.5 text-sm font-medium">
+                      <span>{labels.evidence}</span>
+                      <input
+                        accept="application/pdf,image/jpeg,image/png,image/webp"
+                        className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:font-medium focus-ring"
+                        data-testid={`suggested-settlement-evidence-${key}`}
+                        name="evidence"
+                        type="file"
+                      />
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {labels.evidenceHint}
+                      </span>
                     </label>
                     <Button
                       data-testid={`suggested-settlement-submit-${key}`}
@@ -373,7 +449,7 @@ export function SettlementActions({
                     />
                   </label>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
                   <label className="grid gap-1.5 text-sm font-medium">
                     <span>{labels.note}</span>
                     <input
@@ -382,6 +458,19 @@ export function SettlementActions({
                       maxLength={500}
                       name="note"
                     />
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-medium">
+                    <span>{labels.evidence}</span>
+                    <input
+                      accept="application/pdf,image/jpeg,image/png,image/webp"
+                      className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:font-medium focus-ring"
+                      data-testid={`settlement-evidence-${obligation.id}`}
+                      name="evidence"
+                      type="file"
+                    />
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {labels.evidenceHint}
+                    </span>
                   </label>
                   <Button
                     data-testid={`settlement-submit-${obligation.id}`}
@@ -439,6 +528,17 @@ export function SettlementActions({
                     <Badge variant="warning">{settlement.status}</Badge>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {settlement.files.map((file) => (
+                      <Button asChild key={file.id} size="sm" variant="outline">
+                        <a
+                          data-testid={`settlement-file-download-${file.id}`}
+                          href={file.downloadUrl}
+                        >
+                          <Download aria-hidden="true" className="h-4 w-4" />
+                          {labels.evidenceDownload}
+                        </a>
+                      </Button>
+                    ))}
                     <Button
                       data-testid={`settlement-confirm-${settlement.id}`}
                       disabled={isPending || busyActionId === `confirm-${settlement.id}`}
@@ -463,6 +563,19 @@ export function SettlementActions({
                       {labels.rejectSettlement}
                     </Button>
                   </div>
+                  {settlement.files.length > 0 ? (
+                    <div className="grid gap-1 text-xs text-muted-foreground">
+                      {settlement.files.map((file) => (
+                        <p
+                          className="flex max-w-full min-w-0 items-center gap-2 overflow-hidden"
+                          key={file.id}
+                        >
+                          <Paperclip aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 truncate">{file.originalFilename}</span>
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

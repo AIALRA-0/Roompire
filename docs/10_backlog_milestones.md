@@ -118,6 +118,8 @@ Current implementation for settlement suggestions exposes optimized net transfer
 - Payment method metadata.
 - Settlement receipt/evidence.
 
+Current implemented subset for settlements: debtors can submit direct-obligation, directly suggested, or household-clearing settlements with optional uploaded receipt/evidence files; creditors see pending settlements with evidence download links before confirming or rejecting; confirmed settlements allocate across the appropriate open obligations and reduce remaining balances only after creditor confirmation.
+
 ## Epic 6 — Calendar and tasks
 
 ### P0

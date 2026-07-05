@@ -253,7 +253,7 @@ export async function completeFileUploadForHousehold(
   return file;
 }
 
-export async function assertFilesReadyForProposal(input: {
+export async function assertFilesReadyForAttachment(input: {
   userId: string;
   householdId: string;
   fileIds: string[];
@@ -293,6 +293,14 @@ export async function assertFilesReadyForProposal(input: {
       throw new ApiError(409, "FILE_UPLOAD_INCOMPLETE", "Attached file has not finished upload.");
     }
   }
+}
+
+export async function assertFilesReadyForProposal(input: {
+  userId: string;
+  householdId: string;
+  fileIds: string[];
+}) {
+  await assertFilesReadyForAttachment(input);
 }
 
 export async function createDownloadUrlForFile(

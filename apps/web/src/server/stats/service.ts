@@ -280,32 +280,48 @@ export async function getStatsSummaryForHousehold(
     },
     ...(range ? { createdAt: range } : {}),
   };
-  const [proposals, obligations, settlements, tasks, auditEventCount, receiptFileCount] =
-    await Promise.all([
-      prisma.expenseProposal.findMany({
-        where: proposalWhere,
-        include: {
-          category: true,
-          payers: true,
-          shares: true,
-        },
-      }),
-      prisma.debtObligation.findMany({
-        where: obligationWhere,
-      }),
-      prisma.settlement.findMany({
-        where: settlementWhere,
-      }),
-      prisma.task.findMany({
-        where: taskWhere,
-      }),
-      prisma.auditEvent.count({
-        where: auditWhere,
-      }),
-      prisma.proposalFile.count({
-        where: proposalFileWhere,
-      }),
-    ]);
+  const settlementFileWhere: Prisma.SettlementFileWhereInput = {
+    settlement: {
+      householdId,
+    },
+    ...(range ? { createdAt: range } : {}),
+  };
+  const [
+    proposals,
+    obligations,
+    settlements,
+    tasks,
+    auditEventCount,
+    proposalFileCount,
+    settlementFileCount,
+  ] = await Promise.all([
+    prisma.expenseProposal.findMany({
+      where: proposalWhere,
+      include: {
+        category: true,
+        payers: true,
+        shares: true,
+      },
+    }),
+    prisma.debtObligation.findMany({
+      where: obligationWhere,
+    }),
+    prisma.settlement.findMany({
+      where: settlementWhere,
+    }),
+    prisma.task.findMany({
+      where: taskWhere,
+    }),
+    prisma.auditEvent.count({
+      where: auditWhere,
+    }),
+    prisma.proposalFile.count({
+      where: proposalFileWhere,
+    }),
+    prisma.settlementFile.count({
+      where: settlementFileWhere,
+    }),
+  ]);
   const proposalTotals = new Map<string, Decimal>();
   const openObligationTotals = new Map<string, Decimal>();
   const confirmedSettlementTotals = new Map<string, Decimal>();
@@ -343,7 +359,7 @@ export async function getStatsSummaryForHousehold(
     taskCounts: taskCountMap(tasks),
     proposalTrend: proposalTrend(proposals),
     auditEventCount,
-    receiptFileCount,
+    receiptFileCount: proposalFileCount + settlementFileCount,
   };
 }
 

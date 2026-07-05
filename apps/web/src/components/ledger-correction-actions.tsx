@@ -91,7 +91,7 @@ function Field({
   children: React.ReactNode;
 }>) {
   return (
-    <label className="grid gap-1.5 text-sm font-medium">
+    <label className="grid min-w-0 gap-1.5 text-sm font-medium">
       <span>{label}</span>
       {children}
     </label>
@@ -199,7 +199,7 @@ export function LedgerCorrectionActions({
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={labels.debtor}>
               <select
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="ledger-adjustment-debtor"
                 name="debtorUserId"
                 required
@@ -214,7 +214,7 @@ export function LedgerCorrectionActions({
             </Field>
             <Field label={labels.creditor}>
               <select
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="ledger-adjustment-creditor"
                 name="creditorUserId"
                 required
@@ -231,7 +231,7 @@ export function LedgerCorrectionActions({
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label={labels.amount}>
               <input
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="ledger-adjustment-amount"
                 min="0.000001"
                 name="amount"
@@ -242,7 +242,7 @@ export function LedgerCorrectionActions({
             </Field>
             <Field label={labels.currency}>
               <input
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
+                className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
                 data-testid="ledger-adjustment-currency"
                 defaultValue={settlementCurrency}
                 maxLength={3}
@@ -253,7 +253,7 @@ export function LedgerCorrectionActions({
             </Field>
             <Field label={labels.occurred}>
               <input
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="ledger-adjustment-occurred"
                 defaultValue={today}
                 name="occurredAt"
@@ -265,7 +265,7 @@ export function LedgerCorrectionActions({
           <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
             <Field label={labels.dueDate}>
               <input
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="ledger-adjustment-due-date"
                 name="dueDate"
                 type="date"
@@ -273,7 +273,7 @@ export function LedgerCorrectionActions({
             </Field>
             <Field label={labels.reason}>
               <input
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="ledger-adjustment-reason"
                 maxLength={500}
                 name="reason"
@@ -317,7 +317,7 @@ export function LedgerCorrectionActions({
                     <Badge variant="warning">{obligation.status}</Badge>
                   </div>
                   <input
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                     data-testid={`ledger-reversal-reason-${obligation.id}`}
                     maxLength={500}
                     name="reason"

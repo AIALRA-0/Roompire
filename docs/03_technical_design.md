@@ -159,6 +159,7 @@ Recommended abstraction:
 - `ledger_transactions`: group of formal ledger effects, e.g. debt creation, settlement, reversal.
 - `debt_obligations`: concrete "debtor owes creditor" records from approved shares.
 - `settlements`: repayment records that reduce obligations.
+- `settlement_files`: optional evidence files attached to submitted settlements.
 - `ledger_links`: references source proposal/share/settlement/reversal.
 
 Balances should be computed from obligations minus settlements. Store cached/materialized summaries for performance only if they can be rebuilt.

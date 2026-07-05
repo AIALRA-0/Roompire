@@ -124,6 +124,8 @@ Current implementation lets owners and admins manage non-self member roles and r
 - `POST /households/{householdId}/settlements/{settlementId}/reject`
 - `GET /households/{householdId}/settlement-suggestions`
 
+Current implementation: debtors can submit a settlement against one open obligation, a directly settleable suggested transfer, or an enabled household-clearing transfer. The request can include completed uploaded `fileIds` as settlement evidence; the files must belong to the household, be uploaded by the submitting user, and have completed byte upload. Settlement responses include evidence metadata plus short-lived signed download URLs so creditors can review attachments before confirming.
+
 ### Calendar and tasks
 
 - `GET /households/{householdId}/calendar/events`
@@ -145,7 +147,7 @@ Current implementation supports list/create calendar event, list/create task, as
 - `POST /households/{householdId}/files/complete-upload`
 - `GET /households/{householdId}/files/{fileId}/download-url`
 
-Current MVP implements private receipt storage behind a stable API shape: presign creates a file intent, clients upload bytes to the returned private `PUT` URL, proposal creation can attach uploaded `fileIds` as receipt files, and download-url returns a short-lived signed Roompire URL. Supported receipt MIME types are PDF, PNG, JPG, and WebP up to 5 MB. Development defaults to the local private adapter; production can use S3-compatible object storage through `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` and `ROOMPIRE_S3_*` settings without changing the client API.
+Current MVP implements private receipt/evidence storage behind a stable API shape: presign creates a file intent, clients upload bytes to the returned private `PUT` URL, proposal creation can attach uploaded `fileIds` as receipt files, settlement creation can attach uploaded `fileIds` as evidence files, and download-url returns a short-lived signed Roompire URL. Supported receipt/evidence MIME types are PDF, PNG, JPG, and WebP up to 5 MB. Development defaults to the local private adapter; production can use S3-compatible object storage through `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` and `ROOMPIRE_S3_*` settings without changing the client API.
 
 ### Stats/export/audit
 
@@ -156,7 +158,7 @@ Current MVP implements private receipt storage behind a stable API shape: presig
 - `POST /households/{householdId}/exports`
 - `GET /households/{householdId}/exports/{exportId}`
 
-Current implementation exposes read-only active-member statistics endpoints for household summary totals, category totals, and member totals. Optional `from`/`to` query parameters select an inclusive statistics window. Summary covers the selected window, proposal status counts, non-cancelled proposal totals by currency, open obligation totals, confirmed settlement totals, open/completed task counts, audit event count, receipt file count, and daily proposal trend rows grouped by `expenseDate`. Category stats group proposal totals and matured share totals by expense category. Member stats group created proposals, payer totals, owed/receivable formal obligations, remaining open obligations, and confirmed settlement paid/received totals by active member. The localized statistics page uses the same service and keeps data scoped to the active household.
+Current implementation exposes read-only active-member statistics endpoints for household summary totals, category totals, and member totals. Optional `from`/`to` query parameters select an inclusive statistics window. Summary covers the selected window, proposal status counts, non-cancelled proposal totals by currency, open obligation totals, confirmed settlement totals, open/completed task counts, audit event count, attached evidence file count across proposal receipts and settlement evidence, and daily proposal trend rows grouped by `expenseDate`. Category stats group proposal totals and matured share totals by expense category. Member stats group created proposals, payer totals, owed/receivable formal obligations, remaining open obligations, and confirmed settlement paid/received totals by active member. The localized statistics page uses the same service and keeps data scoped to the active household.
 
 Current implementation exposes synchronous read-only export creation for active members. `POST /exports` accepts `dataset` (`expense_proposals`, `ledger_obligations`, `settlements`, `audit_events`, or `members`) plus `format` (`json` or `csv`), records an `export.created` audit event, and returns a signed short-lived `downloadUrl`. `GET /exports/{exportId}` verifies the signed ID and active membership before generating the selected JSON or CSV attachment.
 
@@ -279,7 +281,8 @@ Single obligation:
   "amount": "287.20",
   "settlementDate": "2026-07-08",
   "method": "WECHAT",
-  "note": "Paid via WeChat."
+  "note": "Paid via WeChat.",
+  "fileIds": ["uploaded_receipt_file_id"]
 }
 ```
 
@@ -292,12 +295,13 @@ Suggested transfer across matching obligations:
   "currency": "CNY",
   "settlementDate": "2026-07-08",
   "method": "WECHAT",
-  "note": "Paid via WeChat."
+  "note": "Paid via WeChat.",
+  "fileIds": ["uploaded_receipt_file_id"]
 }
 ```
 
 Current implementation records either one submitted settlement against a single open debt obligation or one suggested-transfer settlement for a debtor/payee/currency pair.
-Only the debtor can submit it. The creditor must confirm it before the service creates settlement allocations and reduces obligation remaining amounts. Suggested-transfer confirmation allocates across matching open obligations in deterministic oldest-first order. Rejection leaves obligation balances unchanged.
+Only the debtor can submit it. Optional `fileIds` attach completed uploads as settlement evidence for creditor review. The creditor must confirm it before the service creates settlement allocations and reduces obligation remaining amounts. Suggested-transfer confirmation allocates across matching open obligations in deterministic oldest-first order. Rejection leaves obligation balances unchanged.
 
 ### Settlement suggestions
 

@@ -319,6 +319,18 @@ Fields:
 - `proposal_id`
 - `file_id`
 - `purpose` receipt/evidence/other
+- `created_by_user_id`
+- `created_at`
+
+### settlement_files
+
+Fields:
+
+- `settlement_id`
+- `file_id`
+- `purpose` evidence
+- `created_by_user_id`
+- `created_at`
 
 ### fx_rates
 

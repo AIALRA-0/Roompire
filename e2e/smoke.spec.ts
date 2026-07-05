@@ -1883,6 +1883,10 @@ test.describe("Roompire real browser smoke", () => {
     const debtorEmail = `expense-debtor+${suffix}@example.test`;
     const householdName = `Expense House ${suffix}`;
     const proposalTitle = `E2E Grocery ${suffix}`;
+    const settlementEvidenceFileName = `settlement-evidence-${suffix}.pdf`;
+    const settlementEvidenceBuffer = Buffer.from(
+      `%PDF-1.4\nRoompire settlement evidence ${suffix}\n%%EOF`,
+    );
 
     await setDevSessionWithRetry(page, ownerEmail, "Expense Owner E2E");
     const householdResponse = await page.request.post("/api/v1/households", {
@@ -2225,6 +2229,11 @@ test.describe("Roompire real browser smoke", () => {
 
     await page.getByTestId(`settlement-amount-${primaryObligationId}`).fill("324");
     await page.getByTestId(`settlement-date-${primaryObligationId}`).fill("2026-07-04");
+    await page.getByTestId(`settlement-evidence-${primaryObligationId}`).setInputFiles({
+      name: settlementEvidenceFileName,
+      mimeType: "application/pdf",
+      buffer: settlementEvidenceBuffer,
+    });
     await clickSettlementSubmitWithRetry(page, primaryObligationId!);
 
     const submittedSettlementsResponse = await getApiWithRetry(
@@ -2243,6 +2252,14 @@ test.describe("Roompire real browser smoke", () => {
         amount: string;
         status: string;
         allocations: unknown[];
+        files: Array<{
+          id: string;
+          originalFilename: string;
+          mimeType: string;
+          sizeBytes: number;
+          sha256: string | null;
+          downloadUrl: string;
+        }>;
       }>;
     };
     expect(submittedSettlementsPayload.settlements).toHaveLength(1);
@@ -2251,13 +2268,35 @@ test.describe("Roompire real browser smoke", () => {
       status: "SUBMITTED",
       allocations: [],
     });
+    expect(submittedSettlementsPayload.settlements[0]?.files).toHaveLength(1);
+    expect(submittedSettlementsPayload.settlements[0]?.files[0]).toMatchObject({
+      originalFilename: settlementEvidenceFileName,
+      mimeType: "application/pdf",
+      sizeBytes: settlementEvidenceBuffer.length,
+    });
+    expect(submittedSettlementsPayload.settlements[0]?.files[0]?.sha256).toMatch(/^[a-f0-9]{64}$/);
     const submittedSettlementId = submittedSettlementsPayload.settlements[0]?.id;
+    const submittedSettlementFile = submittedSettlementsPayload.settlements[0]?.files[0];
     expect(submittedSettlementId).toBeTruthy();
+    expect(submittedSettlementFile?.downloadUrl).toBeTruthy();
+
+    const evidenceDownloadResponse = await getApiWithRetry(
+      page,
+      submittedSettlementFile!.downloadUrl,
+    );
+    expect(evidenceDownloadResponse.ok()).toBeTruthy();
+    expect(
+      Buffer.from(await evidenceDownloadResponse.body()).equals(settlementEvidenceBuffer),
+    ).toBeTruthy();
 
     await setDevSessionWithRetry(page, ownerEmail, "Expense Owner E2E");
     await page.goto("/en-US/app/ledger");
     const pendingSettlementRow = page.getByTestId(`pending-settlement-${submittedSettlementId}`);
     await expect(pendingSettlementRow).toContainText("CNY 324");
+    await expect(pendingSettlementRow).toContainText(settlementEvidenceFileName);
+    await expect(
+      pendingSettlementRow.getByRole("link", { name: "Download evidence" }),
+    ).toBeVisible();
     await clickSettlementConfirmWithRetry(page, submittedSettlementId!);
 
     const settledBalancesResponse = await getApiWithRetry(
@@ -2288,6 +2327,21 @@ test.describe("Roompire real browser smoke", () => {
       suggestions: unknown[];
     };
     expect(settledSuggestionsPayload.suggestions).toEqual([]);
+
+    const postSettlementStatsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${detailIds.householdId}/stats/summary`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(postSettlementStatsResponse.ok()).toBeTruthy();
+    const postSettlementStatsPayload = (await postSettlementStatsResponse.json()) as {
+      summary: { receiptFileCount: number };
+    };
+    expect(postSettlementStatsPayload.summary.receiptFileCount).toBeGreaterThanOrEqual(1);
 
     const settledObligationsResponse = await getApiWithRetry(
       page,

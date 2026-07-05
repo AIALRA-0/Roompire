@@ -343,8 +343,9 @@ model File {
   sha256           String
   createdAt        DateTime @default(now())
 
-  household     Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  proposalFiles ProposalFile[]
+  household       Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  proposalFiles   ProposalFile[]
+  settlementFiles SettlementFile[]
 
   @@index([householdId])
   @@index([uploadedByUserId])
@@ -439,11 +440,27 @@ model Settlement {
   createdByUserId     String           @db.Uuid
   createdAt           DateTime         @default(now())
 
-  transaction LedgerTransaction      @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
-  allocations SettlementAllocation[]
+  transaction     LedgerTransaction      @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
+  allocations     SettlementAllocation[]
+  settlementFiles SettlementFile[]
 
   @@index([householdId, payerUserId])
   @@index([householdId, payeeUserId])
+}
+
+model SettlementFile {
+  settlementId    String   @db.Uuid
+  fileId          String   @db.Uuid
+  purpose         String   @default("evidence")
+  createdByUserId String   @db.Uuid
+  createdAt       DateTime @default(now())
+
+  settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  file       File       @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@id([settlementId, fileId])
+  @@index([fileId])
+  @@index([createdByUserId])
 }
 
 model SettlementAllocation {

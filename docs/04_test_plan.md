@@ -127,10 +127,12 @@ Before Playwright starts the dev server, `pnpm e2e:prepare` resets only allowed 
 ### Settlement path
 
 1. Debtor records repayment.
-2. Creditor confirms if required.
-3. Balance decreases.
-4. Settlement appears in ledger and calendar/history.
-5. With household netting enabled, a non-direct optimized transfer can be submitted by the net debtor, confirmed by the net creditor, and allocated across both sides' open obligations.
+2. Debtor attaches optional receipt/evidence for creditor review.
+3. Creditor can download attached evidence before confirming.
+4. Creditor confirms if required.
+5. Balance decreases.
+6. Settlement appears in ledger and calendar/history.
+7. With household netting enabled, a non-direct optimized transfer can be submitted by the net debtor, confirmed by the net creditor, and allocated across both sides' open obligations.
 
 ### Calendar/task path
 

@@ -846,6 +846,32 @@ components:
         sizeBytes: { type: integer }
         sha256: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
+    SettlementFile:
+      type: object
+      required:
+        [
+          id,
+          purpose,
+          uploadedByUserId,
+          originalFilename,
+          mimeType,
+          sizeBytes,
+          sha256,
+          createdAt,
+          downloadUrl,
+          downloadExpiresAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        purpose: { type: string, enum: [evidence] }
+        uploadedByUserId: { type: string, format: uuid }
+        originalFilename: { type: string }
+        mimeType: { type: string }
+        sizeBytes: { type: integer }
+        sha256: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        downloadUrl: { type: string }
+        downloadExpiresAt: { type: string, format: date-time }
     PresignFileUploadRequest:
       type: object
       required: [originalFilename, mimeType, sizeBytes]
@@ -1028,6 +1054,7 @@ components:
           createdAt,
           sourceTransaction,
           allocations,
+          files,
         ]
       properties:
         id: { type: string, format: uuid }
@@ -1195,6 +1222,9 @@ components:
         allocations:
           type: array
           items: { $ref: "#/components/schemas/SettlementAllocation" }
+        files:
+          type: array
+          items: { $ref: "#/components/schemas/SettlementFile" }
     CreateObligationSettlementRequest:
       type: object
       required: [debtObligationId, amount, settlementDate]
@@ -1207,6 +1237,11 @@ components:
         settlementDate: { type: string, format: date }
         method: { type: string, minLength: 1, maxLength: 60, default: manual }
         note: { type: string, maxLength: 500 }
+        fileIds:
+          type: array
+          description: Optional completed upload IDs to attach as settlement evidence. Files must belong to the household and be uploaded by the submitting user.
+          maxItems: 5
+          items: { type: string, format: uuid }
     CreateSuggestedSettlementRequest:
       type: object
       required: [payeeUserId, amount, currency, settlementDate]
@@ -1223,6 +1258,11 @@ components:
         settlementDate: { type: string, format: date }
         method: { type: string, minLength: 1, maxLength: 60, default: manual }
         note: { type: string, maxLength: 500 }
+        fileIds:
+          type: array
+          description: Optional completed upload IDs to attach as settlement evidence. Files must belong to the household and be uploaded by the submitting user.
+          maxItems: 5
+          items: { type: string, format: uuid }
     CreateSettlementRequest:
       oneOf:
         - { $ref: "#/components/schemas/CreateObligationSettlementRequest" }

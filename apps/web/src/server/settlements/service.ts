@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
+import { assertFilesReadyForAttachment } from "@/server/files/service";
 import { computeSettlementSuggestions } from "@/server/ledger/service";
 import { requireActiveMembership } from "@/server/permissions/rbac";
 
@@ -36,6 +37,7 @@ export const createSettlementSchema = z
     settlementDate: dateOnlySchema,
     method: z.string().trim().min(1).max(60).default("manual"),
     note: z.string().trim().max(500).optional(),
+    fileIds: z.array(z.string().uuid()).max(5).default([]),
   })
   .superRefine((value, context) => {
     const recordsSingleObligation = Boolean(value.debtObligationId);
@@ -73,6 +75,17 @@ type AllocationCandidate = {
   settlementCurrency: string;
   remainingAmount: Decimal.Value;
   status: DebtStatus;
+};
+
+const settlementInclude = {
+  transaction: true,
+  allocations: true,
+  settlementFiles: {
+    include: {
+      file: true,
+    },
+    orderBy: [{ createdAt: "asc" as const }, { fileId: "asc" as const }],
+  },
 };
 
 function dateOnlyToUtc(value: string) {
@@ -271,12 +284,57 @@ export async function listSettlementsForHousehold(userId: string, householdId: s
     where: {
       householdId,
     },
-    include: {
-      transaction: true,
-      allocations: true,
-    },
+    include: settlementInclude,
     orderBy: [{ createdAt: "desc" }, { id: "asc" }],
     take: 50,
+  });
+}
+
+async function attachSettlementFiles(
+  tx: Prisma.TransactionClient,
+  input: {
+    householdId: string;
+    settlementId: string;
+    userId: string;
+    fileIds: string[];
+  },
+) {
+  if (input.fileIds.length === 0) {
+    return;
+  }
+
+  await tx.settlementFile.createMany({
+    data: input.fileIds.map((fileId) => ({
+      settlementId: input.settlementId,
+      fileId,
+      purpose: "evidence",
+      createdByUserId: input.userId,
+    })),
+    skipDuplicates: true,
+  });
+
+  await tx.auditEvent.create({
+    data: {
+      householdId: input.householdId,
+      actorUserId: input.userId,
+      action: "settlement.file_attached",
+      entityType: "SettlementFile",
+      entityId: input.settlementId,
+      after: {
+        settlementId: input.settlementId,
+        fileIds: input.fileIds,
+        purpose: "evidence",
+      },
+    },
+  });
+}
+
+async function getSettlementWithRelations(tx: Prisma.TransactionClient, settlementId: string) {
+  return tx.settlement.findUniqueOrThrow({
+    where: {
+      id: settlementId,
+    },
+    include: settlementInclude,
   });
 }
 
@@ -300,6 +358,12 @@ export async function createSettlementForHousehold(
   const data = parsed.data;
   const amount = new Decimal(data.amount);
   const settlementDate = dateOnlyToUtc(data.settlementDate);
+
+  await assertFilesReadyForAttachment({
+    userId,
+    householdId,
+    fileIds: data.fileIds,
+  });
 
   return prisma.$transaction(async (tx) => {
     if (data.debtObligationId) {
@@ -354,10 +418,13 @@ export async function createSettlementForHousehold(
           note: data.note,
           createdByUserId: userId,
         },
-        include: {
-          transaction: true,
-          allocations: true,
-        },
+      });
+
+      await attachSettlementFiles(tx, {
+        householdId,
+        settlementId: settlement.id,
+        userId,
+        fileIds: data.fileIds,
       });
 
       await tx.auditEvent.create({
@@ -374,12 +441,13 @@ export async function createSettlementForHousehold(
             payeeUserId: obligation.creditorUserId,
             amount: settlement.amount.toString(),
             currency: settlement.currency,
+            fileIds: data.fileIds,
             status: settlement.status,
           },
         },
       });
 
-      return settlement;
+      return getSettlementWithRelations(tx, settlement.id);
     }
 
     if (!data.payeeUserId || !data.currency) {
@@ -460,10 +528,13 @@ export async function createSettlementForHousehold(
         note: data.note,
         createdByUserId: userId,
       },
-      include: {
-        transaction: true,
-        allocations: true,
-      },
+    });
+
+    await attachSettlementFiles(tx, {
+      householdId,
+      settlementId: settlement.id,
+      userId,
+      fileIds: data.fileIds,
     });
 
     await tx.auditEvent.create({
@@ -480,12 +551,13 @@ export async function createSettlementForHousehold(
           payeeUserId: settlement.payeeUserId,
           amount: settlement.amount.toString(),
           currency: settlement.currency,
+          fileIds: data.fileIds,
           status: settlement.status,
         },
       },
     });
 
-    return settlement;
+    return getSettlementWithRelations(tx, settlement.id);
   });
 }
 
@@ -506,10 +578,7 @@ export async function confirmSettlementForHousehold(
         id: settlementId,
         householdId,
       },
-      include: {
-        transaction: true,
-        allocations: true,
-      },
+      include: settlementInclude,
     });
 
     if (!settlement) {
@@ -646,6 +715,12 @@ export async function confirmSettlementForHousehold(
       include: {
         transaction: true,
         allocations: true,
+        settlementFiles: {
+          include: {
+            file: true,
+          },
+          orderBy: [{ createdAt: "asc" }, { fileId: "asc" }],
+        },
       },
     });
 
@@ -691,10 +766,7 @@ export async function rejectSettlementForHousehold(
         id: settlementId,
         householdId,
       },
-      include: {
-        transaction: true,
-        allocations: true,
-      },
+      include: settlementInclude,
     });
 
     if (!settlement) {
@@ -723,6 +795,12 @@ export async function rejectSettlementForHousehold(
       include: {
         transaction: true,
         allocations: true,
+        settlementFiles: {
+          include: {
+            file: true,
+          },
+          orderBy: [{ createdAt: "asc" }, { fileId: "asc" }],
+        },
       },
     });
 
