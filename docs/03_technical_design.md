@@ -353,7 +353,7 @@ Use Docker-first as the stable baseline. Optimize edge deployment later if neede
 - Household isolation in queries.
 - Private object storage keys.
 - Signed URLs for attachments.
-- CSRF protection for cookie-based auth.
+- CSRF origin guard for cookie-based unsafe API mutations. The proxy rejects cross-site `Origin`, `Referer`, or `Sec-Fetch-Site` metadata before route handlers run while preserving non-browser operational clients that do not send browser origin headers.
 - Fixed-window rate limiting for site-gate failures, dev-session switching, invite creation/acceptance, file upload intents, proposal comments, and share decisions.
 - No secrets in client bundle.
 - No sensitive payment credentials.

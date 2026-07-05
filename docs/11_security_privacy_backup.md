@@ -53,6 +53,8 @@ Requirements:
 - CSRF protection for cookie-based mutations.
 - Rate limit login/invite endpoints.
 
+Current CSRF implementation: the Next proxy checks unsafe `/api/v1` methods before route handlers run. Browser-style requests with cross-site `Sec-Fetch-Site`, mismatched `Origin`, mismatched `Referer`, or opaque `Origin: null` are rejected with `403 CSRF_ORIGIN_MISMATCH`. Same-origin browser requests and non-browser operational clients that omit browser origin metadata remain supported.
+
 ## Authorization
 
 Every request must check:

@@ -1,6 +1,7 @@
 import createMiddleware from "next-intl/middleware";
 import { NextResponse, type NextRequest } from "next/server";
 import { routing } from "./i18n/routing";
+import { checkCsrfProtection } from "@/server/security/csrf";
 
 const intlMiddleware = createMiddleware(routing);
 const siteGateRealm = "Roompire";
@@ -149,6 +150,23 @@ function authorizeSiteGate(request: NextRequest) {
   return unauthorizedSiteGateResponse(request);
 }
 
+function csrfForbiddenResponse() {
+  return NextResponse.json(
+    {
+      error: {
+        code: "CSRF_ORIGIN_MISMATCH",
+        message: "Cross-site mutation requests are not allowed.",
+      },
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+      status: 403,
+    },
+  );
+}
+
 export default function proxy(request: NextRequest) {
   const siteGateResponse = authorizeSiteGate(request);
 
@@ -157,6 +175,17 @@ export default function proxy(request: NextRequest) {
   }
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
+    const csrfDecision = checkCsrfProtection({
+      appUrl: process.env.NEXT_PUBLIC_APP_URL,
+      headers: request.headers,
+      method: request.method,
+      requestUrl: request.nextUrl,
+    });
+
+    if (!csrfDecision.allowed) {
+      return csrfForbiddenResponse();
+    }
+
     return NextResponse.next();
   }
 

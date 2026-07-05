@@ -54,6 +54,7 @@ Use this checklist before declaring a milestone complete.
 - [ ] Household isolation enforced server-side.
 - [ ] RBAC enforced server-side.
 - [ ] User can only approve/reject their own share.
+- [x] CSRF origin guard rejects cross-site browser mutations before route handlers.
 - [ ] File access is private/signed.
 - [ ] Idempotency used for duplicate-prone mutations.
 

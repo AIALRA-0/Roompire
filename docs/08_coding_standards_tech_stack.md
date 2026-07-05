@@ -118,7 +118,7 @@
 - Never store full payment credentials.
 - Use signed URLs for private files.
 - Keep fixed-window rate limiting on site-gate failures, dev-session switching, invite creation/acceptance, file upload intents, proposal comments, and share decisions.
-- Use CSRF protection if cookie auth.
+- Keep proxy-level CSRF origin checks on cookie-authenticated unsafe API mutations.
 
 ## Build-vs-buy rules
 

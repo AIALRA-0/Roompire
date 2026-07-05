@@ -4,6 +4,8 @@ info:
   version: 0.1.0
   description: >
     Roompire PWA-first shared-house ledger, approval, FX, calendar, task, and audit API.
+    Unsafe browser-style API mutations with cross-site request metadata are rejected
+    before route handlers with `403 CSRF_ORIGIN_MISMATCH`.
 servers:
   - url: https://roompire.aialra.online/api/v1
     description: Production
@@ -18,6 +20,11 @@ components:
       in: cookie
       name: roompire_session
   responses:
+    CsrfForbidden:
+      description: Unsafe browser-style mutation was rejected by the CSRF origin guard.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
     RateLimited:
       description: Request rate limit exceeded
       headers:

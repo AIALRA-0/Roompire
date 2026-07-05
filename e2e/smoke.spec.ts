@@ -921,6 +921,41 @@ test.describe("Roompire real browser smoke", () => {
     expect(blockedPayload.error.details.retryAfterSeconds).toBeGreaterThan(0);
   });
 
+  test("API mutations reject cross-site browser requests", async ({ page }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const body = {
+      displayName: "CSRF E2E",
+      email: `csrf+${suffix}@example.test`,
+    };
+
+    const blockedResponse = await page.request.post("/api/v1/dev/session", {
+      data: body,
+      headers: {
+        Origin: "https://evil.example",
+        "Sec-Fetch-Site": "cross-site",
+        "x-forwarded-for": `csrf-${suffix}`,
+      },
+    });
+    const blockedPayload = (await blockedResponse.json()) as {
+      error: { code: string; message: string };
+    };
+
+    expect(blockedResponse.status()).toBe(403);
+    expect(blockedPayload.error.code).toBe("CSRF_ORIGIN_MISMATCH");
+
+    const allowedResponse = await page.request.post("/api/v1/dev/session", {
+      data: {
+        displayName: "CSRF API Client E2E",
+        email: `csrf-api-client+${suffix}@example.test`,
+      },
+      headers: {
+        "x-forwarded-for": `csrf-api-client-${suffix}`,
+      },
+    });
+
+    expect(allowedResponse.ok()).toBeTruthy();
+  });
+
   test("desktop user opens landing page and navigates to dashboard", async ({ page }) => {
     await page.goto("/en-US");
 
