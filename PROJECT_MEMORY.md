@@ -196,6 +196,13 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 ## Last session verification
 
+- 2026-07-05 Household category management:
+  - Branch/commit: `feat/category-management` / `7b3eda1 feat: manage household categories`, pushed to `origin/feat/category-management`.
+  - Verification passed before deployment: `pnpm db:generate && pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test` (11 files, 45 tests), `pnpm build`, `git diff --check`, `jq empty`, OpenAPI YAML parse with `python3`, and targeted `pnpm e2e --grep "owner updates settings and manages a linked invitee"` (desktop/mobile, 2 passed).
+  - Production deployment from the self-hosted server used Docker Compose only, without SSH: built `web` and `migrate`, ran `prisma migrate deploy` with no pending migrations, recreated `roompire-web-1`, and confirmed the container healthy on `127.0.0.1:18300`.
+  - Real-domain smoke passed for `https://roompire.aialra.online`: `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`.
+  - Live production validation through the site gate created an isolated temporary household, created/listed/updated a custom expense category through the public API, verified the updated row and expense category dropdown on `/en-US/app` with a real browser, archived the category from the UI, confirmed archived categories are hidden from the API/dropdown, downgraded the temporary owner membership to `MEMBER` and confirmed category creation returns 403, then cleaned the temporary household/category/membership/audit/notification/invite rows with zero remaining counts.
+  - GitHub Actions passed for the pushed commit: CI https://github.com/AIALRA-0/Roompire/actions/runs/28751516935 and E2E https://github.com/AIALRA-0/Roompire/actions/runs/28751516981.
 - 2026-07-05 Calendar/task pagination:
   - Branch/commit: `feat/calendar-task-pagination` / `5fee9c4 feat: paginate calendar task lists`, pushed to `origin/feat/calendar-task-pagination`.
   - Verification passed before deployment: `pnpm db:generate && pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test` (11 files, 45 tests), `pnpm build`, `git diff --check`, `jq empty`, OpenAPI YAML parse with `python3`, and targeted `pnpm e2e --grep "member creates calendar work and completes an assigned task"` (desktop/mobile, 2 passed).
