@@ -110,7 +110,7 @@ Current implementation hash-chains audit events with `prev_hash` and `event_hash
 - Daily PostgreSQL dump.
 - Daily object storage manifest/export.
 - Retention policy: at least 14 daily backups for early MVP.
-- Encrypted backup storage.
+- Encrypted backup storage. `scripts/backup_all.sh` supports optional OpenSSL-based backup encryption through `ROOMPIRE_BACKUP_ENCRYPTION=enabled` and a passphrase file kept outside git.
 - Daily non-destructive restore drill with `scripts/verify_postgres_backup.sh` to validate dump readability, migration metadata, and audit hash-chain integrity.
 - Restore instructions in repo docs.
 
@@ -123,6 +123,8 @@ Current implementation hash-chains audit events with `prev_hash` and `event_hash
 - Monthly restore drill.
 
 Private receipts can be stored locally for development or in S3-compatible object storage for production. Production buckets must be private, should use versioning or provider snapshots, and should be covered by an object inventory/manifest export that can be reconciled against the database `File` rows.
+
+When encrypted local backups are enabled, the passphrase file must be backed up separately in the server secret-management workflow. The encrypted `.enc` artifacts include `.sha256` sidecars for ciphertext integrity checks; restore drills can verify encrypted PostgreSQL dumps directly after decryption.
 
 ## Restore drill
 

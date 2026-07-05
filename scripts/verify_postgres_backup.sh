@@ -3,9 +3,10 @@ set -euo pipefail
 
 ENV_FILE=${ENV_FILE:-.env.production}
 COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.prod.yml}
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 if [ $# -ne 1 ]; then
-  echo "Usage: $0 <backup.dump>" >&2
+  echo "Usage: $0 <backup.dump|backup.dump.enc>" >&2
   exit 2
 fi
 
@@ -14,6 +15,7 @@ if [ ! -f "$backup_file" ]; then
   echo "Backup file not found: $backup_file" >&2
   exit 2
 fi
+decrypted_backup=""
 
 if [ -f "$ENV_FILE" ]; then
   set -a
@@ -34,8 +36,16 @@ drill_db="roompire_restore_drill_${timestamp}_$$"
 cleanup() {
   docker compose "${compose_args[@]}" exec -T postgres \
     dropdb --if-exists -U "$POSTGRES_USER" "$drill_db" >/dev/null 2>&1 || true
+  rm -f "$decrypted_backup"
 }
 trap cleanup EXIT
+
+if [[ "$backup_file" == *.enc ]]; then
+  decrypted_backup=$(mktemp "${TMPDIR:-/tmp}/roompire_restore_drill.XXXXXX.dump")
+  rm -f "$decrypted_backup"
+  "$SCRIPT_DIR/decrypt_backup_file.sh" "$backup_file" "$decrypted_backup" >/dev/null
+  backup_file="$decrypted_backup"
+fi
 
 docker compose "${compose_args[@]}" exec -T postgres \
   createdb -U "$POSTGRES_USER" "$drill_db"

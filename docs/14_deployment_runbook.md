@@ -129,6 +129,20 @@ Run the combined backup plus non-destructive restore drill:
 BACKUP_ROOT=/srv/aialra/backups/roompire ./scripts/backup_all.sh
 ```
 
+To encrypt generated backup artifacts after the PostgreSQL restore drill succeeds, create a passphrase file outside the repository and enable encryption:
+
+```bash
+install -m 0700 -d /srv/aialra/secrets
+openssl rand -base64 48 > /srv/aialra/secrets/roompire-backup-passphrase
+chmod 0600 /srv/aialra/secrets/roompire-backup-passphrase
+ROOMPIRE_BACKUP_ENCRYPTION=enabled \
+  ROOMPIRE_BACKUP_ENCRYPTION_PASSPHRASE_FILE=/srv/aialra/secrets/roompire-backup-passphrase \
+  BACKUP_ROOT=/srv/aialra/backups/roompire \
+  ./scripts/backup_all.sh
+```
+
+When encryption is enabled, `backup_all.sh` verifies the plaintext PostgreSQL dump first, writes `.enc` files plus `.sha256` sidecars, and removes plaintext artifacts by default. Set `ROOMPIRE_BACKUP_REMOVE_PLAINTEXT=false` only for a controlled local drill.
+
 Create a PostgreSQL backup:
 
 ```bash
@@ -143,7 +157,20 @@ Create an upload-volume backup:
 
 Backups are written under `backups/` and are ignored by git. For S3-compatible production storage, enable bucket versioning or provider snapshots and export an object inventory/manifest alongside the PostgreSQL backup; file metadata in PostgreSQL stores the provider, bucket, object key, MIME type, size, and SHA-256 hash.
 
-`scripts/verify_postgres_backup.sh <backup.dump>` restores a custom-format dump into a temporary database, verifies Prisma migration metadata, checks the audit hash chain, and drops the temporary database. This is the preferred daily restore drill because it does not touch the live database.
+`scripts/verify_postgres_backup.sh <backup.dump>` restores a custom-format dump into a temporary database, verifies Prisma migration metadata, checks the audit hash chain, and drops the temporary database. This is the preferred daily restore drill because it does not touch the live database. Encrypted PostgreSQL dumps can be verified directly:
+
+```bash
+ROOMPIRE_BACKUP_ENCRYPTION_PASSPHRASE_FILE=/srv/aialra/secrets/roompire-backup-passphrase \
+  ./scripts/verify_postgres_backup.sh /srv/aialra/backups/roompire/postgres/<backup>.dump.enc
+```
+
+For a destructive restore from an encrypted dump, keep the same passphrase variable and set the explicit restore confirmation:
+
+```bash
+ROOMPIRE_RESTORE_CONFIRM=restore \
+  ROOMPIRE_BACKUP_ENCRYPTION_PASSPHRASE_FILE=/srv/aialra/secrets/roompire-backup-passphrase \
+  ./scripts/restore_postgres.sh /srv/aialra/backups/roompire/postgres/<backup>.dump.enc
+```
 
 To schedule daily backups on a systemd host, copy `ops/systemd/roompire-backup.service` and `ops/systemd/roompire-backup.timer` to `/etc/systemd/system/`, adjust `WorkingDirectory` to the live checkout path, then run:
 
@@ -151,6 +178,14 @@ To schedule daily backups on a systemd host, copy `ops/systemd/roompire-backup.s
 systemctl daemon-reload
 systemctl enable --now roompire-backup.timer
 systemctl list-timers roompire-backup.timer
+```
+
+To enable encrypted scheduled backups, also add these environment lines to the copied `/etc/systemd/system/roompire-backup.service`:
+
+```ini
+Environment=ROOMPIRE_BACKUP_ENCRYPTION=enabled
+Environment=ROOMPIRE_BACKUP_ENCRYPTION_PASSPHRASE_FILE=/srv/aialra/secrets/roompire-backup-passphrase
+Environment=ROOMPIRE_BACKUP_REMOVE_PLAINTEXT=true
 ```
 
 ## Ops Automation
