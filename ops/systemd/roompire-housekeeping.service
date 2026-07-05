@@ -1,0 +1,17 @@
+[Unit]
+Description=Run conservative Roompire server housekeeping
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/aialra/apps/codexapp/state/browser-workspaces/2026-07-04-roompire
+Environment=ROOMPIRE_HOUSEKEEPING_CONFIRM=cleanup
+Environment=ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=false
+Environment=ROOMPIRE_HOUSEKEEPING_CLEAN_TMP=true
+Environment=ROOMPIRE_HOUSEKEEPING_DOCKER_PRUNE=true
+Environment=ROOMPIRE_HOUSEKEEPING_JOURNAL_VACUUM=true
+Environment=ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE=false
+Environment=ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=false
+Environment=ROOMPIRE_JOURNAL_VACUUM_SIZE=200M
+ExecStart=/usr/bin/env bash ./scripts/server_housekeeping.sh

@@ -121,6 +121,18 @@ To also clear Python `uv` package caches, add `ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CA
 
 When the server root disk pressure comes from old Codex browser workspaces, add `ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=true` to remove generated dependency/build/test-output directories outside the current checkout while preserving source files and git history.
 
+For routine unattended cleanup, install the conservative housekeeping timer. It skips current-checkout build artifacts to avoid racing active builds/tests, but prunes targeted `/tmp` leftovers, dangling Docker/build cache, and excess journal archives, then refreshes the ops snapshot:
+
+```bash
+cp ops/systemd/roompire-housekeeping.service /etc/systemd/system/
+cp ops/systemd/roompire-housekeeping.timer /etc/systemd/system/
+systemd-analyze verify /etc/systemd/system/roompire-housekeeping.service /etc/systemd/system/roompire-housekeeping.timer
+systemctl daemon-reload
+systemctl enable --now roompire-housekeeping.timer
+systemctl start roompire-housekeeping.service
+systemctl list-timers 'roompire-*'
+```
+
 ## Backups
 
 Run the combined backup plus non-destructive restore drill:

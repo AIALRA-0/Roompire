@@ -6,6 +6,10 @@ ROOT_PATH=${ROOMPIRE_HOUSEKEEPING_ROOT:-/}
 TMP_MAX_AGE_DAYS=${ROOMPIRE_TMP_MAX_AGE_DAYS:-1}
 JOURNAL_VACUUM_SIZE=${ROOMPIRE_JOURNAL_VACUUM_SIZE:-200M}
 CLEAN_UV_CACHE=${ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE:-false}
+MANAGE_REPO_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS:-true}
+MANAGE_TMP_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_TMP:-true}
+MANAGE_DOCKER_PRUNE=${ROOMPIRE_HOUSEKEEPING_DOCKER_PRUNE:-true}
+MANAGE_JOURNAL_VACUUM=${ROOMPIRE_HOUSEKEEPING_JOURNAL_VACUUM:-true}
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 WORKSPACES_ROOT=${ROOMPIRE_HOUSEKEEPING_WORKSPACES_ROOT:-$(dirname -- "$REPO_ROOT")}
@@ -61,6 +65,12 @@ report_disk() {
 
 clean_repo_artifacts() {
   section "repo artifacts"
+
+  if [ "$MANAGE_REPO_ARTIFACTS" != "true" ]; then
+    echo "Skipping current checkout artifacts; set ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=true to remove them."
+    return
+  fi
+
   run_or_print rm -rf \
     "$REPO_ROOT/apps/web/.next" \
     "$REPO_ROOT/.turbo" \
@@ -70,6 +80,11 @@ clean_repo_artifacts() {
 
 clean_tmp_artifacts() {
   section "temporary artifacts"
+
+  if [ "$MANAGE_TMP_ARTIFACTS" != "true" ]; then
+    echo "Skipping /tmp artifacts; set ROOMPIRE_HOUSEKEEPING_CLEAN_TMP=true to remove them."
+    return
+  fi
 
   if [ "$DRY_RUN" = true ]; then
     find /tmp -xdev -maxdepth 1 \
@@ -144,6 +159,11 @@ clean_browser_workspace_artifacts() {
 clean_docker_safely() {
   section "docker safe prune"
 
+  if [ "$MANAGE_DOCKER_PRUNE" != "true" ]; then
+    echo "Skipping Docker prune; set ROOMPIRE_HOUSEKEEPING_DOCKER_PRUNE=true to prune dangling images and builder cache."
+    return
+  fi
+
   if ! command -v docker >/dev/null 2>&1; then
     echo "Docker is not installed."
     return
@@ -155,6 +175,11 @@ clean_docker_safely() {
 
 clean_journal() {
   section "journald vacuum"
+
+  if [ "$MANAGE_JOURNAL_VACUUM" != "true" ]; then
+    echo "Skipping journald vacuum; set ROOMPIRE_HOUSEKEEPING_JOURNAL_VACUUM=true to vacuum journal archives."
+    return
+  fi
 
   if ! command -v journalctl >/dev/null 2>&1; then
     echo "journalctl is not installed."
