@@ -7,6 +7,7 @@ import { prisma } from "@/server/db/prisma";
 
 type HealthState = "ok" | "warning" | "unknown";
 type SmokeState = "passed" | "failed" | "missing" | "unknown";
+type BackupEncryptionMode = "enabled" | "disabled" | "unknown";
 
 export type OpsSmokeCheck = {
   path: string;
@@ -66,6 +67,19 @@ export type OpsStatusSnapshot = {
     status: HealthState;
     error: string | null;
   };
+  backupEncryption: {
+    backupRoot: string;
+    configured: BackupEncryptionMode;
+    passphraseFileConfigured: boolean;
+    passphraseFileExists: boolean | null;
+    encryptedArtifacts: number;
+    plaintextArtifacts: number;
+    missingSha256Sidecars: number;
+    latestEncryptedArtifact: string | null;
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
   latestSmoke: OpsSmokeStatus;
 };
 
@@ -96,6 +110,18 @@ function smokeStateValue(value: unknown): SmokeState {
   return value === "passed" || value === "failed" || value === "missing" || value === "unknown"
     ? value
     : "unknown";
+}
+
+function backupEncryptionModeValue(value: unknown): BackupEncryptionMode {
+  return value === "enabled" || value === "disabled" || value === "unknown" ? value : "unknown";
+}
+
+function booleanValue(value: unknown) {
+  return typeof value === "boolean" ? value : false;
+}
+
+function nullableBooleanValue(value: unknown) {
+  return typeof value === "boolean" ? value : null;
 }
 
 function resolveStatusFileCandidates() {
@@ -239,6 +265,33 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("backup_service_attention");
   }
 
+  if (status.backupEncryption.configured !== "enabled") {
+    warnings.push("backup_encryption_disabled");
+  }
+
+  if (status.backupEncryption.encryptedArtifacts === 0) {
+    warnings.push("backup_encryption_missing_artifacts");
+  }
+
+  if (status.backupEncryption.plaintextArtifacts > 0) {
+    warnings.push("backup_plaintext_artifacts");
+  }
+
+  if (status.backupEncryption.missingSha256Sidecars > 0) {
+    warnings.push("backup_encryption_sidecar_missing");
+  }
+
+  if (
+    status.backupEncryption.passphraseFileConfigured &&
+    status.backupEncryption.passphraseFileExists === false
+  ) {
+    warnings.push("backup_passphrase_missing");
+  }
+
+  if (status.backupEncryption.status === "unknown") {
+    warnings.push("backup_encryption_unknown");
+  }
+
   if (status.latestSmoke.status === "failed") {
     warnings.push("smoke_failed");
   }
@@ -255,6 +308,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawDisk = isRecord(raw.disk) ? raw.disk : {};
   const rawBackupTimer = isRecord(raw.backupTimer) ? raw.backupTimer : {};
   const rawBackupService = isRecord(raw.backupService) ? raw.backupService : {};
+  const rawBackupEncryption = isRecord(raw.backupEncryption) ? raw.backupEncryption : {};
   const availableBytes = numberValue(rawDisk.availableBytes);
   const usedPercent = numberValue(rawDisk.usedPercent);
   const diskStatus = healthStateValue(rawDisk.status);
@@ -296,6 +350,19 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       finishedAt: nullableStringValue(rawBackupService.finishedAt),
       status: healthStateValue(rawBackupService.status),
       error: nullableStringValue(rawBackupService.error),
+    },
+    backupEncryption: {
+      backupRoot: stringValue(rawBackupEncryption.backupRoot, "/srv/aialra/backups/roompire"),
+      configured: backupEncryptionModeValue(rawBackupEncryption.configured),
+      passphraseFileConfigured: booleanValue(rawBackupEncryption.passphraseFileConfigured),
+      passphraseFileExists: nullableBooleanValue(rawBackupEncryption.passphraseFileExists),
+      encryptedArtifacts: numberValue(rawBackupEncryption.encryptedArtifacts) ?? 0,
+      plaintextArtifacts: numberValue(rawBackupEncryption.plaintextArtifacts) ?? 0,
+      missingSha256Sidecars: numberValue(rawBackupEncryption.missingSha256Sidecars) ?? 0,
+      latestEncryptedArtifact: nullableStringValue(rawBackupEncryption.latestEncryptedArtifact),
+      status: healthStateValue(rawBackupEncryption.status),
+      checkedAt: nullableStringValue(rawBackupEncryption.checkedAt),
+      error: nullableStringValue(rawBackupEncryption.error),
     },
     latestSmoke: normalizeSmoke(raw.latestSmoke),
   };
@@ -371,6 +438,22 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       startedAt: null,
       finishedAt: null,
       status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    backupEncryption: {
+      backupRoot:
+        process.env.ROOMPIRE_BACKUP_ROOT?.trim() ||
+        process.env.BACKUP_ROOT?.trim() ||
+        "/srv/aialra/backups/roompire",
+      configured: "unknown" as const,
+      passphraseFileConfigured: false,
+      passphraseFileExists: null,
+      encryptedArtifacts: 0,
+      plaintextArtifacts: 0,
+      missingSha256Sidecars: 0,
+      latestEncryptedArtifact: null,
+      status: "unknown" as const,
+      checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",
     },
     latestSmoke: normalizeSmoke(null),

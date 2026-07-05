@@ -32,6 +32,7 @@ type PageProps = {
 
 type HealthState = OpsStatusSnapshot["summary"]["status"];
 type SmokeState = OpsStatusSnapshot["latestSmoke"]["status"];
+type BackupEncryptionMode = OpsStatusSnapshot["backupEncryption"]["configured"];
 
 function formatBytes(locale: Locale, bytes: number | null) {
   if (bytes === null) {
@@ -107,6 +108,33 @@ function smokeLabel(ops: Awaited<ReturnType<typeof getTranslations>>, status: Sm
   return ops("statusUnknown");
 }
 
+function backupEncryptionModeLabel(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  mode: BackupEncryptionMode,
+) {
+  if (mode === "enabled") {
+    return ops("encryptionEnabled");
+  }
+
+  if (mode === "disabled") {
+    return ops("encryptionDisabled");
+  }
+
+  return ops("statusUnknown");
+}
+
+function passphraseFileLabel(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  configured: boolean,
+  exists: boolean | null,
+) {
+  if (!configured) {
+    return ops("passphraseNotConfigured");
+  }
+
+  return exists === false ? ops("passphraseMissing") : ops("passphrasePresent");
+}
+
 function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning: string) {
   const labels: Record<string, string> = {
     status_file_missing: ops("warningStatusFileMissing"),
@@ -116,6 +144,12 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_unknown: ops("warningDiskUnknown"),
     backup_timer_attention: ops("warningBackupTimer"),
     backup_service_attention: ops("warningBackupService"),
+    backup_encryption_disabled: ops("warningBackupEncryptionDisabled"),
+    backup_encryption_missing_artifacts: ops("warningBackupEncryptionMissingArtifacts"),
+    backup_plaintext_artifacts: ops("warningBackupPlaintextArtifacts"),
+    backup_encryption_sidecar_missing: ops("warningBackupEncryptionSidecarMissing"),
+    backup_passphrase_missing: ops("warningBackupPassphraseMissing"),
+    backup_encryption_unknown: ops("warningBackupEncryptionUnknown"),
     smoke_failed: ops("warningSmokeFailed"),
     smoke_missing: ops("warningSmokeMissing"),
   };
@@ -425,6 +459,52 @@ export default async function OpsPage({ params }: PageProps) {
                       {status.backupTimer.error ?? status.backupService.error}
                     </p>
                   ) : null}
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">{ops("encryption")}</span>
+                      <Badge
+                        data-testid="ops-backup-encryption-status"
+                        variant={healthVariant(status.backupEncryption.status)}
+                      >
+                        {healthLabel(ops, status.backupEncryption.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("encryptionMode")}
+                        testId="ops-backup-encryption-mode"
+                        value={backupEncryptionModeLabel(ops, status.backupEncryption.configured)}
+                      />
+                      <MetricRow
+                        label={ops("encryptedArtifacts")}
+                        value={status.backupEncryption.encryptedArtifacts.toString()}
+                      />
+                      <MetricRow
+                        label={ops("plaintextArtifacts")}
+                        testId="ops-backup-plaintext-artifacts"
+                        value={status.backupEncryption.plaintextArtifacts.toString()}
+                      />
+                      <MetricRow
+                        label={ops("missingChecksums")}
+                        value={status.backupEncryption.missingSha256Sidecars.toString()}
+                      />
+                      <MetricRow
+                        label={ops("passphraseFile")}
+                        value={passphraseFileLabel(
+                          ops,
+                          status.backupEncryption.passphraseFileConfigured,
+                          status.backupEncryption.passphraseFileExists,
+                        )}
+                      />
+                      <MetricRow
+                        label={ops("backupRoot")}
+                        value={status.backupEncryption.backupRoot}
+                      />
+                    </div>
+                    {status.backupEncryption.error ? (
+                      <p className="mt-3 text-sm text-rose-700">{status.backupEncryption.error}</p>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 

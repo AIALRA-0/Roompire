@@ -1344,6 +1344,9 @@ components:
     OpsSmokeState:
       type: string
       enum: [passed, failed, missing, unknown]
+    OpsBackupEncryptionMode:
+      type: string
+      enum: [enabled, disabled, unknown]
     OpsSmokeCheck:
       type: object
       required: [path, status, httpStatus, message]
@@ -1370,6 +1373,7 @@ components:
           disk,
           backupTimer,
           backupService,
+          backupEncryption,
           latestSmoke,
         ]
       properties:
@@ -1448,6 +1452,43 @@ components:
               type: string
               nullable: true
             status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        backupEncryption:
+          type: object
+          required:
+            [
+              backupRoot,
+              configured,
+              passphraseFileConfigured,
+              passphraseFileExists,
+              encryptedArtifacts,
+              plaintextArtifacts,
+              missingSha256Sidecars,
+              latestEncryptedArtifact,
+              status,
+              checkedAt,
+              error,
+            ]
+          properties:
+            backupRoot: { type: string, example: /srv/aialra/backups/roompire }
+            configured: { $ref: "#/components/schemas/OpsBackupEncryptionMode" }
+            passphraseFileConfigured: { type: boolean }
+            passphraseFileExists:
+              type: boolean
+              nullable: true
+            encryptedArtifacts: { type: integer }
+            plaintextArtifacts: { type: integer }
+            missingSha256Sidecars: { type: integer }
+            latestEncryptedArtifact:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
             error:
               type: string
               nullable: true

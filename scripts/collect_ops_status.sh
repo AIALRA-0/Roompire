@@ -10,6 +10,8 @@ const outputPath = process.env.ROOMPIRE_OPS_STATUS_FILE_HOST || "ops/status/ops-
 const diskPath = process.env.ROOMPIRE_OPS_DISK_PATH || "/";
 const backupTimerName = process.env.ROOMPIRE_BACKUP_TIMER || "roompire-backup.timer";
 const backupServiceName = process.env.ROOMPIRE_BACKUP_SERVICE || "roompire-backup.service";
+const backupRoot =
+  process.env.ROOMPIRE_BACKUP_ROOT || process.env.BACKUP_ROOT || "/srv/aialra/backups/roompire";
 const smokeStatusPath = process.env.ROOMPIRE_SMOKE_STATUS_FILE || "ops/status/latest-smoke.json";
 const generatedAt = new Date().toISOString();
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
@@ -131,6 +133,143 @@ function collectBackupService() {
   };
 }
 
+function parseUnitEnvironment(output) {
+  const values = {};
+
+  for (const part of output.trim().split(/\s+/).filter(Boolean)) {
+    const separator = part.indexOf("=");
+
+    if (separator === -1) {
+      continue;
+    }
+
+    values[part.slice(0, separator)] = part.slice(separator + 1);
+  }
+
+  return values;
+}
+
+function walkBackupFiles(root) {
+  const files = [];
+
+  function walk(current) {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name);
+
+      if (entry.isDirectory()) {
+        walk(entryPath);
+        continue;
+      }
+
+      if (entry.isFile()) {
+        files.push(entryPath);
+      }
+    }
+  }
+
+  walk(root);
+
+  return files;
+}
+
+function backupTimestamp(file) {
+  return path.basename(file).match(/(\d{8}T\d{6}Z)/)?.[1] || "";
+}
+
+function collectBackupEncryption() {
+  const serviceEnvResult = command("systemctl", [
+    "show",
+    backupServiceName,
+    "--property=Environment",
+    "--value",
+  ]);
+  const serviceEnv = serviceEnvResult.ok ? parseUnitEnvironment(serviceEnvResult.stdout) : {};
+  const configured = ["enabled", "disabled"].includes(serviceEnv.ROOMPIRE_BACKUP_ENCRYPTION)
+    ? serviceEnv.ROOMPIRE_BACKUP_ENCRYPTION
+    : "unknown";
+  const passphraseFile = serviceEnv.ROOMPIRE_BACKUP_ENCRYPTION_PASSPHRASE_FILE || "";
+  const passphraseFileConfigured = passphraseFile.length > 0;
+  const passphraseFileExists = passphraseFileConfigured ? fs.existsSync(passphraseFile) : null;
+
+  try {
+    if (!fs.existsSync(backupRoot)) {
+      return {
+        backupRoot,
+        configured,
+        passphraseFileConfigured,
+        passphraseFileExists,
+        encryptedArtifacts: 0,
+        plaintextArtifacts: 0,
+        missingSha256Sidecars: 0,
+        latestEncryptedArtifact: null,
+        status: "unknown",
+        checkedAt: generatedAt,
+        error: "Backup root does not exist.",
+      };
+    }
+
+    const files = walkBackupFiles(backupRoot);
+    const encryptedFiles = files.filter((file) => {
+      const base = path.basename(file);
+
+      return (
+        /^roompire_\d{8}T\d{6}Z\.dump\.enc$/.test(base) ||
+        /^roompire_uploads_\d{8}T\d{6}Z\.tar\.gz\.enc$/.test(base)
+      );
+    });
+    const plaintextFiles = files.filter((file) => {
+      const base = path.basename(file);
+
+      return (
+        /^roompire_\d{8}T\d{6}Z\.dump$/.test(base) ||
+        /^roompire_uploads_\d{8}T\d{6}Z\.tar\.gz$/.test(base)
+      );
+    });
+    const missingSidecars = encryptedFiles.filter((file) => !fs.existsSync(`${file}.sha256`));
+    const latestEncryptedArtifact =
+      encryptedFiles
+        .map((file) => ({ file, timestamp: backupTimestamp(file) }))
+        .sort((left, right) => right.timestamp.localeCompare(left.timestamp))[0]?.file ?? null;
+    const status =
+      configured === "enabled" &&
+      passphraseFileConfigured &&
+      passphraseFileExists !== false &&
+      encryptedFiles.length > 0 &&
+      plaintextFiles.length === 0 &&
+      missingSidecars.length === 0
+        ? "ok"
+        : "warning";
+
+    return {
+      backupRoot,
+      configured,
+      passphraseFileConfigured,
+      passphraseFileExists,
+      encryptedArtifacts: encryptedFiles.length,
+      plaintextArtifacts: plaintextFiles.length,
+      missingSha256Sidecars: missingSidecars.length,
+      latestEncryptedArtifact,
+      status,
+      checkedAt: generatedAt,
+      error: serviceEnvResult.ok ? null : serviceEnvResult.error,
+    };
+  } catch (error) {
+    return {
+      backupRoot,
+      configured,
+      passphraseFileConfigured,
+      passphraseFileExists,
+      encryptedArtifacts: 0,
+      plaintextArtifacts: 0,
+      missingSha256Sidecars: 0,
+      latestEncryptedArtifact: null,
+      status: "unknown",
+      checkedAt: generatedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function collectDisk() {
   const result = command("df", ["-P", "-B1", diskPath]);
 
@@ -231,6 +370,7 @@ const snapshot = {
   disk: collectDisk(),
   backupTimer: collectBackupTimer(),
   backupService: collectBackupService(),
+  backupEncryption: collectBackupEncryption(),
   latestSmoke: readLatestSmoke(),
 };
 

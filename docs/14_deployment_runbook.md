@@ -209,7 +209,7 @@ systemctl start roompire-ops-status.service roompire-smoke.service
 systemctl list-timers 'roompire-*'
 ```
 
-`roompire-ops-status.timer` refreshes disk, backup, and latest smoke state every 15 minutes. `roompire-smoke.timer` runs authenticated real-domain checks hourly at minute 7, updates `ops/status/latest-smoke.json`, then refreshes the ops snapshot.
+`roompire-ops-status.timer` refreshes disk, backup timer/service state, backup encryption health, and latest smoke state every 15 minutes. The encryption health snapshot checks the backup unit configuration, passphrase file presence, encrypted artifact count, plaintext artifact count, and `.sha256` sidecar coverage without exposing secret values. `roompire-smoke.timer` runs authenticated real-domain checks hourly at minute 7, updates `ops/status/latest-smoke.json`, then refreshes the ops snapshot.
 
 ## Restore Drill
 

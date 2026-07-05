@@ -164,6 +164,20 @@ async function writeOpsStatusFixture() {
           status: "ok",
           error: null,
         },
+        backupEncryption: {
+          backupRoot: "/srv/aialra/backups/roompire",
+          configured: "enabled",
+          passphraseFileConfigured: true,
+          passphraseFileExists: true,
+          encryptedArtifacts: 3,
+          plaintextArtifacts: 0,
+          missingSha256Sidecars: 0,
+          latestEncryptedArtifact:
+            "/srv/aialra/backups/roompire/postgres/roompire_20260704T235250Z.dump.enc",
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
         latestSmoke: {
           status: "passed",
           generatedAt,
@@ -1188,6 +1202,9 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-summary-status")).toContainText("OK");
     await expect(page.getByTestId("ops-disk-card")).toContainText("58 GB");
     await expect(page.getByTestId("ops-backup-timer-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-backup-encryption-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-backup-encryption-mode")).toContainText("Enabled");
+    await expect(page.getByTestId("ops-backup-plaintext-artifacts")).toContainText("0");
     await expect(page.getByTestId("ops-smoke-status")).toContainText("Passed");
     await expect(page.getByTestId("ops-status-file-card")).toContainText("Loaded");
 
@@ -1197,11 +1214,23 @@ test.describe("Roompire real browser smoke", () => {
       status: {
         source: string;
         summary: { status: string; warnings: string[] };
+        backupEncryption: {
+          configured: string;
+          encryptedArtifacts: number;
+          plaintextArtifacts: number;
+        };
         latestSmoke: { status: string; checks: Array<{ path: string }> };
       };
     };
     expect(opsPayload.status.source).toBe("host_status_file");
     expect(opsPayload.status.summary).toEqual({ status: "ok", warnings: [] });
+    expect(opsPayload.status.backupEncryption).toEqual(
+      expect.objectContaining({
+        configured: "enabled",
+        encryptedArtifacts: 3,
+        plaintextArtifacts: 0,
+      }),
+    );
     expect(opsPayload.status.latestSmoke).toEqual(
       expect.objectContaining({
         status: "passed",
