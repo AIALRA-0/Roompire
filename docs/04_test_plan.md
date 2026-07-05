@@ -56,7 +56,9 @@ Before Playwright starts the dev server, `pnpm e2e:prepare` resets only allowed 
 
 PWA browser coverage must verify that the service worker registers, serves the
 offline shell during network loss, and keeps `/api/` requests network-only instead of
-caching household or ledger data. Notification browser coverage should mock
+caching household or ledger data. Install coverage should mock the browser
+`beforeinstallprompt` event, click the real dashboard install action, and verify the
+native prompt hook was called. Notification browser coverage should mock
 PushManager/Notification permission in E2E, register a subscription through the real
 dashboard control, and verify reminder jobs can report dry-run Web Push delivery.
 

@@ -61,6 +61,8 @@
     "subtitle": "集中处理家庭审批队列、正式余额、日历任务和审计信号。",
     "newExpense": "新建费用",
     "inviteMember": "邀请成员",
+    "installApp": "安装应用",
+    "appInstalled": "已安装",
     "proposalQueue": "提案队列",
     "proposalQueueHint": "草稿和待审批份额不会影响正式账本。",
     "formalBalances": "正式余额",

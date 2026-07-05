@@ -79,6 +79,7 @@ Use this checklist before declaring a milestone complete.
 - [x] Ledger obligation, ledger transaction, and settlement list APIs return cursor pagination metadata; the ledger page can load larger obligation/transaction result windows while balances/actions/exports keep full-history query paths.
 - [x] Calendar event and task list APIs return cursor pagination metadata; the calendar page can load larger event/task windows.
 - [x] Browser push subscription APIs expose configuration state, register/disable current-user endpoints, and keep notification creation server-owned.
+- [x] PWA install prompt uses the browser `beforeinstallprompt`/`appinstalled` flow without broadening service-worker data caching.
 
 ## Deployment/backup
 

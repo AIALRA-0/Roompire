@@ -61,6 +61,8 @@
     "subtitle": "Approval queue, formal balances, calendar work, and audit signals for the household.",
     "newExpense": "New expense",
     "inviteMember": "Invite member",
+    "installApp": "Install app",
+    "appInstalled": "Installed",
     "proposalQueue": "Proposal queue",
     "proposalQueueHint": "Drafts and pending shares do not affect the formal ledger.",
     "formalBalances": "Formal balances",

@@ -34,6 +34,11 @@ network-only so household, ledger, settlement, and audit data are never served f
 stale client cache. The same worker handles Web Push `push` and `notificationclick`
 events without broadening the HTTP cache surface.
 
+The dashboard exposes a small install action only after the browser emits
+`beforeinstallprompt`. The client keeps the deferred prompt in memory, calls the
+browser-native prompt on user click, and switches to an installed status after
+`appinstalled` or standalone display-mode detection.
+
 ## Monorepo structure
 
 ```text

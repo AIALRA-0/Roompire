@@ -21,6 +21,7 @@ import { ExpenseWorkspace } from "@/components/expense-workspace";
 import { IdentityWorkspace } from "@/components/identity-workspace";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { NotificationCenter } from "@/components/notification-center";
+import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/routing";
@@ -41,6 +42,11 @@ export default async function AppPage({ params }: PageProps) {
   const notifications = await getTranslations({ locale, namespace: "Notifications" });
   const model = await getDashboardModel();
   const activeHouseholdName = model.activeHousehold?.name ?? t("title");
+  const pwaInstallLabels = {
+    install: t("installApp"),
+    installed: t("appInstalled"),
+    installing: common("working"),
+  };
 
   const navItems = [
     { label: nav("dashboard"), icon: Home, href: `/${locale}/app`, active: true },
@@ -388,22 +394,25 @@ export default async function AppPage({ params }: PageProps) {
                   {identity("signedInAs", { name: model.user.displayName })}
                 </p>
               </div>
-              <div className="hidden items-center gap-2 sm:flex">
-                <Button variant="outline">
-                  <UserPlus aria-hidden="true" className="h-4 w-4" />
-                  {t("inviteMember")}
-                </Button>
-                <Button>
-                  <Plus aria-hidden="true" className="h-4 w-4" />
-                  {t("newExpense")}
-                </Button>
-              </div>
-              <div className="sm:hidden">
-                <LocaleSwitcher
-                  ariaLabel={common("language")}
-                  labels={{ "en-US": common("english"), "zh-CN": common("chinese") }}
-                  locale={locale}
-                />
+              <div className="flex shrink-0 items-center gap-2">
+                <PwaInstallPrompt labels={pwaInstallLabels} />
+                <div className="hidden items-center gap-2 sm:flex">
+                  <Button variant="outline">
+                    <UserPlus aria-hidden="true" className="h-4 w-4" />
+                    {t("inviteMember")}
+                  </Button>
+                  <Button>
+                    <Plus aria-hidden="true" className="h-4 w-4" />
+                    {t("newExpense")}
+                  </Button>
+                </div>
+                <div className="sm:hidden">
+                  <LocaleSwitcher
+                    ariaLabel={common("language")}
+                    labels={{ "en-US": common("english"), "zh-CN": common("chinese") }}
+                    locale={locale}
+                  />
+                </div>
               </div>
             </div>
           </header>

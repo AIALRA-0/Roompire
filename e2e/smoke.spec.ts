@@ -3,6 +3,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+declare global {
+  interface Window {
+    __roompirePwaInstallPrompted?: boolean;
+  }
+}
+
 async function clickMemberMutationWithRetry(
   page: Page,
   button: Locator,
@@ -1732,6 +1738,41 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByText("当前网络不可用")).toBeVisible();
 
     await context.setOffline(false);
+  });
+
+  test("dashboard install prompt uses the browser PWA install event", async ({ page }) => {
+    await page.goto("/en-US/app");
+    await expect(page.getByRole("heading", { name: "USC 3B2B" })).toBeVisible();
+
+    const dispatchInstallPrompt = () =>
+      page.evaluate(() => {
+        const installEvent = new Event("beforeinstallprompt") as Event & {
+          prompt: () => Promise<void>;
+          userChoice: Promise<{ outcome: "accepted"; platform: string }>;
+        };
+
+        window.__roompirePwaInstallPrompted = false;
+        installEvent.prompt = async () => {
+          window.__roompirePwaInstallPrompted = true;
+          window.dispatchEvent(new Event("appinstalled"));
+        };
+        installEvent.userChoice = Promise.resolve({ outcome: "accepted", platform: "web" });
+        window.dispatchEvent(installEvent);
+      });
+
+    await expect
+      .poll(async () => {
+        await dispatchInstallPrompt();
+
+        return page.getByTestId("pwa-install-button").count();
+      })
+      .toBe(1);
+    await expect(page.getByTestId("pwa-install-button")).toBeVisible();
+    await page.getByTestId("pwa-install-button").click();
+    await expect
+      .poll(() => page.evaluate(() => Boolean(window.__roompirePwaInstallPrompted)))
+      .toBe(true);
+    await expect(page.getByTestId("pwa-install-status")).toContainText("Installed");
   });
 
   test("mobile user sees zh-CN shell and protected-route failure state", async ({ page }) => {
