@@ -48,15 +48,16 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Proposal creation and share approve/reject persist `Idempotency-Key` records, replay matching duplicate requests, and reject key reuse with changed request bodies.
 - Rejected shares and pending proposals do not affect formal balances.
 - Dashboard formal balances render from open `DebtObligation` rows, not proposal totals.
-- Dedicated formal ledger page lists net balances, open obligations, settlement actions, pending settlement confirmations, and append-only ledger transactions.
+- Dedicated formal ledger page lists net balances, open obligations, settlement actions, pending settlement confirmations, month close/reopen controls, and append-only ledger transactions.
 - Read-only formal ledger APIs expose balances, obligations, and transactions derived from `DebtObligation` and settlement allocations.
 - Settlement APIs let debtors submit payments against one obligation or a suggested transfer; creditor confirmation creates one or more allocations and reduces remaining balances.
 - Settlement create/confirm/reject mutations persist `Idempotency-Key` records with replay/conflict behavior.
 - Settlement suggestion API/page section nets open obligations by currency and returns optimized debtor-to-creditor transfers.
+- Owner/admin ledger period APIs support closing/reopening months; closed periods block approval maturity, settlements, adjustments, and reversals for posting dates in that month.
 - Owner/admin ledger correction APIs support manual adjustments and reversal of unallocated open obligations with append-only ledger transactions.
 - Calendar/task APIs and `/[locale]/app/calendar` page let owners/admins/members create one-off or finite recurring calendar events, switch event list/day/week/month views, create/assign one-off or recurring tasks, auto-link due tasks to `TASK` calendar events, complete tasks with linked event status updates, and create linked pending expense proposals from tasks.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current list/create/detail/revision proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject/request-changes idempotency, balance, obligation, ledger transaction, settlement, settlement suggestion, ledger correction, calendar event, task, and task-to-expense proposal endpoints.
+- OpenAPI covers the current list/create/detail/revision proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject/request-changes idempotency, balance, obligation, ledger transaction, ledger period close, settlement, settlement suggestion, ledger correction, calendar event, task, and task-to-expense proposal endpoints.
 
 ## Development
 
@@ -152,6 +153,7 @@ Leave either username or password unset to disable the gate locally. In producti
 - Pending and rejected shares do not affect formal balances.
 - Each debtor approves or rejects only their own share.
 - Formal ledger is append-only; owner/admin corrections use reversal or adjustment.
+- Closed ledger months reject formal ledger writes until owner/admin reopen the month.
 - Money uses decimal arithmetic, never JavaScript floating point.
 - FX default policy is `LOCK_AT_EXPENSE_DATE`.
 - zh-CN and en-US ship from MVP.

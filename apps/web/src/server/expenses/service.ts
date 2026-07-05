@@ -15,6 +15,7 @@ import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
 import { assertFilesReadyForProposal } from "@/server/files/service";
 import { resolveFxRateLock } from "@/server/fx/rates";
+import { assertLedgerPeriodOpen } from "@/server/ledger/service";
 import { createExpenseProposalAssignedNotifications } from "@/server/notifications/service";
 import { requireActiveMembership, requireExpenseProposalCreator } from "@/server/permissions/rbac";
 
@@ -1223,6 +1224,8 @@ export async function approveExpenseShareForHousehold(
     }
 
     assertFxLockReady(share.proposal);
+    const ledgerOccurredAt = new Date();
+    await assertLedgerPeriodOpen(tx, householdId, ledgerOccurredAt);
 
     if (share.status === ShareStatus.PENDING) {
       await tx.proposalApproval.create({
@@ -1275,7 +1278,7 @@ export async function approveExpenseShareForHousehold(
           sourceType: "ExpenseShare",
           sourceId: share.id,
           createdByUserId: userId,
-          occurredAt: new Date(),
+          occurredAt: ledgerOccurredAt,
         },
       });
 

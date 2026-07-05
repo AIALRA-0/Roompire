@@ -416,6 +416,27 @@ Fields:
 - `debt_obligation_id`
 - `amount_applied numeric(20,6)`
 
+### ledger_period_closes
+
+Fields:
+
+- `id`
+- `household_id`
+- `period_month date` first day of closed/reopened month
+- `status` closed/reopened
+- `note`
+- `closed_by_user_id`
+- `closed_at`
+- `reopened_by_user_id`
+- `reopened_at`
+- `created_at`
+- `updated_at`
+
+Constraints:
+
+- unique `(household_id, period_month)`.
+- indexed by `(household_id, status, period_month)`.
+
 ### calendar_events
 
 Fields:
@@ -565,7 +586,7 @@ Pending approval items per user.
 5. FX fields must be non-null when original currency differs from settlement currency under `LOCK_AT_EXPENSE_DATE`.
 6. Every mutating transaction emits an `audit_events` row.
 7. Audit event hashes must verify against the previous household event hash before the audit chain is considered intact.
-8. Month lock prevents direct mutation of proposals/obligations in locked period except via adjustment/reversal.
+8. Month close prevents formal ledger writes in the closed posting month until the period is reopened; corrections must be posted in an open period.
 
 ## Migration guidance
 

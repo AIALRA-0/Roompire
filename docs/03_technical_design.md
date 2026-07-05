@@ -169,9 +169,11 @@ Recommended abstraction:
 - `debt_obligations`: concrete "debtor owes creditor" records from approved shares.
 - `settlements`: repayment records that reduce obligations.
 - `settlement_files`: optional evidence files attached to submitted settlements.
+- `ledger_period_closes`: household month close/reopen state that blocks formal ledger writes for closed posting months.
 - `ledger_links`: references source proposal/share/settlement/reversal.
 
 Balances should be computed from obligations minus settlements. Store cached/materialized summaries for performance only if they can be rebuilt.
+The ledger service owns period-close checks so approval maturity, settlements, adjustments, and reversals return the same `LEDGER_PERIOD_CLOSED` error when their posting date falls in a closed month.
 
 ## Money and decimal handling
 

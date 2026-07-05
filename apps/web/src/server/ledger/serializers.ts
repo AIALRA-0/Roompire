@@ -1,5 +1,6 @@
 import type {
   BalanceEdge,
+  LedgerPeriodCloseRecord,
   LedgerObligationWithRelations,
   LedgerTransactionWithRelations,
   SettlementSuggestion,
@@ -15,6 +16,22 @@ export function serializeBalanceEdge(edge: BalanceEdge) {
 
 export function serializeSettlementSuggestion(suggestion: SettlementSuggestion) {
   return suggestion;
+}
+
+export function serializeLedgerPeriodClose(periodClose: LedgerPeriodCloseRecord) {
+  return {
+    id: periodClose.id,
+    householdId: periodClose.householdId,
+    periodMonth: dateToDateOnly(periodClose.periodMonth)?.slice(0, 7) ?? null,
+    status: periodClose.status,
+    note: periodClose.note,
+    closedByUserId: periodClose.closedByUserId,
+    closedAt: periodClose.closedAt.toISOString(),
+    reopenedByUserId: periodClose.reopenedByUserId,
+    reopenedAt: periodClose.reopenedAt?.toISOString() ?? null,
+    createdAt: periodClose.createdAt.toISOString(),
+    updatedAt: periodClose.updatedAt.toISOString(),
+  };
 }
 
 export function serializeLedgerObligation(obligation: LedgerObligationWithRelations) {
@@ -90,4 +107,5 @@ export function serializeLedgerTransaction(transaction: LedgerTransactionWithRel
 
 export type SerializedLedgerObligation = ReturnType<typeof serializeLedgerObligation>;
 export type SerializedLedgerTransaction = ReturnType<typeof serializeLedgerTransaction>;
+export type SerializedLedgerPeriodClose = ReturnType<typeof serializeLedgerPeriodClose>;
 export type SerializedSettlementSuggestion = ReturnType<typeof serializeSettlementSuggestion>;

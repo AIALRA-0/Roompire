@@ -86,6 +86,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Offsite backup status slice implemented on branch `ops/offsite-backup-status`: `scripts/sync_backup_artifacts.sh` can copy encrypted backup artifacts and `.sha256` sidecars to a configured local mount or `rclone` remote, `backup_all.sh` records disabled/offsite-sync status after backup retention, and `/api/v1/ops/status` plus `/[locale]/app/ops` expose whether an offsite copy is configured and healthy without storing credentials.
 - Docker storage ops visibility slice implemented on branch `ops/docker-storage-status`: `collect_ops_status.sh` records `docker system df` image/container/volume/build-cache totals and reclaimable bytes, `/api/v1/ops/status` and `/[locale]/app/ops` expose a Docker storage card, and the summary warns when reclaimable Docker storage exceeds the configured threshold.
 - Ops automation status slice implemented on branch `ops/automation-timer-status`: `collect_ops_status.sh` records `roompire-ops-status` and `roompire-smoke` timer/service health, and `/api/v1/ops/status` plus `/[locale]/app/ops` expose whether the snapshot refresh and real-domain smoke automation are active and succeeding.
+- Ledger month close slice implemented on branch `feat/month-close-lock`: owner/admin users can close or reopen a ledger month through persisted-idempotent API/UI actions, closed months block new formal ledger writes by posting date across approvals, adjustments, reversals, and settlements, and the ledger page displays recent period status with bilingual copy.
 
 ## Current phase
 
@@ -159,6 +160,7 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 | 2026-07-05 | Expose Docker storage before expanding cleanup              | Docker image and volume cleanup can affect other services on this shared server, so the ops snapshot should show storage pressure and reclaimable estimates before any broader pruning policy.      |
 | 2026-07-05 | Surface ops automation health in ops snapshots              | A stale/failed snapshot refresh or production smoke timer should be visible to the owner from the real site before web requests need host command privileges.                                       |
 | 2026-07-05 | Treat settlement payment metadata as reviewable evidence    | Submitted settlements should carry method, optional payment reference, optional note, and optional evidence files so creditors can review context before confirmation without processing payments.  |
+| 2026-07-05 | Close ledger months by posting date                         | Formal ledger writes must not mutate closed accounting periods; checking the relevant occurrence/settlement/original transaction month keeps close and reopen auditable.                            |
 
 ## Open questions for later human review
 
@@ -170,11 +172,18 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 ## Next recommended tasks
 
 1. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
-2. Continue root-disk capacity planning; production now has roughly 8.9GB free after post-deploy build-cache cleanup, and ops health intentionally warns when disk or Docker reclaimable storage crosses configured thresholds.
+2. Continue root-disk capacity planning; production now has roughly 7.9GB free after post-deploy build-cache cleanup, and ops health intentionally warns when disk or Docker reclaimable storage crosses configured thresholds.
 3. Configure a real off-host backup copy target plus passphrase escrow once private production data grows beyond the initial household; the sync/status mechanism now exists and intentionally warns while disabled.
 
 ## Last session verification
 
+- 2026-07-05 Ledger month close:
+  - Added `LedgerPeriodClose`/`LedgerPeriodStatus` with migration `20260705100000_add_ledger_period_closes`, period close/reopen services, serializers, idempotent APIs, owner/admin ledger UI, docs/OpenAPI/i18n updates, and E2E coverage.
+  - Closed ledger months now return `409 LEDGER_PERIOD_CLOSED` for formal writes in that month, including approval maturity, manual adjustments, obligation reversals, and settlement submit/confirm/reject posting dates.
+  - Verification passed: `prisma format`, `pnpm db:generate`, `pnpm db:validate`, `jq empty`, OpenAPI YAML parse, `pnpm typecheck`, `pnpm test` (8 files, 28 tests), `pnpm lint`, `pnpm format:check`, `pnpm build`, `git diff --check`, full `pnpm e2e` (38 browser tests), and secret scans for the production gate strings.
+  - Production migration applied on the local self-hosted server; `roompire-web-1` was rebuilt/recreated with `docker-compose.nginx.example.yml` preserving `127.0.0.1:18300->3000`; no SSH or separate VPS access was used.
+  - Real-domain smoke passed for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`; authenticated live validation created a temporary household, closed `2026-07`, verified API/UI status, confirmed adjustment and settlement writes were blocked with `LEDGER_PERIOD_CLOSED`, reopened the month, checked desktop/mobile ledger overflow, saved screenshots under `output/playwright/roompire-month-close-live-*.png`, and deleted all temporary production rows.
+  - Post-deploy housekeeping reclaimed 2.445GB of Docker build cache and refreshed ops status; production ended around 7.9GB free / 96% used with expected Docker storage visibility still active.
 - 2026-07-05 Settlement payment metadata:
   - Added nullable `Settlement.paymentReference` with migration `20260705090000_add_settlement_payment_reference`, settlement create validation/serialization, ledger transaction settlement serialization, OpenAPI/API/database docs, backlog updates, and en-US/zh-CN labels.
   - Ledger settlement forms now collect payment reference for direct and suggested settlements; pending settlement review displays method, reference, note, and evidence before creditor confirmation.

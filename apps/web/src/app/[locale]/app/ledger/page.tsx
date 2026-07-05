@@ -15,6 +15,7 @@ import { getTranslations } from "next-intl/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LedgerCorrectionActions } from "@/components/ledger-correction-actions";
+import { LedgerPeriodCloseActions } from "@/components/ledger-period-close-actions";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { SettlementActions } from "@/components/settlement-actions";
 import type { Locale } from "@/i18n/routing";
@@ -23,12 +24,14 @@ import { getDashboardModel } from "@/server/dashboard/model";
 import {
   serializeBalanceEdge,
   serializeLedgerObligation,
+  serializeLedgerPeriodClose,
   serializeSettlementSuggestion,
   serializeLedgerTransaction,
 } from "@/server/ledger/serializers";
 import {
   listBalanceEdgesForHousehold,
   listLedgerObligationsForHousehold,
+  listLedgerPeriodClosesForHousehold,
   listSettlementSuggestionsForHousehold,
   listLedgerTransactionsForHousehold,
 } from "@/server/ledger/service";
@@ -71,7 +74,7 @@ export default async function LedgerPage({ params }: PageProps) {
     ]),
   );
   const memberNamesByUserIdRecord = Object.fromEntries(memberNamesByUserId);
-  const [balances, obligations, transactions, settlements, settlementSuggestions] =
+  const [balances, obligations, transactions, settlements, settlementSuggestions, periodCloses] =
     activeHouseholdId
       ? await Promise.all([
           listBalanceEdgesForHousehold(model.user.id, activeHouseholdId),
@@ -79,8 +82,9 @@ export default async function LedgerPage({ params }: PageProps) {
           listLedgerTransactionsForHousehold(model.user.id, activeHouseholdId),
           listSettlementsForHousehold(model.user.id, activeHouseholdId),
           listSettlementSuggestionsForHousehold(model.user.id, activeHouseholdId),
+          listLedgerPeriodClosesForHousehold(model.user.id, activeHouseholdId),
         ])
-      : [[], [], [], [], []];
+      : [[], [], [], [], [], []];
   const serializedBalances = balances.map(serializeBalanceEdge);
   const serializedObligations = obligations.map(serializeLedgerObligation);
   const serializedOpenObligations = serializedObligations.filter(
@@ -89,6 +93,7 @@ export default async function LedgerPage({ params }: PageProps) {
   const serializedTransactions = transactions.map(serializeLedgerTransaction);
   const serializedSettlements = settlements.map(serializeSettlement);
   const serializedSettlementSuggestions = settlementSuggestions.map(serializeSettlementSuggestion);
+  const serializedPeriodCloses = periodCloses.map(serializeLedgerPeriodClose);
   const memberSummaries = model.members.map((member) => ({
     userId: member.userId,
     displayName: member.displayNameOverride ?? member.user.displayName,
@@ -278,6 +283,32 @@ export default async function LedgerPage({ params }: PageProps) {
                 obligations={serializedObligations}
                 suggestions={serializedSettlementSuggestions}
                 settlements={serializedSettlements}
+              />
+            ) : null}
+
+            {activeHouseholdId ? (
+              <LedgerPeriodCloseActions
+                canCorrectLedger={model.canCorrectLedger}
+                householdId={activeHouseholdId}
+                labels={{
+                  periodCloses: ledger("periodCloses"),
+                  periodClosesHint: ledger("periodClosesHint"),
+                  closeMonth: ledger("closeMonth"),
+                  recentPeriods: ledger("recentPeriods"),
+                  month: ledger("month"),
+                  note: ledger("note"),
+                  closePeriod: ledger("closePeriod"),
+                  reopenPeriod: ledger("reopenPeriod"),
+                  closed: ledger("closed"),
+                  reopened: ledger("reopened"),
+                  periodClosed: ledger("periodClosed"),
+                  periodReopened: ledger("periodReopened"),
+                  noPeriodCloses: ledger("noPeriodCloses"),
+                  cannotClosePeriod: ledger("cannotClosePeriod"),
+                  working: common("working"),
+                  errorFallback: ledger("periodCloseErrorFallback"),
+                }}
+                periodCloses={serializedPeriodCloses}
               />
             ) : null}
 

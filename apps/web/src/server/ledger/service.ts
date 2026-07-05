@@ -1,5 +1,11 @@
 import Decimal from "decimal.js";
-import { ClearingPolicy, DebtStatus, LedgerTransactionType } from "@prisma/client";
+import {
+  ClearingPolicy,
+  DebtStatus,
+  LedgerPeriodStatus,
+  LedgerTransactionType,
+  type Prisma,
+} from "@prisma/client";
 import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
@@ -45,6 +51,7 @@ const currencySchema = z
   .pipe(z.string().regex(/^[A-Z]{3}$/));
 
 const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const periodMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
 export const reverseLedgerObligationSchema = z.object({
   reason: z.string().trim().min(3).max(500),
@@ -61,8 +68,55 @@ export const createLedgerAdjustmentSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
 
+export const closeLedgerPeriodSchema = z.object({
+  periodMonth: periodMonthSchema,
+  note: z
+    .preprocess(
+      (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+      z.string().trim().max(500).optional(),
+    )
+    .optional(),
+});
+
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
+}
+
+function periodMonthToUtc(value: string) {
+  const [year, month] = value.split("-").map(Number);
+
+  return new Date(Date.UTC(year!, month! - 1, 1));
+}
+
+export function dateToLedgerPeriodMonth(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
+}
+
+export function ledgerPeriodMonthToKey(value: Date) {
+  return value.toISOString().slice(0, 7);
+}
+
+export async function assertLedgerPeriodOpen(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  occurredAt: Date,
+) {
+  const periodMonth = dateToLedgerPeriodMonth(occurredAt);
+  const closedPeriod = await tx.ledgerPeriodClose.findUnique({
+    where: {
+      householdId_periodMonth: {
+        householdId,
+        periodMonth,
+      },
+    },
+  });
+
+  if (closedPeriod?.status === LedgerPeriodStatus.CLOSED) {
+    throw new ApiError(409, "LEDGER_PERIOD_CLOSED", "Ledger period is closed.", {
+      periodMonth: ledgerPeriodMonthToKey(periodMonth),
+      periodCloseId: closedPeriod.id,
+    });
+  }
 }
 
 function decimalToFixed6(value: Decimal.Value) {
@@ -102,6 +156,18 @@ export async function listLedgerTransactionsForHousehold(userId: string, househo
     },
     orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
     take: 50,
+  });
+}
+
+export async function listLedgerPeriodClosesForHousehold(userId: string, householdId: string) {
+  await requireActiveMembership(userId, householdId);
+
+  return prisma.ledgerPeriodClose.findMany({
+    where: {
+      householdId,
+    },
+    orderBy: [{ periodMonth: "desc" }, { updatedAt: "desc" }],
+    take: 24,
   });
 }
 
@@ -394,6 +460,9 @@ export async function reverseLedgerObligationForHousehold(
       );
     }
 
+    await assertLedgerPeriodOpen(tx, householdId, obligation.transaction.occurredAt);
+    await assertLedgerPeriodOpen(tx, householdId, occurredAt);
+
     const reversalTransaction = await tx.ledgerTransaction.create({
       data: {
         householdId,
@@ -466,6 +535,8 @@ export async function createLedgerAdjustmentForHousehold(
   }
 
   return prisma.$transaction(async (tx) => {
+    await assertLedgerPeriodOpen(tx, householdId, occurredAt);
+
     const debtorMembership = await tx.householdMembership.findFirst({
       where: {
         householdId,
@@ -545,10 +616,143 @@ export async function createLedgerAdjustmentForHousehold(
   });
 }
 
+export async function closeLedgerPeriodForHousehold(
+  userId: string,
+  householdId: string,
+  input: unknown,
+) {
+  await requireLedgerCorrector(userId, householdId);
+
+  const parsed = closeLedgerPeriodSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Ledger period close input is invalid.", parsed.error.flatten());
+  }
+
+  const data = parsed.data;
+  const periodMonth = periodMonthToUtc(data.periodMonth);
+
+  return prisma.$transaction(async (tx) => {
+    const existingPeriod = await tx.ledgerPeriodClose.findUnique({
+      where: {
+        householdId_periodMonth: {
+          householdId,
+          periodMonth,
+        },
+      },
+    });
+
+    if (existingPeriod?.status === LedgerPeriodStatus.CLOSED) {
+      return existingPeriod;
+    }
+
+    const periodClose = existingPeriod
+      ? await tx.ledgerPeriodClose.update({
+          where: {
+            id: existingPeriod.id,
+          },
+          data: {
+            status: LedgerPeriodStatus.CLOSED,
+            note: data.note,
+            closedByUserId: userId,
+            closedAt: new Date(),
+            reopenedByUserId: null,
+            reopenedAt: null,
+          },
+        })
+      : await tx.ledgerPeriodClose.create({
+          data: {
+            householdId,
+            periodMonth,
+            status: LedgerPeriodStatus.CLOSED,
+            note: data.note,
+            closedByUserId: userId,
+          },
+        });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "ledger_period.closed",
+        entityType: "LedgerPeriodClose",
+        entityId: periodClose.id,
+        after: {
+          periodMonth: ledgerPeriodMonthToKey(periodMonth),
+          status: periodClose.status,
+          note: periodClose.note,
+        },
+      },
+    });
+
+    return periodClose;
+  });
+}
+
+export async function reopenLedgerPeriodForHousehold(
+  userId: string,
+  householdId: string,
+  periodCloseId: string,
+) {
+  await requireLedgerCorrector(userId, householdId);
+
+  return prisma.$transaction(async (tx) => {
+    const existingPeriod = await tx.ledgerPeriodClose.findFirst({
+      where: {
+        id: periodCloseId,
+        householdId,
+      },
+    });
+
+    if (!existingPeriod) {
+      throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+    }
+
+    if (existingPeriod.status === LedgerPeriodStatus.REOPENED) {
+      return existingPeriod;
+    }
+
+    const periodClose = await tx.ledgerPeriodClose.update({
+      where: {
+        id: existingPeriod.id,
+      },
+      data: {
+        status: LedgerPeriodStatus.REOPENED,
+        reopenedByUserId: userId,
+        reopenedAt: new Date(),
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "ledger_period.reopened",
+        entityType: "LedgerPeriodClose",
+        entityId: periodClose.id,
+        before: {
+          status: existingPeriod.status,
+        },
+        after: {
+          periodMonth: ledgerPeriodMonthToKey(periodClose.periodMonth),
+          status: periodClose.status,
+          reopenedAt: periodClose.reopenedAt?.toISOString() ?? null,
+        },
+      },
+    });
+
+    return periodClose;
+  });
+}
+
 export type LedgerObligationWithRelations = Awaited<
   ReturnType<typeof listLedgerObligationsForHousehold>
 >[number];
 
 export type LedgerTransactionWithRelations = Awaited<
   ReturnType<typeof listLedgerTransactionsForHousehold>
+>[number];
+
+export type LedgerPeriodCloseRecord = Awaited<
+  ReturnType<typeof listLedgerPeriodClosesForHousehold>
 >[number];

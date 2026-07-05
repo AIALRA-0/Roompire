@@ -11,7 +11,7 @@ import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
 import { assertFilesReadyForAttachment } from "@/server/files/service";
-import { computeSettlementSuggestions } from "@/server/ledger/service";
+import { assertLedgerPeriodOpen, computeSettlementSuggestions } from "@/server/ledger/service";
 import { requireActiveMembership } from "@/server/permissions/rbac";
 
 const decimalStringSchema = z
@@ -373,6 +373,8 @@ export async function createSettlementForHousehold(
   });
 
   return prisma.$transaction(async (tx) => {
+    await assertLedgerPeriodOpen(tx, householdId, settlementDate);
+
     if (data.debtObligationId) {
       const obligation = await tx.debtObligation.findFirst({
         where: {
@@ -612,6 +614,8 @@ export async function confirmSettlementForHousehold(
       throw new ApiError(409, "SETTLEMENT_NOT_CONFIRMABLE", "Settlement cannot be confirmed.");
     }
 
+    await assertLedgerPeriodOpen(tx, householdId, settlement.settlementDate);
+
     const amount = new Decimal(settlement.amount.toString());
     let allocationPolicy = "OLDEST_OPEN_OBLIGATIONS";
     let obligations: AllocationCandidate[];
@@ -799,6 +803,8 @@ export async function rejectSettlementForHousehold(
     if (settlement.status !== SettlementStatus.SUBMITTED) {
       throw new ApiError(409, "SETTLEMENT_NOT_REJECTABLE", "Settlement cannot be rejected.");
     }
+
+    await assertLedgerPeriodOpen(tx, householdId, settlement.settlementDate);
 
     const rejectedSettlement = await tx.settlement.update({
       where: {

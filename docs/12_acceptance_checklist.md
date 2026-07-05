@@ -44,6 +44,7 @@ Use this checklist before declaring a milestone complete.
 - [ ] Approved shares mature exactly once.
 - [ ] Ledger rows are append-only.
 - [ ] Corrections use reversal/adjustment.
+- [x] Month close blocks formal ledger writes in closed periods until reopened.
 - [ ] Money uses decimal arithmetic.
 - [x] FX locks store provider/rate/rate date/locked timestamp.
 - [ ] Audit event emitted for critical mutation.

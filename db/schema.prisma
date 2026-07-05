@@ -91,6 +91,11 @@ enum SettlementStatus {
   CANCELLED
 }
 
+enum LedgerPeriodStatus {
+  CLOSED
+  REOPENED
+}
+
 enum CalendarEventType {
   TASK
   CHORE
@@ -137,6 +142,7 @@ model Household {
   proposals          ExpenseProposal[]
   files              File[]
   ledgerTransactions LedgerTransaction[]
+  ledgerPeriodCloses LedgerPeriodClose[]
   auditEvents        AuditEvent[]
   idempotencyRecords IdempotencyRecord[]
 
@@ -472,6 +478,27 @@ model SettlementAllocation {
 
   settlement Settlement     @relation(fields: [settlementId], references: [id], onDelete: Cascade)
   obligation DebtObligation @relation(fields: [debtObligationId], references: [id], onDelete: Restrict)
+}
+
+model LedgerPeriodClose {
+  id               String             @id @default(uuid()) @db.Uuid
+  householdId      String             @db.Uuid
+  periodMonth      DateTime           @db.Date
+  status           LedgerPeriodStatus @default(CLOSED)
+  note             String?            @db.VarChar(500)
+  closedByUserId   String             @db.Uuid
+  closedAt         DateTime           @default(now())
+  reopenedByUserId String?            @db.Uuid
+  reopenedAt       DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, periodMonth])
+  @@index([householdId, status, periodMonth])
+  @@index([closedByUserId])
+  @@index([reopenedByUserId])
 }
 
 model CalendarEvent {

@@ -589,6 +589,61 @@ async function clickLedgerAdjustmentSubmitWithRetry(page: Page) {
   throw new Error(`POST ledger adjustment failed with status ${lastStatus}`);
 }
 
+async function clickLedgerPeriodCloseSubmitWithRetry(page: Page) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/ledger/period-closes") &&
+        !response.url().includes("/reopen") &&
+        response.request().method() === "POST",
+    );
+
+    await page.getByTestId("ledger-period-close-submit").click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Ledger period closed")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`POST ledger period close failed with status ${lastStatus}`);
+}
+
+async function clickLedgerPeriodReopenWithRetry(page: Page, periodMonth: string) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/ledger/period-closes/") &&
+        response.url().includes("/reopen") &&
+        response.request().method() === "POST",
+    );
+
+    await page
+      .getByTestId(`ledger-period-close-${periodMonth}`)
+      .getByRole("button", { name: "Reopen period" })
+      .click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByText("Ledger period reopened")).toBeVisible();
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`POST ledger period reopen failed with status ${lastStatus}`);
+}
+
 async function clickLedgerReversalSubmitWithRetry(page: Page, obligationId: string) {
   let lastStatus = 0;
 
@@ -2821,6 +2876,64 @@ test.describe("Roompire real browser smoke", () => {
       status: "OPEN",
     });
 
+    const closeForSettlementResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/ledger/period-closes`,
+      {
+        data: {
+          periodMonth: "2026-07",
+          note: "Close before locked settlement test",
+        },
+        headers: {
+          "Idempotency-Key": `settlement-lock-close-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(closeForSettlementResponse.status()).toBe(201);
+    const closeForSettlementPayload = (await closeForSettlementResponse.json()) as {
+      periodClose: { id: string; status: string; periodMonth: string };
+    };
+    expect(closeForSettlementPayload.periodClose).toMatchObject({
+      periodMonth: "2026-07",
+      status: "CLOSED",
+    });
+
+    const lockedSettlementResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/settlements`,
+      {
+        data: {
+          debtObligationId: idempotentObligation!.id,
+          amount: idempotentObligation!.remainingAmount,
+          settlementDate: "2026-07-04",
+          method: "manual",
+        },
+        headers: {
+          "Idempotency-Key": `locked-settlement-${Date.now()}`,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(lockedSettlementResponse.status()).toBe(409);
+    const lockedSettlementPayload = (await lockedSettlementResponse.json()) as {
+      error: { code: string; details: { periodMonth: string } };
+    };
+    expect(lockedSettlementPayload.error).toMatchObject({
+      code: "LEDGER_PERIOD_CLOSED",
+      details: { periodMonth: "2026-07" },
+    });
+
+    const reopenForSettlementResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/ledger/period-closes/${closeForSettlementPayload.periodClose.id}/reopen`,
+      {
+        data: {},
+        headers: {
+          "Idempotency-Key": `settlement-lock-reopen-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(reopenForSettlementResponse.ok()).toBeTruthy();
+
     const settlementIdempotencyKey = `settlement-idempotency-${Date.now()}`;
     const idempotentSettlementBody = {
       debtObligationId: idempotentObligation!.id,
@@ -3038,6 +3151,64 @@ test.describe("Roompire real browser smoke", () => {
       balances: unknown[];
     };
     expect(reversedBalancesPayload.balances).toEqual([]);
+
+    await page.getByTestId("ledger-period-close-month").fill("2026-07");
+    await page.getByTestId("ledger-period-close-note").fill(`Close July ledger ${suffix}`);
+    await clickLedgerPeriodCloseSubmitWithRetry(page);
+    const closedPeriodRow = page.getByTestId("ledger-period-close-2026-07");
+    await expect(closedPeriodRow).toContainText("Closed");
+    await expect(closedPeriodRow).toContainText(`Close July ledger ${suffix}`);
+
+    const periodClosesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${detailIds.householdId}/ledger/period-closes`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(periodClosesResponse.ok()).toBeTruthy();
+    const periodClosesPayload = (await periodClosesResponse.json()) as {
+      periodCloses: Array<{ id: string; periodMonth: string; status: string; note: string | null }>;
+    };
+    const closedJulyPeriod = periodClosesPayload.periodCloses.find(
+      (periodClose) => periodClose.periodMonth === "2026-07",
+    );
+    expect(closedJulyPeriod).toMatchObject({
+      periodMonth: "2026-07",
+      status: "CLOSED",
+      note: `Close July ledger ${suffix}`,
+    });
+
+    const lockedAdjustmentResponse = await page.request.post(
+      `/api/v1/households/${detailIds.householdId}/ledger/adjustments`,
+      {
+        data: {
+          debtorUserId: approvedShare!.debtorUserId,
+          creditorUserId: approvedShare!.creditorUserId,
+          amount: "2",
+          currency: "CNY",
+          occurredAt: "2026-07-04",
+          reason: "Blocked locked-period adjustment",
+        },
+        headers: {
+          "Idempotency-Key": `locked-adjustment-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(lockedAdjustmentResponse.status()).toBe(409);
+    const lockedAdjustmentPayload = (await lockedAdjustmentResponse.json()) as {
+      error: { code: string; details: { periodMonth: string } };
+    };
+    expect(lockedAdjustmentPayload.error).toMatchObject({
+      code: "LEDGER_PERIOD_CLOSED",
+      details: { periodMonth: "2026-07" },
+    });
+
+    await clickLedgerPeriodReopenWithRetry(page, "2026-07");
+    await expect(page.getByTestId("ledger-period-close-2026-07")).toContainText("Reopened");
 
     const adjustmentIdempotencyKey = `adjustment-idempotency-${Date.now()}`;
     const adjustmentBody = {

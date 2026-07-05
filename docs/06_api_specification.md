@@ -116,8 +116,13 @@ Current implementation lets owners and admins manage non-self member roles and r
 - `GET /households/{householdId}/ledger/transactions`
 - `GET /households/{householdId}/ledger/obligations`
 - `GET /households/{householdId}/balances`
+- `GET /households/{householdId}/ledger/period-closes`
+- `POST /households/{householdId}/ledger/period-closes`
+- `POST /households/{householdId}/ledger/period-closes/{periodCloseId}/reopen`
 - `POST /households/{householdId}/ledger/obligations/{obligationId}/reverse`
 - `POST /households/{householdId}/ledger/adjustments`
+
+Current implementation: owners/admins can close a ledger month by `YYYY-MM` and later reopen it. Closed periods block formal ledger writes whose posting date falls in the closed month: share approval maturity, manual adjustments, obligation reversals, settlement submission, and settlement confirmation/rejection return `409 LEDGER_PERIOD_CLOSED` until the period is reopened. Reads remain available to active household members. Close/reopen mutations require `Idempotency-Key` and emit audit events.
 
 ### Settlements
 
@@ -273,6 +278,7 @@ Current implementation allows only household owners and admins to create adjustm
 ```
 
 Current implementation allows only household owners and admins to reverse open obligations with no confirmed settlement allocations. The original ledger transaction remains in history; a `REVERSAL` transaction references it and the obligation is excluded from balances.
+Reversal is blocked when either the original obligation posting month or the reversal `occurredAt` month is closed.
 
 ### Record settlement
 

@@ -99,9 +99,8 @@ Current implemented subset for FX: proposal/revision/task-expense creation locks
 
 - Settlement suggestions.
 - Reversal/adjustment flow.
-- Month close/lock.
 
-Current implementation for settlement suggestions exposes optimized net transfers with explicit actionability. Direct debtor/payee/currency suggestions are `DIRECTLY_SETTLEABLE` and can be submitted by the debtor when enough matching open obligations exist. Fully netted non-direct suggestions stay `GUIDANCE_ONLY` by default, and become `CLEARING_SETTLEABLE` only when owner/admin household settings enable `HOUSEHOLD_NETTING`. A confirmed clearing settlement reduces the payer's outgoing open obligations and the payee's incoming open obligations through audited allocation rows while keeping the recorded payment amount as the actual payer-to-payee transfer.
+Current implementation for settlement suggestions exposes optimized net transfers with explicit actionability. Direct debtor/payee/currency suggestions are `DIRECTLY_SETTLEABLE` and can be submitted by the debtor when enough matching open obligations exist. Fully netted non-direct suggestions stay `GUIDANCE_ONLY` by default, and become `CLEARING_SETTLEABLE` only when owner/admin household settings enable `HOUSEHOLD_NETTING`. A confirmed clearing settlement reduces the payer's outgoing open obligations and the payee's incoming open obligations through audited allocation rows while keeping the recorded payment amount as the actual payer-to-payee transfer. Owners/admins can also close and reopen ledger months; closed periods block approval maturity, settlement submit/confirm/reject, adjustments, and reversals for posting dates in that month until reopened.
 
 ## Epic 5 — Settlements
 

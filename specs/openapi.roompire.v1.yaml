@@ -96,6 +96,9 @@ components:
     SettlementStatus:
       type: string
       enum: [SUBMITTED, CONFIRMED, REJECTED, CANCELLED]
+    LedgerPeriodStatus:
+      type: string
+      enum: [CLOSED, REOPENED]
     CalendarEventType:
       type: string
       enum:
@@ -1174,6 +1177,46 @@ components:
       required: [transaction]
       properties:
         transaction: { $ref: "#/components/schemas/LedgerTransaction" }
+    LedgerPeriodClose:
+      type: object
+      required:
+        [id, householdId, periodMonth, status, closedByUserId, closedAt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        householdId: { type: string, format: uuid }
+        periodMonth:
+          type: string
+          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+          examples: ["2026-07"]
+        status: { $ref: "#/components/schemas/LedgerPeriodStatus" }
+        note: { type: string, maxLength: 500, nullable: true }
+        closedByUserId: { type: string, format: uuid }
+        closedAt: { type: string, format: date-time }
+        reopenedByUserId: { type: string, format: uuid, nullable: true }
+        reopenedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    LedgerPeriodCloseListResponse:
+      type: object
+      required: [periodCloses]
+      properties:
+        periodCloses:
+          type: array
+          items: { $ref: "#/components/schemas/LedgerPeriodClose" }
+    LedgerPeriodCloseResponse:
+      type: object
+      required: [periodClose]
+      properties:
+        periodClose: { $ref: "#/components/schemas/LedgerPeriodClose" }
+    CreateLedgerPeriodCloseRequest:
+      type: object
+      required: [periodMonth]
+      properties:
+        periodMonth:
+          type: string
+          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+          examples: ["2026-07"]
+        note: { type: string, maxLength: 500 }
     CreateLedgerAdjustmentRequest:
       type: object
       required: [debtorUserId, creditorUserId, amount, currency, occurredAt, reason]
@@ -2546,7 +2589,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Share/proposal is no longer actionable, the idempotent request is in progress, or the Idempotency-Key was reused with a different request
+          description: Share/proposal is no longer actionable, ledger period is closed, the idempotent request is in progress, or the Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -2848,6 +2891,120 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/ledger/period-closes:
+    get:
+      summary: List ledger period closes
+      description: Returns the latest month close/reopen states for the household. Active members can read; only owners and admins can mutate.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LedgerPeriodCloseListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      summary: Close a ledger month
+      description: Owners and admins can close a month. A closed period blocks new ledger writes whose occurred/settlement date falls in that YYYY-MM period until it is reopened.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateLedgerPeriodCloseRequest" }
+      responses:
+        "201":
+          description: Ledger period closed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LedgerPeriodCloseResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not an owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Idempotent request is in progress or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/ledger/period-closes/{periodCloseId}/reopen:
+    post:
+      summary: Reopen a closed ledger month
+      description: Owners and admins can reopen a previously closed month, allowing later formal ledger writes in that period again.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Replays the stored response for the same user, key, endpoint, and request body. Reusing the key with a different request returns 409.
+          schema: { type: string, maxLength: 160 }
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: periodCloseId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Ledger period reopened
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LedgerPeriodCloseResponse" }
+        "400":
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not an owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household or period close not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Idempotent request is in progress or Idempotency-Key was reused with a different request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/ledger/adjustments:
     post:
       summary: Create a manual ledger adjustment
@@ -2889,7 +3046,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Idempotent request is in progress or Idempotency-Key was reused with a different request
+          description: Ledger period is closed, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -2938,7 +3095,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Obligation is not open, has settlement allocations, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          description: Obligation is not open, has settlement allocations, ledger period is closed, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -3002,7 +3159,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Obligation is not open, no matching open obligations exist, settlement overpays, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          description: Obligation is not open, no matching open obligations exist, settlement overpays, ledger period is closed, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -3052,7 +3209,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Settlement is not confirmable, obligation is not open, no matching open obligations exist, settlement overpays, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          description: Settlement is not confirmable, obligation is not open, no matching open obligations exist, settlement overpays, ledger period is closed, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -3102,7 +3259,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Settlement is not rejectable, idempotent request is in progress, or Idempotency-Key was reused with a different request
+          description: Settlement is not rejectable, ledger period is closed, idempotent request is in progress, or Idempotency-Key was reused with a different request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
