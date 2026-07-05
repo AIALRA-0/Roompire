@@ -154,11 +154,11 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 ## Last session verification
 
 - 2026-07-05 CI workflow hardening:
-  - Updated `.github/workflows/ci.yml` and `.github/workflows/e2e.yml` to use pnpm `11.9.0`, include `ops/**` push triggers, add manual CI dispatch, set read-only workflow permissions, add job timeouts, and make the E2E Postgres health check explicit.
+  - Updated `.github/workflows/ci.yml` and `.github/workflows/e2e.yml` to use pnpm `11.9.0`, include `ops/**` push triggers, add manual CI dispatch, set read-only workflow permissions, add job timeouts, generate the Prisma client before CI typecheck, and make the E2E Postgres health check explicit.
   - Added E2E push coverage for feature/fix/test/chore/ops branches with explicit `ROOMPIRE_E2E_PORT=3100` and `ROOMPIRE_E2E_WORKERS=1`.
   - Moved Playwright ops-status fixtures to `test-results/e2e-ops-status/ops-status.json` through `ROOMPIRE_OPS_STATUS_FILE`, preventing local E2E from overwriting the production `ops/status` bind mount used by the live web container.
   - Updated README/backlog/technical design wording so deployment docs describe the current self-hosted server with host nginx rather than a separate VPS.
-  - Local CI-equivalent chain passed: `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build`.
+  - Local CI-equivalent chain passed: `pnpm install --frozen-lockfile`, `pnpm db:generate`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build`; forced `pnpm typecheck --force` also passed after adding the CI Prisma generation step.
   - Targeted Playwright desktop/mobile ops test passed and proved host `ops/status/ops-status.json` stayed at the real host disk value while the test fixture contained the expected fake 42% disk data.
   - Full `pnpm e2e` passed after the isolation change: 28 browser tests across Chromium desktop and mobile in 7.8 minutes.
   - Real-domain smoke passed again for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`; `collect_ops_status.sh` restored/refreshed the live host snapshot and authenticated `/api/v1/ops/status` returned `latestSmoke.status=passed` with disk-pressure warnings.

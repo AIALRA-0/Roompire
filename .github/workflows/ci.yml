@@ -25,6 +25,10 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm db:generate
+        env:
+          DATABASE_URL: postgresql://roompire:roompire@localhost:5432/roompire_ci
       - name: Lint
         run: pnpm lint
       - name: Typecheck
