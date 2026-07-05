@@ -19,7 +19,11 @@ import { resolveFxRateLock } from "@/server/fx/rates";
 import { assertLedgerPeriodOpen } from "@/server/ledger/service";
 import { createExpenseProposalAssignedNotifications } from "@/server/notifications/service";
 import { paginateRows, paginationQueryFields } from "@/server/pagination";
-import { requireActiveMembership, requireExpenseProposalCreator } from "@/server/permissions/rbac";
+import {
+  requireActiveMembership,
+  requireExpenseProposalCreator,
+  requireHouseholdSettingsManager,
+} from "@/server/permissions/rbac";
 
 const currencySchema = z
   .string()
@@ -52,6 +56,11 @@ const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const nullableUuidSchema = z.preprocess(
   (value) => (value === "" || value === null ? undefined : value),
   z.string().uuid().optional(),
+);
+
+const optionalCategoryTextSchema = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  z.string().trim().max(80).optional(),
 );
 
 const optionalDecimalStringSchema = z.preprocess(
@@ -167,6 +176,17 @@ export const createEventExpenseProposalSchema = createExpenseProposalBaseSchema
 export const listExpenseProposalQuerySchema = z.object({
   status: z.nativeEnum(ExpenseProposalStatus).optional(),
   ...paginationQueryFields(20),
+});
+
+const expenseCategoryInputSchema = z.object({
+  nameEn: z.string().trim().min(2).max(80),
+  nameZhCn: z.string().trim().min(1).max(80),
+  icon: optionalCategoryTextSchema,
+  colorToken: optionalCategoryTextSchema,
+  sortOrder: z.preprocess(
+    (value) => (value === "" || value === null || value === undefined ? undefined : value),
+    z.coerce.number().int().min(0).max(10_000).optional(),
+  ),
 });
 
 export const approveExpenseShareSchema = z.object({
@@ -435,6 +455,54 @@ async function assertCategoryBelongsToHousehold(categoryId: string, householdId:
   }
 }
 
+function categoryKeyBase(name: string) {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+
+  return base || "category";
+}
+
+async function nextCategorySortOrder(tx: Prisma.TransactionClient, householdId: string) {
+  const lastCategory = await tx.expenseCategory.findFirst({
+    where: { householdId },
+    orderBy: [{ sortOrder: "desc" }, { createdAt: "desc" }],
+    select: { sortOrder: true },
+  });
+
+  return (lastCategory?.sortOrder ?? -1) + 1;
+}
+
+async function uniqueCategoryKey(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  nameEn: string,
+) {
+  const base = categoryKeyBase(nameEn);
+  let candidate = base;
+  let suffix = 2;
+
+  while (
+    await tx.expenseCategory.findUnique({
+      where: {
+        householdId_key: {
+          householdId,
+          key: candidate,
+        },
+      },
+      select: { id: true },
+    })
+  ) {
+    const suffixText = `-${suffix}`;
+    candidate = `${base.slice(0, 64 - suffixText.length)}${suffixText}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
 async function getParticipantMemberships(householdId: string, userIds: string[]) {
   const memberships = await prisma.householdMembership.findMany({
     where: {
@@ -476,6 +544,167 @@ export async function listExpenseCategoriesForHousehold(userId: string, househol
       isActive: true,
     },
     orderBy: [{ sortOrder: "asc" }, { nameEn: "asc" }],
+  });
+}
+
+export async function createExpenseCategoryForHousehold(
+  userId: string,
+  householdId: string,
+  input: unknown,
+) {
+  await requireHouseholdSettingsManager(userId, householdId);
+  const parsed = expenseCategoryInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Expense category input is invalid.", parsed.error.flatten());
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const category = await tx.expenseCategory.create({
+      data: {
+        householdId,
+        key: await uniqueCategoryKey(tx, householdId, parsed.data.nameEn),
+        nameEn: parsed.data.nameEn,
+        nameZhCn: parsed.data.nameZhCn,
+        icon: parsed.data.icon,
+        colorToken: parsed.data.colorToken,
+        sortOrder: parsed.data.sortOrder ?? (await nextCategorySortOrder(tx, householdId)),
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "expense_category.created",
+        entityType: "ExpenseCategory",
+        entityId: category.id,
+        after: {
+          key: category.key,
+          nameEn: category.nameEn,
+          nameZhCn: category.nameZhCn,
+          icon: category.icon,
+          colorToken: category.colorToken,
+          sortOrder: category.sortOrder,
+          isActive: category.isActive,
+        },
+      },
+    });
+
+    return category;
+  });
+}
+
+export async function updateExpenseCategoryForHousehold(
+  userId: string,
+  householdId: string,
+  categoryId: string,
+  input: unknown,
+) {
+  await requireHouseholdSettingsManager(userId, householdId);
+  const parsed = expenseCategoryInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw validationError("Expense category input is invalid.", parsed.error.flatten());
+  }
+
+  const previous = await prisma.expenseCategory.findFirst({
+    where: { id: categoryId, householdId, isActive: true },
+  });
+
+  if (!previous) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const category = await tx.expenseCategory.update({
+      where: { id: categoryId },
+      data: {
+        nameEn: parsed.data.nameEn,
+        nameZhCn: parsed.data.nameZhCn,
+        icon: parsed.data.icon,
+        colorToken: parsed.data.colorToken,
+        sortOrder: parsed.data.sortOrder ?? previous.sortOrder,
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "expense_category.updated",
+        entityType: "ExpenseCategory",
+        entityId: category.id,
+        before: {
+          key: previous.key,
+          nameEn: previous.nameEn,
+          nameZhCn: previous.nameZhCn,
+          icon: previous.icon,
+          colorToken: previous.colorToken,
+          sortOrder: previous.sortOrder,
+          isActive: previous.isActive,
+        },
+        after: {
+          key: category.key,
+          nameEn: category.nameEn,
+          nameZhCn: category.nameZhCn,
+          icon: category.icon,
+          colorToken: category.colorToken,
+          sortOrder: category.sortOrder,
+          isActive: category.isActive,
+        },
+      },
+    });
+
+    return category;
+  });
+}
+
+export async function archiveExpenseCategoryForHousehold(
+  userId: string,
+  householdId: string,
+  categoryId: string,
+) {
+  await requireHouseholdSettingsManager(userId, householdId);
+  const previous = await prisma.expenseCategory.findFirst({
+    where: { id: categoryId, householdId, isActive: true },
+  });
+
+  if (!previous) {
+    throw new ApiError(404, "NOT_FOUND", "Resource not found.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const category = await tx.expenseCategory.update({
+      where: { id: categoryId },
+      data: { isActive: false },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        householdId,
+        actorUserId: userId,
+        action: "expense_category.archived",
+        entityType: "ExpenseCategory",
+        entityId: category.id,
+        before: {
+          key: previous.key,
+          nameEn: previous.nameEn,
+          nameZhCn: previous.nameZhCn,
+          sortOrder: previous.sortOrder,
+          isActive: previous.isActive,
+        },
+        after: {
+          key: category.key,
+          nameEn: category.nameEn,
+          nameZhCn: category.nameZhCn,
+          sortOrder: category.sortOrder,
+          isActive: category.isActive,
+        },
+      },
+    });
+
+    return category;
   });
 }
 

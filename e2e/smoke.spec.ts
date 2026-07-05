@@ -32,6 +32,35 @@ async function clickMemberMutationWithRetry(
   throw new Error(`${method} member mutation failed with status ${lastStatus}`);
 }
 
+async function clickCategoryMutationWithRetry(
+  page: Page,
+  button: Locator,
+  method: "POST" | "PATCH" | "DELETE",
+) {
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/households/") &&
+        response.url().includes("/categories") &&
+        response.request().method() === method,
+    );
+
+    await button.click();
+    const response = await responsePromise;
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`${method} category mutation failed with status ${lastStatus}`);
+}
+
 async function clickOwnershipTransferWithRetry(page: Page, button: Locator) {
   let lastStatus = 0;
 
@@ -2216,6 +2245,10 @@ test.describe("Roompire real browser smoke", () => {
     const inviteeEmail = `member+${suffix}@example.test`;
     const householdName = `E2E House ${suffix}`;
     const updatedName = `E2E House Updated ${suffix}`;
+    const categoryName = `E2E Supplies ${suffix}`;
+    const categoryNameZh = `测试分类 ${suffix}`;
+    const updatedCategoryName = `E2E Shared Supplies ${suffix}`;
+    const updatedCategoryNameZh = `共享用品 ${suffix}`;
 
     await setDevSessionWithRetry(page, ownerEmail, "Owner E2E");
 
@@ -2226,6 +2259,16 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("create-household-currency").fill("CNY");
     await clickHouseholdCreateWithRetry(page);
     await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
+    const sessionResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(sessionResponse.ok()).toBeTruthy();
+    const sessionPayload = (await sessionResponse.json()) as {
+      household: { id: string } | null;
+    };
+    const householdId = sessionPayload.household?.id;
+    expect(householdId).toBeTruthy();
+    if (!householdId) {
+      throw new Error("Expected household id after owner-created household.");
+    }
 
     await page.getByTestId("settings-household-name").fill(updatedName);
     await page.getByTestId("settings-household-timezone").fill("America/New_York");
@@ -2243,6 +2286,69 @@ test.describe("Roompire real browser smoke", () => {
       "MANUAL_RATE_WITH_APPROVAL",
     );
 
+    await page.getByTestId("category-create-name-en").fill(categoryName);
+    await page.getByTestId("category-create-name-zh-cn").fill(categoryNameZh);
+    await page.getByTestId("category-create-icon").fill("package-plus");
+    await page.getByTestId("category-create-color-token").fill("category.e2e");
+    await page.getByTestId("category-create-sort-order").fill("99");
+    await clickCategoryMutationWithRetry(page, page.getByTestId("category-create-submit"), "POST");
+    await expect(page.getByText("Category created")).toBeVisible();
+
+    const categoriesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/categories`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(categoriesResponse.ok()).toBeTruthy();
+    const categoriesPayload = (await categoriesResponse.json()) as {
+      categories: Array<{
+        id: string;
+        key: string;
+        nameEn: string;
+        nameZhCn: string;
+        icon: string | null;
+        colorToken: string | null;
+        sortOrder: number;
+      }>;
+    };
+    const createdCategory = categoriesPayload.categories.find(
+      (category) => category.nameEn === categoryName,
+    );
+    expect(createdCategory).toBeTruthy();
+    if (!createdCategory) {
+      throw new Error("Expected created category in API response.");
+    }
+    expect(createdCategory).toMatchObject({
+      nameZhCn: categoryNameZh,
+      icon: "package-plus",
+      colorToken: "category.e2e",
+      sortOrder: 99,
+    });
+
+    const categoryRow = page.getByTestId(`category-row-${createdCategory.key}`);
+    await expect(categoryRow).toBeVisible();
+    await expect(categoryRow.getByText(categoryName)).toBeVisible();
+    await categoryRow
+      .getByTestId(`category-name-en-${createdCategory.key}`)
+      .fill(updatedCategoryName);
+    await categoryRow
+      .getByTestId(`category-name-zh-cn-${createdCategory.key}`)
+      .fill(updatedCategoryNameZh);
+    await categoryRow.getByTestId(`category-sort-order-${createdCategory.key}`).fill("5");
+    await clickCategoryMutationWithRetry(
+      page,
+      categoryRow.getByTestId(`category-update-${createdCategory.key}`),
+      "PATCH",
+    );
+    await expect(page.getByText("Category updated")).toBeVisible();
+    await expect(
+      page.getByTestId(`category-row-${createdCategory.key}`).getByText(updatedCategoryName),
+    ).toBeVisible();
+
     await page.getByLabel("Invite email").fill(inviteeEmail);
     await page.getByLabel("Invite role").selectOption("MEMBER");
     await clickInviteCreateWithRetry(page);
@@ -2259,9 +2365,51 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByRole("link", { name: /Open dashboard/ }).click();
     await expect(page.getByRole("heading", { name: updatedName })).toBeVisible();
 
+    const memberCategoryResponse = await page.request.post(
+      `/api/v1/households/${householdId}/categories`,
+      {
+        data: {
+          nameEn: `Member category ${suffix}`,
+          nameZhCn: `成员分类 ${suffix}`,
+        },
+        headers: {
+          "x-roompire-dev-user-email": inviteeEmail,
+        },
+      },
+    );
+    expect(memberCategoryResponse.status()).toBe(403);
+
     await setDevSessionWithRetry(page, ownerEmail, "Owner E2E");
 
     await page.goto("/en-US/app");
+    const refreshedCategoryRow = page.getByTestId(`category-row-${createdCategory.key}`);
+    await expect(refreshedCategoryRow).toBeVisible();
+    await clickCategoryMutationWithRetry(
+      page,
+      refreshedCategoryRow.getByTestId(`category-archive-${createdCategory.key}`),
+      "DELETE",
+    );
+    await expect(page.getByText("Category archived")).toBeVisible();
+    await expect(page.getByTestId(`category-row-${createdCategory.key}`)).toHaveCount(0);
+    await expect(page.getByTestId("expense-category")).not.toContainText(updatedCategoryName);
+
+    const archivedCategoriesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/categories`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(archivedCategoriesResponse.ok()).toBeTruthy();
+    const archivedCategoriesPayload = (await archivedCategoriesResponse.json()) as {
+      categories: Array<{ id: string }>;
+    };
+    expect(
+      archivedCategoriesPayload.categories.find((category) => category.id === createdCategory.id),
+    ).toBeUndefined();
+
     const memberRow = page.getByTestId(`member-row-${inviteeEmail}`);
     await expect(memberRow).toBeVisible();
     await memberRow.getByRole("combobox", { name: /Update role/ }).selectOption("VIEWER");

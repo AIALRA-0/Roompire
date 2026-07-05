@@ -94,8 +94,11 @@ Current implementation lets owners and admins manage non-self member roles and r
 - `GET /households/{householdId}/categories`
 - `POST /households/{householdId}/categories`
 - `PATCH /households/{householdId}/categories/{categoryId}`
+- `DELETE /households/{householdId}/categories/{categoryId}`
 - `GET /households/{householdId}/tags`
 - `POST /households/{householdId}/tags`
+
+Current category implementation: active household members can list active expense categories. Owners and admins can create, rename/reorder, or archive categories from the household settings page or REST API. Archiving is soft deletion: historical proposals keep their category reference, while new expense, task-expense, event-expense, and recurring-template flows only list active categories. Category mutations emit audit events. Tag endpoints remain backlog until the tag data model ships.
 
 ### Expense proposals
 

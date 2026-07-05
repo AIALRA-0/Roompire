@@ -37,6 +37,16 @@ type MemberSummary = {
   role: Role;
 };
 
+type CategorySummary = {
+  id: string;
+  key: string;
+  nameEn: string;
+  nameZhCn: string;
+  icon: string | null;
+  colorToken: string | null;
+  sortOrder: number;
+};
+
 type DevUser = {
   email: string;
   displayName: string;
@@ -90,6 +100,21 @@ type IdentityLabels = {
   householdSettingsHint: string;
   saveSettings: string;
   settingsSaved: string;
+  categoryManagement: string;
+  categoryManagementHint: string;
+  createCategory: string;
+  categoryCreated: string;
+  categoryUpdated: string;
+  categoryArchived: string;
+  categoryNameEn: string;
+  categoryNameZhCn: string;
+  categoryIcon: string;
+  categoryColorToken: string;
+  categorySortOrder: string;
+  saveCategory: string;
+  archiveCategory: string;
+  noCategories: string;
+  cannotManageCategories: string;
   createHouseholdButton: string;
   householdCreated: string;
   householdList: string;
@@ -144,6 +169,7 @@ type IdentityWorkspaceProps = {
   canManageMembers: boolean;
   households: HouseholdSummary[];
   members: MemberSummary[];
+  categories: CategorySummary[];
   devUsers: DevUser[];
   labels: IdentityLabels;
 };
@@ -263,6 +289,7 @@ export function IdentityWorkspace({
   canManageMembers,
   households,
   members,
+  categories,
   devUsers,
   labels,
 }: IdentityWorkspaceProps) {
@@ -273,6 +300,7 @@ export function IdentityWorkspace({
   const [createMessage, setCreateMessage] = useState<string | null>(null);
   const [householdMessage, setHouseholdMessage] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [categoryMessage, setCategoryMessage] = useState<string | null>(null);
   const [memberMessage, setMemberMessage] = useState<string | null>(null);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
@@ -288,6 +316,7 @@ export function IdentityWorkspace({
     setCreateMessage(null);
     setHouseholdMessage(null);
     setSettingsMessage(null);
+    setCategoryMessage(null);
     setMemberMessage(null);
     setInviteMessage(null);
     setAcceptMessage(null);
@@ -414,6 +443,88 @@ export function IdentityWorkspace({
       refreshAfter(setSettingsMessage, labels.settingsSaved);
     } catch (error) {
       setSettingsMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onCreateCategory(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCategoryMessage(null);
+
+    if (!activeHouseholdId) {
+      setCategoryMessage(labels.noHousehold);
+      return;
+    }
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}/categories`,
+        {
+          nameEn: String(formData.get("nameEn") ?? ""),
+          nameZhCn: String(formData.get("nameZhCn") ?? ""),
+          icon: String(formData.get("icon") ?? ""),
+          colorToken: String(formData.get("colorToken") ?? ""),
+          sortOrder: String(formData.get("sortOrder") ?? ""),
+        },
+        labels.errorFallback,
+      );
+      form.reset();
+      refreshAfter(setCategoryMessage, labels.categoryCreated);
+    } catch (error) {
+      setCategoryMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onUpdateCategory(event: React.FormEvent<HTMLFormElement>, categoryId: string) {
+    event.preventDefault();
+    setCategoryMessage(null);
+
+    if (!activeHouseholdId) {
+      setCategoryMessage(labels.noHousehold);
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}/categories/${categoryId}`,
+        {
+          nameEn: String(formData.get("nameEn") ?? ""),
+          nameZhCn: String(formData.get("nameZhCn") ?? ""),
+          icon: String(formData.get("icon") ?? ""),
+          colorToken: String(formData.get("colorToken") ?? ""),
+          sortOrder: String(formData.get("sortOrder") ?? ""),
+        },
+        labels.errorFallback,
+        "PATCH",
+      );
+      refreshAfter(setCategoryMessage, labels.categoryUpdated);
+    } catch (error) {
+      setCategoryMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onArchiveCategory(categoryId: string) {
+    setCategoryMessage(null);
+
+    if (!activeHouseholdId) {
+      setCategoryMessage(labels.noHousehold);
+      return;
+    }
+
+    try {
+      await submitJson(
+        `/api/v1/households/${activeHouseholdId}/categories/${categoryId}`,
+        undefined,
+        labels.errorFallback,
+        "DELETE",
+      );
+      refreshAfter(setCategoryMessage, labels.categoryArchived);
+    } catch (error) {
+      setCategoryMessage(error instanceof Error ? error.message : labels.errorFallback);
     }
   }
 
@@ -818,6 +929,191 @@ export function IdentityWorkspace({
             ) : null}
           </div>
         </form>
+
+        <div className="rounded-lg border border-border bg-card p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">{labels.categoryManagement}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{labels.categoryManagementHint}</p>
+            </div>
+            <Badge variant={canManageMembers ? "success" : "neutral"}>
+              {canManageMembers ? labels.roles.ADMIN : labels.roles.VIEWER}
+            </Badge>
+          </div>
+          {!canManageMembers ? (
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {labels.cannotManageCategories}
+            </p>
+          ) : null}
+
+          <form
+            className="mt-4 grid gap-3 rounded-lg border border-border bg-background p-4"
+            data-testid="category-create-form"
+            onSubmit={onCreateCategory}
+          >
+            <p className="text-sm font-medium">{labels.createCategory}</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.categoryNameEn}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="category-create-name-en"
+                  disabled={settingsDisabled}
+                  name="nameEn"
+                  required
+                />
+              </Field>
+              <Field label={labels.categoryNameZhCn}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="category-create-name-zh-cn"
+                  disabled={settingsDisabled}
+                  name="nameZhCn"
+                  required
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
+              <Field label={labels.categoryIcon}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="category-create-icon"
+                  disabled={settingsDisabled}
+                  name="icon"
+                  placeholder="tag"
+                />
+              </Field>
+              <Field label={labels.categoryColorToken}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="category-create-color-token"
+                  disabled={settingsDisabled}
+                  name="colorToken"
+                  placeholder="category.custom"
+                />
+              </Field>
+              <Field label={labels.categorySortOrder}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="category-create-sort-order"
+                  disabled={settingsDisabled}
+                  min={0}
+                  name="sortOrder"
+                  type="number"
+                />
+              </Field>
+            </div>
+            <Button
+              data-testid="category-create-submit"
+              disabled={isPending || settingsDisabled}
+              type="submit"
+              variant="outline"
+            >
+              {isPending ? labels.working : labels.createCategory}
+            </Button>
+          </form>
+
+          {categoryMessage ? (
+            <p className="mt-4 text-sm text-muted-foreground" role="status">
+              {categoryMessage}
+            </p>
+          ) : null}
+
+          <div className="mt-5 grid gap-3">
+            {categories.map((category) => (
+              <form
+                className="grid gap-3 rounded-lg border border-border bg-background p-4"
+                data-testid={`category-row-${category.key}`}
+                key={category.id}
+                onSubmit={(event) => onUpdateCategory(event, category.id)}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">{category.nameEn}</p>
+                    <p className="text-xs text-muted-foreground">{category.nameZhCn}</p>
+                  </div>
+                  <Badge variant="neutral">{category.key}</Badge>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={labels.categoryNameEn}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`category-name-en-${category.key}`}
+                      defaultValue={category.nameEn}
+                      disabled={settingsDisabled}
+                      name="nameEn"
+                      required
+                    />
+                  </Field>
+                  <Field label={labels.categoryNameZhCn}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`category-name-zh-cn-${category.key}`}
+                      defaultValue={category.nameZhCn}
+                      disabled={settingsDisabled}
+                      name="nameZhCn"
+                      required
+                    />
+                  </Field>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
+                  <Field label={labels.categoryIcon}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`category-icon-${category.key}`}
+                      defaultValue={category.icon ?? ""}
+                      disabled={settingsDisabled}
+                      name="icon"
+                    />
+                  </Field>
+                  <Field label={labels.categoryColorToken}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`category-color-token-${category.key}`}
+                      defaultValue={category.colorToken ?? ""}
+                      disabled={settingsDisabled}
+                      name="colorToken"
+                    />
+                  </Field>
+                  <Field label={labels.categorySortOrder}>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`category-sort-order-${category.key}`}
+                      defaultValue={category.sortOrder}
+                      disabled={settingsDisabled}
+                      min={0}
+                      name="sortOrder"
+                      type="number"
+                    />
+                  </Field>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    data-testid={`category-update-${category.key}`}
+                    disabled={isPending || settingsDisabled}
+                    type="submit"
+                    variant="outline"
+                  >
+                    {isPending ? labels.working : labels.saveCategory}
+                  </Button>
+                  <Button
+                    data-testid={`category-archive-${category.key}`}
+                    disabled={isPending || settingsDisabled}
+                    onClick={() => onArchiveCategory(category.id)}
+                    type="button"
+                    variant="outline"
+                  >
+                    {isPending ? labels.working : labels.archiveCategory}
+                  </Button>
+                </div>
+              </form>
+            ))}
+            {categories.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
+                {labels.noCategories}
+              </div>
+            ) : null}
+          </div>
+        </div>
 
         <div className="rounded-lg border border-border bg-card p-5">
           <h2 className="text-lg font-semibold">{labels.memberDirectory}</h2>

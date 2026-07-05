@@ -136,6 +136,21 @@ export default async function AppPage({ params }: PageProps) {
     householdSettingsHint: identity("householdSettingsHint"),
     saveSettings: identity("saveSettings"),
     settingsSaved: identity("settingsSaved"),
+    categoryManagement: identity("categoryManagement"),
+    categoryManagementHint: identity("categoryManagementHint"),
+    createCategory: identity("createCategory"),
+    categoryCreated: identity("categoryCreated"),
+    categoryUpdated: identity("categoryUpdated"),
+    categoryArchived: identity("categoryArchived"),
+    categoryNameEn: identity("categoryNameEn"),
+    categoryNameZhCn: identity("categoryNameZhCn"),
+    categoryIcon: identity("categoryIcon"),
+    categoryColorToken: identity("categoryColorToken"),
+    categorySortOrder: identity("categorySortOrder"),
+    saveCategory: identity("saveCategory"),
+    archiveCategory: identity("archiveCategory"),
+    noCategories: identity("noCategories"),
+    cannotManageCategories: identity("cannotManageCategories"),
     createHouseholdButton: identity("createHouseholdButton"),
     householdCreated: identity("householdCreated"),
     householdList: identity("householdList"),
@@ -485,6 +500,15 @@ export default async function AppPage({ params }: PageProps) {
                 activeHouseholdId={model.activeHousehold?.id ?? null}
                 canInviteMembers={model.canInviteMembers}
                 canManageMembers={model.canManageMembers}
+                categories={model.categories.map((category) => ({
+                  id: category.id,
+                  key: category.key,
+                  nameEn: category.nameEn,
+                  nameZhCn: category.nameZhCn,
+                  icon: category.icon,
+                  colorToken: category.colorToken,
+                  sortOrder: category.sortOrder,
+                }))}
                 currentUserDisplayName={model.userSettings.displayName}
                 currentUserEmail={model.user.email}
                 currentUserPreferredLocale={model.userSettings.preferredLocale}

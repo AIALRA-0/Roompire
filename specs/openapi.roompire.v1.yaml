@@ -606,6 +606,43 @@ components:
         fxPolicy: { $ref: "#/components/schemas/HouseholdFxPolicySetting" }
         approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
         clearingPolicy: { $ref: "#/components/schemas/ClearingPolicy" }
+    ExpenseCategory:
+      type: object
+      required: [id, key, nameEn, nameZhCn, icon, colorToken, sortOrder, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string }
+        nameEn: { type: string }
+        nameZhCn: { type: string }
+        icon:
+          type: string
+          nullable: true
+        colorToken:
+          type: string
+          nullable: true
+        sortOrder: { type: integer, minimum: 0 }
+        isActive: { type: boolean }
+    ExpenseCategoryInput:
+      type: object
+      required: [nameEn, nameZhCn]
+      properties:
+        nameEn: { type: string, minLength: 2, maxLength: 80 }
+        nameZhCn: { type: string, minLength: 1, maxLength: 80 }
+        icon: { type: string, maxLength: 80 }
+        colorToken: { type: string, maxLength: 80 }
+        sortOrder: { type: integer, minimum: 0, maximum: 10000 }
+    ExpenseCategoryListResponse:
+      type: object
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseCategory" }
+    ExpenseCategoryResponse:
+      type: object
+      required: [category]
+      properties:
+        category: { $ref: "#/components/schemas/ExpenseCategory" }
     Member:
       type: object
       required: [id, userId, role, displayName]
@@ -2337,6 +2374,127 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/categories:
+    get:
+      summary: List household expense categories
+      description: Active household members can read the active category set used by expense, task, and calendar proposal flows.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseCategoryListResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      summary: Create household expense category
+      description: Owners and admins can create active household categories. The server generates a stable category key and audit event.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExpenseCategoryInput" }
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseCategoryResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household not found or caller is not an active member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/categories/{categoryId}:
+    patch:
+      summary: Update household expense category
+      description: Owners and admins can rename or reorder active household categories without changing the stable category key used in stats and history.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: categoryId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExpenseCategoryInput" }
+      responses:
+        "200":
+          description: Category updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseCategoryResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Caller is not owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Category not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      summary: Archive household expense category
+      description: Owners and admins can archive active categories. Historical proposals keep their category reference, while new proposal flows only list active categories.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: categoryId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Category archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseCategoryResponse" }
+        "403":
+          description: Caller is not owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Category not found or inaccessible household
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
