@@ -452,7 +452,15 @@ components:
         householdId: { type: string, format: uuid }
         type:
           type: string
-          enum: [EXPENSE_PROPOSAL_ASSIGNED]
+          enum:
+            [
+              EXPENSE_PROPOSAL_ASSIGNED,
+              TASK_DUE_SOON,
+              TASK_OVERDUE,
+              DEBT_DUE_SOON,
+              DEBT_OVERDUE,
+              SETTLEMENT_CONFIRMATION_REMINDER,
+            ]
         titleKey: { type: string }
         bodyKey: { type: string }
         payload:
@@ -1595,6 +1603,8 @@ components:
           opsStatusService,
           backupTimer,
           backupService,
+          reminderTimer,
+          reminderService,
           housekeepingTimer,
           housekeepingService,
           backupEncryption,
@@ -1734,6 +1744,42 @@ components:
             [name, activeState, result, execMainStatus, startedAt, finishedAt, status, error]
           properties:
             name: { type: string, example: roompire-backup.service }
+            activeState: { type: string, example: inactive }
+            result: { type: string, example: success }
+            execMainStatus: { type: string, example: "0" }
+            startedAt:
+              type: string
+              nullable: true
+            finishedAt:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        reminderTimer:
+          type: object
+          required: [name, activeState, enabledState, nextElapse, lastTrigger, status, error]
+          properties:
+            name: { type: string, example: roompire-reminders.timer }
+            activeState: { type: string, example: active }
+            enabledState: { type: string, example: enabled }
+            nextElapse:
+              type: string
+              nullable: true
+            lastTrigger:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        reminderService:
+          type: object
+          required:
+            [name, activeState, result, execMainStatus, startedAt, finishedAt, status, error]
+          properties:
+            name: { type: string, example: roompire-reminders.service }
             activeState: { type: string, example: inactive }
             result: { type: string, example: success }
             execMainStatus: { type: string, example: "0" }

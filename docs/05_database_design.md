@@ -516,11 +516,17 @@ Fields:
 - `household_id`
 - `user_id`
 - `type`
+- `dedupe_key` nullable unique; scheduled reminders set this to keep repeated job runs idempotent
 - `title_key`
 - `body_key`
 - `payload jsonb`
 - `read_at` nullable
 - `created_at`
+
+Indexes:
+
+- `(household_id, user_id, read_at)` for notification center reads.
+- `(type, created_at)` for notification operations and diagnostics.
 
 ### notification_preferences
 

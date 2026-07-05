@@ -17,6 +17,7 @@
     "db:migrate": "DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} prisma migrate deploy --schema db/schema.prisma",
     "db:migrate:dev": "DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} prisma migrate dev --schema db/schema.prisma",
     "db:seed": "pnpm db:generate && DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} tsx scripts/seed.ts",
+    "notifications:send-reminders": "TSX_TSCONFIG_PATH=apps/web/tsconfig.json DATABASE_URL=${DATABASE_URL:-postgresql://roompire:roompire@localhost:5432/roompire_dev} tsx scripts/send_reminders.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

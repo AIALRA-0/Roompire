@@ -117,6 +117,25 @@ export type OpsStatusSnapshot = {
     status: HealthState;
     error: string | null;
   };
+  reminderTimer: {
+    name: string;
+    activeState: string;
+    enabledState: string;
+    nextElapse: string | null;
+    lastTrigger: string | null;
+    status: HealthState;
+    error: string | null;
+  };
+  reminderService: {
+    name: string;
+    activeState: string;
+    result: string;
+    execMainStatus: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+    status: HealthState;
+    error: string | null;
+  };
   housekeepingTimer: {
     name: string;
     activeState: string;
@@ -407,6 +426,14 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("smoke_service_attention");
   }
 
+  if (status.reminderTimer.status !== "ok") {
+    warnings.push("reminder_timer_attention");
+  }
+
+  if (status.reminderService.status === "warning") {
+    warnings.push("reminder_service_attention");
+  }
+
   if (status.housekeepingTimer.status !== "ok") {
     warnings.push("housekeeping_timer_attention");
   }
@@ -469,6 +496,8 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawOpsStatusService = isRecord(raw.opsStatusService) ? raw.opsStatusService : {};
   const rawSmokeTimer = isRecord(raw.smokeTimer) ? raw.smokeTimer : {};
   const rawSmokeService = isRecord(raw.smokeService) ? raw.smokeService : {};
+  const rawReminderTimer = isRecord(raw.reminderTimer) ? raw.reminderTimer : {};
+  const rawReminderService = isRecord(raw.reminderService) ? raw.reminderService : {};
   const rawHousekeepingTimer = isRecord(raw.housekeepingTimer) ? raw.housekeepingTimer : {};
   const rawHousekeepingService = isRecord(raw.housekeepingService) ? raw.housekeepingService : {};
   const rawBackupEncryption = isRecord(raw.backupEncryption) ? raw.backupEncryption : {};
@@ -564,6 +593,25 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       finishedAt: nullableStringValue(rawSmokeService.finishedAt),
       status: healthStateValue(rawSmokeService.status),
       error: nullableStringValue(rawSmokeService.error),
+    },
+    reminderTimer: {
+      name: stringValue(rawReminderTimer.name, "roompire-reminders.timer"),
+      activeState: stringValue(rawReminderTimer.activeState, "unknown"),
+      enabledState: stringValue(rawReminderTimer.enabledState, "unknown"),
+      nextElapse: nullableStringValue(rawReminderTimer.nextElapse),
+      lastTrigger: nullableStringValue(rawReminderTimer.lastTrigger),
+      status: healthStateValue(rawReminderTimer.status),
+      error: nullableStringValue(rawReminderTimer.error),
+    },
+    reminderService: {
+      name: stringValue(rawReminderService.name, "roompire-reminders.service"),
+      activeState: stringValue(rawReminderService.activeState, "unknown"),
+      result: stringValue(rawReminderService.result, "unknown"),
+      execMainStatus: stringValue(rawReminderService.execMainStatus, "unknown"),
+      startedAt: nullableStringValue(rawReminderService.startedAt),
+      finishedAt: nullableStringValue(rawReminderService.finishedAt),
+      status: healthStateValue(rawReminderService.status),
+      error: nullableStringValue(rawReminderService.error),
     },
     housekeepingTimer: {
       name: stringValue(rawHousekeepingTimer.name, "roompire-housekeeping.timer"),
@@ -698,6 +746,25 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
     },
     housekeepingService: {
       name: process.env.ROOMPIRE_HOUSEKEEPING_SERVICE?.trim() || "roompire-housekeeping.service",
+      activeState: "unknown",
+      result: "unknown",
+      execMainStatus: "unknown",
+      startedAt: null,
+      finishedAt: null,
+      status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    reminderTimer: {
+      name: process.env.ROOMPIRE_REMINDER_TIMER?.trim() || "roompire-reminders.timer",
+      activeState: "unknown",
+      enabledState: "unknown",
+      nextElapse: null,
+      lastTrigger: null,
+      status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    reminderService: {
+      name: process.env.ROOMPIRE_REMINDER_SERVICE?.trim() || "roompire-reminders.service",
       activeState: "unknown",
       result: "unknown",
       execMainStatus: "unknown",

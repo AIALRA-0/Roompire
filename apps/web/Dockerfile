@@ -10,8 +10,12 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS migrator
 COPY db ./db
+COPY tsconfig.base.json ./
+COPY apps/web/tsconfig.json apps/web/next-env.d.ts ./apps/web/
+COPY apps/web/src ./apps/web/src
 COPY scripts ./scripts
 COPY seed-data ./seed-data
+RUN pnpm db:generate
 CMD ["pnpm", "db:migrate"]
 
 FROM deps AS builder

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  BellRing,
   Boxes,
   CalendarDays,
   CheckCircle2,
@@ -206,6 +207,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     backup_service_attention: ops("warningBackupService"),
     smoke_timer_attention: ops("warningSmokeTimer"),
     smoke_service_attention: ops("warningSmokeService"),
+    reminder_timer_attention: ops("warningReminderTimer"),
+    reminder_service_attention: ops("warningReminderService"),
     housekeeping_timer_attention: ops("warningHousekeepingTimer"),
     housekeeping_service_attention: ops("warningHousekeepingService"),
     backup_encryption_disabled: ops("warningBackupEncryptionDisabled"),
@@ -755,6 +758,72 @@ export default async function OpsPage({ params }: PageProps) {
                   {status.housekeepingTimer.error || status.housekeepingService.error ? (
                     <p className="text-sm text-rose-700">
                       {status.housekeepingTimer.error ?? status.housekeepingService.error}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div
+                className="min-w-0 rounded-lg border border-border bg-card"
+                data-testid="ops-reminders-card"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-border p-5">
+                  <div>
+                    <h2 className="text-base font-semibold">{ops("reminders")}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{ops("remindersHint")}</p>
+                  </div>
+                  <BellRing aria-hidden="true" className="h-5 w-5 text-amber-700" />
+                </div>
+                <div className="grid gap-3 p-5">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm text-muted-foreground">{ops("timer")}</span>
+                    <Badge
+                      data-testid="ops-reminders-timer-status"
+                      variant={healthVariant(status.reminderTimer.status)}
+                    >
+                      {healthLabel(ops, status.reminderTimer.status)}
+                    </Badge>
+                  </div>
+                  <MetricRow label={ops("timerName")} value={status.reminderTimer.name} />
+                  <MetricRow label={ops("activeState")} value={status.reminderTimer.activeState} />
+                  <MetricRow
+                    label={ops("enabledState")}
+                    value={status.reminderTimer.enabledState}
+                  />
+                  <MetricRow
+                    label={ops("nextRun")}
+                    testId="ops-reminders-next-run"
+                    value={formatDateTime(locale, status.reminderTimer.nextElapse)}
+                  />
+                  <MetricRow
+                    label={ops("lastRun")}
+                    value={formatDateTime(locale, status.reminderTimer.lastTrigger)}
+                  />
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">{ops("service")}</span>
+                      <Badge variant={healthVariant(status.reminderService.status)}>
+                        {healthLabel(ops, status.reminderService.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("serviceResult")}
+                        value={status.reminderService.result}
+                      />
+                      <MetricRow
+                        label={ops("serviceExitCode")}
+                        value={status.reminderService.execMainStatus}
+                      />
+                      <MetricRow
+                        label={ops("serviceFinishedAt")}
+                        value={formatDateTime(locale, status.reminderService.finishedAt)}
+                      />
+                    </div>
+                  </div>
+                  {status.reminderTimer.error || status.reminderService.error ? (
+                    <p className="text-sm text-rose-700">
+                      {status.reminderTimer.error ?? status.reminderService.error}
                     </p>
                   ) : null}
                 </div>

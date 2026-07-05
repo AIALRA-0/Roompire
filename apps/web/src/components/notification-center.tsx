@@ -24,8 +24,20 @@ type NotificationLabels = {
   markRead: string;
   read: string;
   openProposal: string;
+  openCalendar: string;
+  openLedger: string;
   expenseProposalAssignedTitle: string;
   expenseProposalAssignedBody: string;
+  taskDueSoonTitle: string;
+  taskDueSoonBody: string;
+  taskOverdueTitle: string;
+  taskOverdueBody: string;
+  debtDueSoonTitle: string;
+  debtDueSoonBody: string;
+  debtOverdueTitle: string;
+  debtOverdueBody: string;
+  settlementConfirmationReminderTitle: string;
+  settlementConfirmationReminderBody: string;
   unknownTitle: string;
   unknownBody: string;
 };
@@ -53,7 +65,44 @@ function formatTemplate(template: string, values: Record<string, string>) {
   );
 }
 
-function notificationText(notification: NotificationItem, labels: NotificationLabels) {
+function formatDateTime(locale: string, value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const timestamp = Date.parse(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(timestamp));
+}
+
+function formatDate(locale: string, value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+  }).format(new Date(timestamp));
+}
+
+function notificationText(
+  notification: NotificationItem,
+  labels: NotificationLabels,
+  locale: string,
+) {
   const payload = asPayloadRecord(notification.payload);
 
   if (notification.type === "EXPENSE_PROPOSAL_ASSIGNED") {
@@ -69,14 +118,68 @@ function notificationText(notification: NotificationItem, labels: NotificationLa
         amount,
         currency,
       }),
-      proposalId: typeof payload.proposalId === "string" ? payload.proposalId : null,
+      href:
+        typeof payload.proposalId === "string"
+          ? `/${locale}/app/households/${notification.householdId}/expenses/proposals/${payload.proposalId}`
+          : null,
+      actionLabel: labels.openProposal,
+    };
+  }
+
+  if (notification.type === "TASK_DUE_SOON" || notification.type === "TASK_OVERDUE") {
+    const title = typeof payload.taskTitle === "string" ? payload.taskTitle : labels.unknownTitle;
+    const due = formatDateTime(locale, payload.dueAt);
+    const isOverdue = notification.type === "TASK_OVERDUE";
+
+    return {
+      title: isOverdue ? labels.taskOverdueTitle : labels.taskDueSoonTitle,
+      body: formatTemplate(isOverdue ? labels.taskOverdueBody : labels.taskDueSoonBody, {
+        title,
+        due,
+      }),
+      href: `/${locale}/app/calendar`,
+      actionLabel: labels.openCalendar,
+    };
+  }
+
+  if (notification.type === "DEBT_DUE_SOON" || notification.type === "DEBT_OVERDUE") {
+    const amount = typeof payload.amount === "string" ? payload.amount : "";
+    const currency = typeof payload.currency === "string" ? payload.currency : "";
+    const due = formatDate(locale, payload.dueDate);
+    const isOverdue = notification.type === "DEBT_OVERDUE";
+
+    return {
+      title: isOverdue ? labels.debtOverdueTitle : labels.debtDueSoonTitle,
+      body: formatTemplate(isOverdue ? labels.debtOverdueBody : labels.debtDueSoonBody, {
+        amount,
+        currency,
+        due,
+      }),
+      href: `/${locale}/app/ledger`,
+      actionLabel: labels.openLedger,
+    };
+  }
+
+  if (notification.type === "SETTLEMENT_CONFIRMATION_REMINDER") {
+    const amount = typeof payload.amount === "string" ? payload.amount : "";
+    const currency = typeof payload.currency === "string" ? payload.currency : "";
+
+    return {
+      title: labels.settlementConfirmationReminderTitle,
+      body: formatTemplate(labels.settlementConfirmationReminderBody, {
+        amount,
+        currency,
+      }),
+      href: `/${locale}/app/ledger`,
+      actionLabel: labels.openLedger,
     };
   }
 
   return {
     title: labels.unknownTitle,
     body: labels.unknownBody,
-    proposalId: null,
+    href: null,
+    actionLabel: null,
   };
 }
 
@@ -163,11 +266,8 @@ export function NotificationCenter({ locale, notifications, labels }: Notificati
           <p className="p-5 text-sm text-muted-foreground">{labels.noNotifications}</p>
         ) : (
           items.map((notification) => {
-            const text = notificationText(notification, labels);
+            const text = notificationText(notification, labels, locale);
             const isUnread = !notification.readAt;
-            const proposalHref = text.proposalId
-              ? `/${locale}/app/households/${notification.householdId}/expenses/proposals/${text.proposalId}`
-              : null;
 
             return (
               <article
@@ -188,9 +288,9 @@ export function NotificationCenter({ locale, notifications, labels }: Notificati
                   </time>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {proposalHref ? (
+                  {text.href && text.actionLabel ? (
                     <Button asChild size="sm" variant="outline">
-                      <a href={proposalHref}>{labels.openProposal}</a>
+                      <a href={text.href}>{text.actionLabel}</a>
                     </Button>
                   ) : null}
                   <Button

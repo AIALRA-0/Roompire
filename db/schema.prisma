@@ -600,6 +600,7 @@ model Notification {
   householdId String    @db.Uuid
   userId      String    @db.Uuid
   type        String
+  dedupeKey   String?   @unique @db.VarChar(200)
   titleKey    String
   bodyKey     String
   payload     Json?
@@ -607,6 +608,7 @@ model Notification {
   createdAt   DateTime  @default(now())
 
   @@index([householdId, userId, readAt])
+  @@index([type, createdAt])
 }
 
 model NotificationPreference {

@@ -56,6 +56,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Owner/admin ledger period APIs support closing/reopening months; closed periods block approval maturity, settlements, adjustments, and reversals for posting dates in that month.
 - Owner/admin ledger correction APIs support manual adjustments and reversal of unallocated open obligations with append-only ledger transactions.
 - Calendar/task APIs and `/[locale]/app/calendar` page let owners/admins/members create one-off or finite recurring calendar events, switch event list/day/week/month views, create/assign one-off or recurring tasks, auto-link due tasks to `TASK` calendar events, complete tasks with linked event status updates, and create linked pending expense proposals from tasks.
+- The dashboard notification center shows proposal assignments plus idempotent in-app reminders from the scheduled reminder job for due/overdue tasks, due/overdue repayments, and stale settlement confirmations.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
 - OpenAPI covers the current list/create/detail/revision proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject/request-changes idempotency, balance, obligation, ledger transaction, ledger period close, settlement, settlement suggestion, ledger correction, calendar event, task, and task-to-expense proposal endpoints.
 

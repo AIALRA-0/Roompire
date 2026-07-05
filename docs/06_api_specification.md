@@ -68,7 +68,7 @@ Current user settings implementation: `GET /users/me` returns the authenticated 
 - `GET /notifications`
 - `PATCH /notifications/{notificationId}`
 
-Current implementation: `GET /notifications` returns recent in-app notifications for households where the current user is still active, plus an unread count. `PATCH /notifications/{notificationId}` toggles the scoped notification read state. Expense proposal creation emits `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the recipient's in-app and proposal preference switches are enabled.
+Current implementation: `GET /notifications` returns recent in-app notifications for households where the current user is still active, plus an unread count. `PATCH /notifications/{notificationId}` toggles the scoped notification read state. Expense proposal creation emits `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the recipient's in-app and proposal preference switches are enabled. The server-side `notifications:send-reminders` job emits task due/overdue, repayment due/overdue, and settlement confirmation reminder notifications; the public notification API remains read/update only.
 
 ### Households
 

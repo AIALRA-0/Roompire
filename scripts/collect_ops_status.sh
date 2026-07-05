@@ -15,6 +15,9 @@ const backupTimerName = process.env.ROOMPIRE_BACKUP_TIMER || "roompire-backup.ti
 const backupServiceName = process.env.ROOMPIRE_BACKUP_SERVICE || "roompire-backup.service";
 const smokeTimerName = process.env.ROOMPIRE_SMOKE_TIMER || "roompire-smoke.timer";
 const smokeServiceName = process.env.ROOMPIRE_SMOKE_SERVICE || "roompire-smoke.service";
+const reminderTimerName = process.env.ROOMPIRE_REMINDER_TIMER || "roompire-reminders.timer";
+const reminderServiceName =
+  process.env.ROOMPIRE_REMINDER_SERVICE || "roompire-reminders.service";
 const housekeepingTimerName =
   process.env.ROOMPIRE_HOUSEKEEPING_TIMER || "roompire-housekeeping.timer";
 const housekeepingServiceName =
@@ -172,6 +175,14 @@ function collectSmokeTimer() {
 
 function collectSmokeService() {
   return collectSystemdService(smokeServiceName);
+}
+
+function collectReminderTimer() {
+  return collectSystemdTimer(reminderTimerName);
+}
+
+function collectReminderService() {
+  return collectSystemdService(reminderServiceName);
 }
 
 function collectHousekeepingTimer() {
@@ -703,6 +714,8 @@ const snapshot = {
   backupService: collectBackupService(),
   smokeTimer: collectSmokeTimer(),
   smokeService: collectSmokeService(),
+  reminderTimer: collectReminderTimer(),
+  reminderService: collectReminderService(),
   housekeepingTimer: collectHousekeepingTimer(),
   housekeepingService: collectHousekeepingService(),
   backupEncryption: collectBackupEncryption(),

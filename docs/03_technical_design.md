@@ -263,8 +263,9 @@ Current implemented subset:
 - `GET /api/v1/notifications` lists the current user's recent in-app notifications across active household memberships.
 - `PATCH /api/v1/notifications/{notificationId}` marks one scoped notification read or unread.
 - Creating an expense proposal writes `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the target user's in-app and proposal preferences allow it.
+- `pnpm notifications:send-reminders` is an idempotent in-app reminder job. It emits task due/overdue, debt due/overdue, and stale settlement confirmation notifications through fixed `dedupeKey` values, respects in-app/topic preferences, and only targets currently active household members.
 
-Use queue workers for scheduled reminders and recurring generation.
+Use queue workers for future higher-volume scheduled work. The current self-hosted production deployment runs the reminder job through a systemd timer and surfaces timer/service health in the ops snapshot.
 
 ## Auth strategy
 
@@ -302,6 +303,7 @@ Job types:
 - `recurringExpense.generate`
 - `taskReminder.send`
 - `debtDueReminder.send`
+- `settlementConfirmationReminder.send`
 - `export.generate`
 - `backup.verify` optional
 

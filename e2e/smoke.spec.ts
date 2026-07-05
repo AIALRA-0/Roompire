@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
@@ -236,6 +237,25 @@ async function writeOpsStatusFixture() {
           execMainStatus: "0",
           startedAt: "2026-07-04T03:35:00.000Z",
           finishedAt: "2026-07-04T03:36:00.000Z",
+          status: "ok",
+          error: null,
+        },
+        reminderTimer: {
+          name: "roompire-reminders.timer",
+          activeState: "active",
+          enabledState: "enabled",
+          nextElapse: "2026-07-05T05:17:00.000Z",
+          lastTrigger: "2026-07-05T04:17:00.000Z",
+          status: "ok",
+          error: null,
+        },
+        reminderService: {
+          name: "roompire-reminders.service",
+          activeState: "inactive",
+          result: "success",
+          execMainStatus: "0",
+          startedAt: "2026-07-05T04:17:00.000Z",
+          finishedAt: "2026-07-05T04:17:02.000Z",
           status: "ok",
           error: null,
         },
@@ -1420,6 +1440,7 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-docker-images-reclaimable")).toContainText("512 MB");
     await expect(page.getByTestId("ops-backup-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-housekeeping-timer-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-reminders-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-encryption-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-encryption-mode")).toContainText("Enabled");
     await expect(page.getByTestId("ops-backup-plaintext-artifacts")).toContainText("0");
@@ -1446,6 +1467,8 @@ test.describe("Roompire real browser smoke", () => {
         opsStatusService: { result: string; execMainStatus: string };
         housekeepingTimer: { activeState: string; enabledState: string };
         housekeepingService: { result: string; execMainStatus: string };
+        reminderTimer: { activeState: string; enabledState: string };
+        reminderService: { result: string; execMainStatus: string };
         backupEncryption: {
           configured: string;
           encryptedArtifacts: number;
@@ -1481,6 +1504,12 @@ test.describe("Roompire real browser smoke", () => {
       expect.objectContaining({ activeState: "active", enabledState: "enabled" }),
     );
     expect(opsPayload.status.housekeepingService).toEqual(
+      expect.objectContaining({ result: "success", execMainStatus: "0" }),
+    );
+    expect(opsPayload.status.reminderTimer).toEqual(
+      expect.objectContaining({ activeState: "active", enabledState: "enabled" }),
+    );
+    expect(opsPayload.status.reminderService).toEqual(
       expect.objectContaining({ result: "success", execMainStatus: "0" }),
     );
     expect(opsPayload.status.backupEncryption).toEqual(
@@ -1703,6 +1732,7 @@ test.describe("Roompire real browser smoke", () => {
     const debtorEmail = `notify-debtor+${suffix}@example.test`;
     const householdName = `Notify House ${suffix}`;
     const proposalTitle = `Notify Dinner ${suffix}`;
+    const taskTitle = `Notify overdue task ${suffix}`;
 
     await setDevSessionWithRetry(page, ownerEmail, "Notify Owner E2E");
     const householdResponse = await page.request.post("/api/v1/households", {
@@ -1712,6 +1742,7 @@ test.describe("Roompire real browser smoke", () => {
         settlementCurrency: "CNY",
       },
       headers: {
+        "Idempotency-Key": `notify-task-${Date.now()}`,
         "x-roompire-dev-user-email": ownerEmail,
       },
     });
@@ -1757,9 +1788,13 @@ test.describe("Roompire real browser smoke", () => {
     const debtorUserId = membersPayload.members.find(
       (member) => member.email === debtorEmail,
     )?.userId;
+    const ownerUserId = membersPayload.members.find(
+      (member) => member.email === ownerEmail,
+    )?.userId;
     expect(debtorUserId).toBeTruthy();
-    if (!debtorUserId) {
-      throw new Error("Expected notification debtor user id.");
+    expect(ownerUserId).toBeTruthy();
+    if (!debtorUserId || !ownerUserId) {
+      throw new Error("Expected notification participant user ids.");
     }
 
     const proposalResponse = await page.request.post(
@@ -1831,6 +1866,70 @@ test.describe("Roompire real browser smoke", () => {
     expect(readResponse.ok()).toBeTruthy();
     await expect(notificationRow).toContainText("Read");
     await expect(page.getByTestId("notification-center")).toContainText("0 unread");
+
+    const taskResponse = await page.request.post(`/api/v1/households/${householdId}/tasks`, {
+      data: {
+        title: taskTitle,
+        priority: "NORMAL",
+        dueAt: "2026-07-05T11:00:00.000Z",
+        assignedUserIds: [debtorUserId],
+      },
+      headers: {
+        "Idempotency-Key": `notify-task-${Date.now()}`,
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(taskResponse.ok()).toBeTruthy();
+
+    const adjustmentResponse = await page.request.post(
+      `/api/v1/households/${householdId}/ledger/adjustments`,
+      {
+        data: {
+          debtorUserId,
+          creditorUserId: ownerUserId,
+          amount: "12.34",
+          currency: "CNY",
+          occurredAt: "2026-07-05",
+          dueDate: "2026-07-04",
+          reason: "Reminder overdue debt",
+        },
+        headers: {
+          "Idempotency-Key": `notify-adjustment-${Date.now()}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(adjustmentResponse.ok()).toBeTruthy();
+
+    const reminderEnv = {
+      ...process.env,
+      DATABASE_URL:
+        process.env.DATABASE_URL ?? "postgresql://roompire:roompire@localhost:5432/roompire_dev",
+      NO_COLOR: "1",
+    };
+    const reminderArgs = ["notifications:send-reminders", "--", "--now=2026-07-05T12:00:00.000Z"];
+    const firstReminderRun = execFileSync("pnpm", reminderArgs, {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: reminderEnv,
+    });
+    expect(firstReminderRun).toContain("ok reminders");
+    const secondReminderRun = execFileSync("pnpm", reminderArgs, {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: reminderEnv,
+    });
+    expect(secondReminderRun).toContain('"created":0');
+
+    await page.goto("/en-US/app");
+    const taskReminderRow = page.getByTestId("notification-row-TASK_OVERDUE").first();
+    const debtReminderRow = page.getByTestId("notification-row-DEBT_OVERDUE").first();
+
+    await expect(page.getByTestId("notification-center")).toContainText("2 unread");
+    await expect(taskReminderRow).toContainText("Task overdue");
+    await expect(taskReminderRow).toContainText(taskTitle);
+    await expect(debtReminderRow).toContainText("Repayment overdue");
+    await expect(debtReminderRow).toContainText("12.34 CNY");
   });
 
   test("owner updates settings and manages a linked invitee", async ({ page }, testInfo) => {

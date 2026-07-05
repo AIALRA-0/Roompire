@@ -129,6 +129,8 @@ When encrypted local backups are enabled, the passphrase file must be backed up 
 
 Offsite backup sync is disabled by default until a real target is configured. When enabled, the sync status is written to `ops/status/backup-offsite.json` and folded into the authenticated ops dashboard without exposing storage credentials. The offsite copy does not replace passphrase escrow; the backup encryption passphrase still needs a separate secret-management backup.
 
+In-app reminder delivery is run by the host systemd timer, not by a public API. Reminder notifications use nullable unique `Notification.dedupeKey` values so repeated or retried jobs do not generate duplicate task/debt/settlement reminders, and delivery is still scoped to active household memberships plus per-user notification preferences.
+
 ## Restore drill
 
 At least before production launch:

@@ -39,7 +39,7 @@
 - Notification preferences.
 - In-app notification center.
 
-Current implemented subset for identity/household: dev-session and site-gate-backed MVP auth, user profile settings, notification preference persistence, a browser-session active household switcher, a dashboard in-app notification center for assigned proposal shares with read/unread state, household create/read/update, membership directory, invite token/code acceptance, owner/admin role management and removal guards, explicit owner-only ownership transfer that demotes the previous owner to admin, and RBAC checks across household-scoped APIs. Long-term multi-user auth provider selection remains a backlog item.
+Current implemented subset for identity/household: dev-session and site-gate-backed MVP auth, user profile settings, notification preference persistence, a browser-session active household switcher, a dashboard in-app notification center for assigned proposal shares plus scheduled task/debt/settlement reminders with read/unread state, household create/read/update, membership directory, invite token/code acceptance, owner/admin role management and removal guards, explicit owner-only ownership transfer that demotes the previous owner to admin, and RBAC checks across household-scoped APIs. Long-term multi-user auth provider selection remains a backlog item.
 
 ## Epic 2 — Expense proposals
 
@@ -130,7 +130,7 @@ Current implemented subset for settlements: debtors can submit direct-obligation
 - Complete task.
 - Link proposal/task/event.
 
-Current implemented subset across calendar branches: calendar/task page shell, event list/create, event list/day/week/month views, task list/create, assignment at creation, task completion, task-to-calendar-event linking, repayment due events, finite recurrence, task-generated pending expense proposals linked back to the task and any linked task event, and event-generated pending expense proposals from bill/chore/group/recurring-expense events.
+Current implemented subset across calendar branches: calendar/task page shell, event list/create, event list/day/week/month views, task list/create, assignment at creation, task completion, task-to-calendar-event linking, repayment due events, finite recurrence, in-app due/overdue task reminders, task-generated pending expense proposals linked back to the task and any linked task event, and event-generated pending expense proposals from bill/chore/group/recurring-expense events.
 
 ### P1
 
@@ -165,7 +165,7 @@ Current implemented subset for audit/statistics: mutation flows emit `AuditEvent
 - Backup script.
 - Restore script/drill.
 
-Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, optional Caddy reverse proxy profile, host-nginx localhost binding for the live self-hosted server, migration and demo-seed profiles, authenticated `/api/v1/health`, PWA manifest plus safe service-worker shell caching with API/data requests left network-only, S3-compatible private receipt storage wiring, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, encrypted backup/restore drills, ops health snapshots, scheduled housekeeping, and real-domain smoke tests against `roompire.aialra.online`. Remaining deployment hardening is capacity planning, off-host backup copy/passphrase escrow, and eventual long-term auth provider selection.
+Current implemented subset for deployment: production Docker Compose with Postgres, Redis, standalone Next.js web image, optional Caddy reverse proxy profile, host-nginx localhost binding for the live self-hosted server, migration and demo-seed profiles, authenticated `/api/v1/health`, PWA manifest plus safe service-worker shell caching with API/data requests left network-only, S3-compatible private receipt storage wiring, production environment template, backup/restore scripts, upload-volume backup script, smoke-test script, encrypted backup/restore drills, ops health snapshots, scheduled housekeeping, scheduled in-app reminder delivery, and real-domain smoke tests against `roompire.aialra.online`. Remaining deployment hardening is capacity planning, off-host backup copy/passphrase escrow, and eventual long-term auth provider selection.
 
 ### P1
 

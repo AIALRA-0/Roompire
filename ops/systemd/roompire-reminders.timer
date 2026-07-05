@@ -1,0 +1,11 @@
+[Unit]
+Description=Send Roompire in-app reminders every hour
+
+[Timer]
+OnBootSec=10m
+OnCalendar=*-*-* *:17:00
+Persistent=true
+RandomizedDelaySec=2m
+
+[Install]
+WantedBy=timers.target
