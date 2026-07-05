@@ -147,6 +147,41 @@ async function writeOpsStatusFixture() {
           checkedAt: generatedAt,
           error: null,
         },
+        dockerStorage: {
+          images: {
+            totalCount: 4,
+            activeCount: 3,
+            sizeBytes: 2 * 1024 * 1024 * 1024,
+            reclaimableBytes: 512 * 1024 * 1024,
+            reclaimablePercent: 25,
+          },
+          containers: {
+            totalCount: 3,
+            activeCount: 3,
+            sizeBytes: 256 * 1024 * 1024,
+            reclaimableBytes: 0,
+            reclaimablePercent: 0,
+          },
+          localVolumes: {
+            totalCount: 3,
+            activeCount: 2,
+            sizeBytes: 768 * 1024 * 1024,
+            reclaimableBytes: 256 * 1024 * 1024,
+            reclaimablePercent: 33,
+          },
+          buildCache: {
+            totalCount: 2,
+            activeCount: 0,
+            sizeBytes: 128 * 1024 * 1024,
+            reclaimableBytes: 64 * 1024 * 1024,
+            reclaimablePercent: null,
+          },
+          totalReclaimableBytes: 832 * 1024 * 1024,
+          reclaimableWarningBytes: 5 * 1024 * 1024 * 1024,
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
         backupTimer: {
           name: "roompire-backup.timer",
           activeState: "active",
@@ -1237,6 +1272,10 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: "Ops health" })).toBeVisible();
     await expect(page.getByTestId("ops-summary-status")).toContainText("OK");
     await expect(page.getByTestId("ops-disk-card")).toContainText("58 GB");
+    await expect(page.getByTestId("ops-docker-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-docker-reclaimable")).toContainText("832 MB");
+    await expect(page.getByTestId("ops-docker-images")).toContainText("3/4 active");
+    await expect(page.getByTestId("ops-docker-images-reclaimable")).toContainText("512 MB");
     await expect(page.getByTestId("ops-backup-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-housekeeping-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-encryption-status")).toContainText("OK");
@@ -1254,6 +1293,11 @@ test.describe("Roompire real browser smoke", () => {
       status: {
         source: string;
         summary: { status: string; warnings: string[] };
+        dockerStorage: {
+          totalReclaimableBytes: number;
+          status: string;
+          images: { totalCount: number; activeCount: number };
+        };
         housekeepingTimer: { activeState: string; enabledState: string };
         housekeepingService: { result: string; execMainStatus: string };
         backupEncryption: {
@@ -1272,6 +1316,13 @@ test.describe("Roompire real browser smoke", () => {
     };
     expect(opsPayload.status.source).toBe("host_status_file");
     expect(opsPayload.status.summary).toEqual({ status: "ok", warnings: [] });
+    expect(opsPayload.status.dockerStorage).toEqual(
+      expect.objectContaining({
+        totalReclaimableBytes: 832 * 1024 * 1024,
+        status: "ok",
+        images: expect.objectContaining({ totalCount: 4, activeCount: 3 }),
+      }),
+    );
     expect(opsPayload.status.housekeepingTimer).toEqual(
       expect.objectContaining({ activeState: "active", enabledState: "enabled" }),
     );

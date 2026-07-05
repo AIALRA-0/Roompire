@@ -1350,6 +1350,17 @@ components:
     OpsBackupOffsiteMode:
       type: string
       enum: [disabled, local, rclone, unknown]
+    OpsDockerStorageCategory:
+      type: object
+      required: [totalCount, activeCount, sizeBytes, reclaimableBytes, reclaimablePercent]
+      properties:
+        totalCount: { type: integer }
+        activeCount: { type: integer }
+        sizeBytes: { type: integer }
+        reclaimableBytes: { type: integer }
+        reclaimablePercent:
+          type: number
+          nullable: true
     OpsSmokeCheck:
       type: object
       required: [path, status, httpStatus, message]
@@ -1374,6 +1385,7 @@ components:
           summary,
           statusFile,
           disk,
+          dockerStorage,
           backupTimer,
           backupService,
           housekeepingTimer,
@@ -1417,6 +1429,35 @@ components:
             usedBytes: { type: integer, nullable: true }
             availableBytes: { type: integer, nullable: true }
             usedPercent: { type: number, nullable: true }
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        dockerStorage:
+          type: object
+          required:
+            [
+              images,
+              containers,
+              localVolumes,
+              buildCache,
+              totalReclaimableBytes,
+              reclaimableWarningBytes,
+              status,
+              checkedAt,
+              error,
+            ]
+          properties:
+            images: { $ref: "#/components/schemas/OpsDockerStorageCategory" }
+            containers: { $ref: "#/components/schemas/OpsDockerStorageCategory" }
+            localVolumes: { $ref: "#/components/schemas/OpsDockerStorageCategory" }
+            buildCache: { $ref: "#/components/schemas/OpsDockerStorageCategory" }
+            totalReclaimableBytes: { type: integer }
+            reclaimableWarningBytes: { type: integer }
             status: { $ref: "#/components/schemas/OpsHealthState" }
             checkedAt:
               type: string

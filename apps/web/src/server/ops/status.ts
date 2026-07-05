@@ -49,6 +49,17 @@ export type OpsStatusSnapshot = {
     checkedAt: string | null;
     error: string | null;
   };
+  dockerStorage: {
+    images: OpsDockerStorageCategory;
+    containers: OpsDockerStorageCategory;
+    localVolumes: OpsDockerStorageCategory;
+    buildCache: OpsDockerStorageCategory;
+    totalReclaimableBytes: number;
+    reclaimableWarningBytes: number;
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
   backupTimer: {
     name: string;
     activeState: string;
@@ -117,7 +128,16 @@ export type OpsStatusSnapshot = {
   latestSmoke: OpsSmokeStatus;
 };
 
+export type OpsDockerStorageCategory = {
+  totalCount: number;
+  activeCount: number;
+  sizeBytes: number;
+  reclaimableBytes: number;
+  reclaimablePercent: number | null;
+};
+
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
+const dockerReclaimableWarningBytes = 5 * 1024 * 1024 * 1024;
 const staleStatusMs = 36 * 60 * 60 * 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -162,6 +182,26 @@ function booleanValue(value: unknown) {
 
 function nullableBooleanValue(value: unknown) {
   return typeof value === "boolean" ? value : null;
+}
+
+function normalizeDockerStorageCategory(value: unknown): OpsDockerStorageCategory {
+  if (!isRecord(value)) {
+    return {
+      totalCount: 0,
+      activeCount: 0,
+      sizeBytes: 0,
+      reclaimableBytes: 0,
+      reclaimablePercent: null,
+    };
+  }
+
+  return {
+    totalCount: numberValue(value.totalCount) ?? 0,
+    activeCount: numberValue(value.activeCount) ?? 0,
+    sizeBytes: numberValue(value.sizeBytes) ?? 0,
+    reclaimableBytes: numberValue(value.reclaimableBytes) ?? 0,
+    reclaimablePercent: numberValue(value.reclaimablePercent),
+  };
 }
 
 function resolveStatusFileCandidates() {
@@ -297,6 +337,14 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("disk_unknown");
   }
 
+  if (status.dockerStorage.status === "unknown") {
+    warnings.push("docker_storage_unknown");
+  }
+
+  if (status.dockerStorage.status === "warning") {
+    warnings.push("docker_reclaimable_high");
+  }
+
   if (status.backupTimer.status !== "ok") {
     warnings.push("backup_timer_attention");
   }
@@ -362,6 +410,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawDisk = isRecord(raw.disk) ? raw.disk : {};
   const rawBackupTimer = isRecord(raw.backupTimer) ? raw.backupTimer : {};
   const rawBackupService = isRecord(raw.backupService) ? raw.backupService : {};
+  const rawDockerStorage = isRecord(raw.dockerStorage) ? raw.dockerStorage : {};
   const rawHousekeepingTimer = isRecord(raw.housekeepingTimer) ? raw.housekeepingTimer : {};
   const rawHousekeepingService = isRecord(raw.housekeepingService) ? raw.housekeepingService : {};
   const rawBackupEncryption = isRecord(raw.backupEncryption) ? raw.backupEncryption : {};
@@ -388,6 +437,18 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
         diskStatus === "unknown" ? diskStatusFromValues(availableBytes, usedPercent) : diskStatus,
       checkedAt: nullableStringValue(rawDisk.checkedAt),
       error: nullableStringValue(rawDisk.error),
+    },
+    dockerStorage: {
+      images: normalizeDockerStorageCategory(rawDockerStorage.images),
+      containers: normalizeDockerStorageCategory(rawDockerStorage.containers),
+      localVolumes: normalizeDockerStorageCategory(rawDockerStorage.localVolumes),
+      buildCache: normalizeDockerStorageCategory(rawDockerStorage.buildCache),
+      totalReclaimableBytes: numberValue(rawDockerStorage.totalReclaimableBytes) ?? 0,
+      reclaimableWarningBytes:
+        numberValue(rawDockerStorage.reclaimableWarningBytes) ?? dockerReclaimableWarningBytes,
+      status: healthStateValue(rawDockerStorage.status),
+      checkedAt: nullableStringValue(rawDockerStorage.checkedAt),
+      error: nullableStringValue(rawDockerStorage.error),
     },
     backupTimer: {
       name: stringValue(rawBackupTimer.name, "roompire-backup.timer"),
@@ -561,6 +622,17 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       plaintextArtifacts: 0,
       missingSha256Sidecars: 0,
       latestEncryptedArtifact: null,
+      status: "unknown" as const,
+      checkedAt: new Date().toISOString(),
+      error: "Host status file has not been generated.",
+    },
+    dockerStorage: {
+      images: normalizeDockerStorageCategory(null),
+      containers: normalizeDockerStorageCategory(null),
+      localVolumes: normalizeDockerStorageCategory(null),
+      buildCache: normalizeDockerStorageCategory(null),
+      totalReclaimableBytes: 0,
+      reclaimableWarningBytes: dockerReclaimableWarningBytes,
       status: "unknown" as const,
       checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",

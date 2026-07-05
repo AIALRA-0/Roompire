@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  Boxes,
   CalendarDays,
   CheckCircle2,
   FileJson,
@@ -35,6 +36,7 @@ type HealthState = OpsStatusSnapshot["summary"]["status"];
 type SmokeState = OpsStatusSnapshot["latestSmoke"]["status"];
 type BackupEncryptionMode = OpsStatusSnapshot["backupEncryption"]["configured"];
 type BackupOffsiteMode = OpsStatusSnapshot["backupOffsite"]["mode"];
+type DockerStorageCategory = OpsStatusSnapshot["dockerStorage"]["images"];
 
 function formatBytes(locale: Locale, bytes: number | null) {
   if (bytes === null) {
@@ -74,6 +76,20 @@ function formatPercent(locale: Locale, value: number | null) {
 
 function formatInteger(locale: Locale, value: number) {
   return new Intl.NumberFormat(locale).format(value);
+}
+
+function formatReclaimable(locale: Locale, category: DockerStorageCategory) {
+  const size = formatFileSize(locale, category.reclaimableBytes);
+
+  if (category.reclaimablePercent === null) {
+    return size;
+  }
+
+  return `${size} (${formatPercent(locale, category.reclaimablePercent)})`;
+}
+
+function formatDockerCategory(locale: Locale, category: DockerStorageCategory) {
+  return `${formatInteger(locale, category.activeCount)}/${formatInteger(locale, category.totalCount)} active, ${formatFileSize(locale, category.sizeBytes)}`;
 }
 
 function formatDateTime(locale: Locale, value: string | null) {
@@ -182,6 +198,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_low: ops("warningDiskLow"),
     disk_high_usage: ops("warningDiskHighUsage"),
     disk_unknown: ops("warningDiskUnknown"),
+    docker_storage_unknown: ops("warningDockerStorageUnknown"),
+    docker_reclaimable_high: ops("warningDockerReclaimableHigh"),
     backup_timer_attention: ops("warningBackupTimer"),
     backup_service_attention: ops("warningBackupService"),
     housekeeping_timer_attention: ops("warningHousekeepingTimer"),
@@ -450,6 +468,77 @@ export default async function OpsPage({ params }: PageProps) {
                   />
                   {status.disk.error ? (
                     <p className="text-sm text-rose-700">{status.disk.error}</p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div
+                className="min-w-0 rounded-lg border border-border bg-card"
+                data-testid="ops-docker-card"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-border p-5">
+                  <div>
+                    <h2 className="text-base font-semibold">{ops("dockerStorage")}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{ops("dockerStorageHint")}</p>
+                  </div>
+                  <Boxes aria-hidden="true" className="h-5 w-5 text-cyan-700" />
+                </div>
+                <div className="grid gap-3 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase text-muted-foreground">
+                        {ops("totalReclaimable")}
+                      </p>
+                      <p
+                        className="mt-1 text-2xl font-semibold"
+                        data-testid="ops-docker-reclaimable"
+                      >
+                        {formatFileSize(locale, status.dockerStorage.totalReclaimableBytes)}
+                      </p>
+                    </div>
+                    <Badge
+                      data-testid="ops-docker-status"
+                      variant={healthVariant(status.dockerStorage.status)}
+                    >
+                      {healthLabel(ops, status.dockerStorage.status)}
+                    </Badge>
+                  </div>
+                  <MetricRow
+                    label={ops("reclaimableThreshold")}
+                    value={formatFileSize(locale, status.dockerStorage.reclaimableWarningBytes)}
+                  />
+                  <MetricRow
+                    label={ops("images")}
+                    testId="ops-docker-images"
+                    value={formatDockerCategory(locale, status.dockerStorage.images)}
+                  />
+                  <MetricRow
+                    label={ops("imagesReclaimable")}
+                    testId="ops-docker-images-reclaimable"
+                    value={formatReclaimable(locale, status.dockerStorage.images)}
+                  />
+                  <MetricRow
+                    label={ops("localVolumes")}
+                    value={formatDockerCategory(locale, status.dockerStorage.localVolumes)}
+                  />
+                  <MetricRow
+                    label={ops("localVolumesReclaimable")}
+                    value={formatReclaimable(locale, status.dockerStorage.localVolumes)}
+                  />
+                  <MetricRow
+                    label={ops("buildCache")}
+                    value={formatDockerCategory(locale, status.dockerStorage.buildCache)}
+                  />
+                  <MetricRow
+                    label={ops("buildCacheReclaimable")}
+                    value={formatReclaimable(locale, status.dockerStorage.buildCache)}
+                  />
+                  <MetricRow
+                    label={ops("checkedAt")}
+                    value={formatDateTime(locale, status.dockerStorage.checkedAt)}
+                  />
+                  {status.dockerStorage.error ? (
+                    <p className="text-sm text-rose-700">{status.dockerStorage.error}</p>
                   ) : null}
                 </div>
               </div>

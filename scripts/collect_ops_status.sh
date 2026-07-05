@@ -21,6 +21,12 @@ const backupOffsiteStatusPath =
 const smokeStatusPath = process.env.ROOMPIRE_SMOKE_STATUS_FILE || "ops/status/latest-smoke.json";
 const generatedAt = new Date().toISOString();
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
+const configuredDockerReclaimableWarningBytes = Number(
+  process.env.ROOMPIRE_DOCKER_RECLAIMABLE_WARNING_BYTES || 5 * 1024 * 1024 * 1024,
+);
+const dockerReclaimableWarningBytes = Number.isFinite(configuredDockerReclaimableWarningBytes)
+  ? configuredDockerReclaimableWarningBytes
+  : 5 * 1024 * 1024 * 1024;
 
 function command(commandName, args) {
   const result = spawnSync(commandName, args, {
@@ -181,6 +187,51 @@ function backupOffsiteModeValue(value) {
 
 function finiteNumberValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function parseDockerSize(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]?B)$/i);
+
+  if (!match) {
+    return 0;
+  }
+
+  const amount = Number(match[1]);
+  const unit = match[2].toUpperCase();
+  const multipliers = {
+    B: 1,
+    KB: 1024,
+    MB: 1024 ** 2,
+    GB: 1024 ** 3,
+    TB: 1024 ** 4,
+    PB: 1024 ** 5,
+    EB: 1024 ** 6,
+  };
+
+  return Number.isFinite(amount) ? Math.round(amount * (multipliers[unit] || 1)) : 0;
+}
+
+function parseDockerReclaimable(value) {
+  const text = String(value || "").trim();
+  const sizeMatch = text.match(/^([^(]+)/);
+  const percentMatch = text.match(/\((\d+)%\)/);
+
+  return {
+    bytes: parseDockerSize(sizeMatch?.[1] || text),
+    percent: percentMatch ? Number(percentMatch[1]) : null,
+  };
+}
+
+function emptyDockerStorageCategory() {
+  return {
+    totalCount: 0,
+    activeCount: 0,
+    sizeBytes: 0,
+    reclaimableBytes: 0,
+    reclaimablePercent: null,
+  };
 }
 
 function walkBackupFiles(root) {
@@ -503,6 +554,83 @@ function collectDisk() {
   };
 }
 
+function collectDockerStorage() {
+  const result = command("docker", ["system", "df", "--format", "{{json .}}"]);
+
+  if (!result.ok) {
+    return {
+      images: emptyDockerStorageCategory(),
+      containers: emptyDockerStorageCategory(),
+      localVolumes: emptyDockerStorageCategory(),
+      buildCache: emptyDockerStorageCategory(),
+      totalReclaimableBytes: 0,
+      reclaimableWarningBytes: dockerReclaimableWarningBytes,
+      status: "unknown",
+      checkedAt: generatedAt,
+      error: result.error,
+    };
+  }
+
+  const categories = {
+    images: emptyDockerStorageCategory(),
+    containers: emptyDockerStorageCategory(),
+    localVolumes: emptyDockerStorageCategory(),
+    buildCache: emptyDockerStorageCategory(),
+  };
+
+  try {
+    for (const line of result.stdout.trim().split("\n").filter(Boolean)) {
+      const parsed = JSON.parse(line);
+      const type = String(parsed.Type || "");
+      const reclaimable = parseDockerReclaimable(parsed.Reclaimable);
+      const category = {
+        totalCount: Number(parsed.TotalCount || 0),
+        activeCount: Number(parsed.Active || 0),
+        sizeBytes: parseDockerSize(parsed.Size),
+        reclaimableBytes: reclaimable.bytes,
+        reclaimablePercent: reclaimable.percent,
+      };
+
+      if (type === "Images") {
+        categories.images = category;
+      } else if (type === "Containers") {
+        categories.containers = category;
+      } else if (type === "Local Volumes") {
+        categories.localVolumes = category;
+      } else if (type === "Build Cache") {
+        categories.buildCache = category;
+      }
+    }
+  } catch (error) {
+    return {
+      images: emptyDockerStorageCategory(),
+      containers: emptyDockerStorageCategory(),
+      localVolumes: emptyDockerStorageCategory(),
+      buildCache: emptyDockerStorageCategory(),
+      totalReclaimableBytes: 0,
+      reclaimableWarningBytes: dockerReclaimableWarningBytes,
+      status: "unknown",
+      checkedAt: generatedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  const totalReclaimableBytes =
+    categories.images.reclaimableBytes +
+    categories.containers.reclaimableBytes +
+    categories.localVolumes.reclaimableBytes +
+    categories.buildCache.reclaimableBytes;
+
+  return {
+    ...categories,
+    totalReclaimableBytes,
+    reclaimableWarningBytes: dockerReclaimableWarningBytes,
+    status: totalReclaimableBytes >= dockerReclaimableWarningBytes ? "warning" : "ok",
+    checkedAt: generatedAt,
+    error: null,
+  };
+}
+
 function smokeStatusValue(value) {
   return ["passed", "failed", "missing", "unknown"].includes(value) ? value : "unknown";
 }
@@ -547,6 +675,7 @@ const snapshot = {
   source: "host_status_file",
   generatedAt,
   disk: collectDisk(),
+  dockerStorage: collectDockerStorage(),
   backupTimer: collectBackupTimer(),
   backupService: collectBackupService(),
   housekeepingTimer: collectHousekeepingTimer(),
