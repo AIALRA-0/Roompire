@@ -74,6 +74,7 @@ Use this checklist before declaring a milestone complete.
 - [ ] Pagination used for lists.
 - [x] Dashboard proposal and notification lists expose cursor pagination metadata and load-more controls.
 - [x] Audit event API returns cursor pagination metadata, the audit page can load larger result windows, and audit exports keep a full-history query path.
+- [x] Ledger obligation, ledger transaction, and settlement list APIs return cursor pagination metadata; the ledger page can load larger obligation/transaction result windows while balances/actions/exports keep full-history query paths.
 
 ## Deployment/backup
 

@@ -130,6 +130,8 @@ Current proposal listing implementation: `GET /households/{householdId}/expenses
 
 Current implementation: owners/admins can close a ledger month by `YYYY-MM` and later reopen it. Closed periods block formal ledger writes whose posting date falls in the closed month: share approval maturity, manual adjustments, obligation reversals, settlement submission, and settlement confirmation/rejection return `409 LEDGER_PERIOD_CLOSED` until the period is reopened. Reads remain available to active household members. Close/reopen mutations require `Idempotency-Key` and emit audit events.
 
+Current ledger list implementation: `GET /households/{householdId}/ledger/obligations` accepts optional `status`, `cursor`, and `limit` query parameters, and `GET /households/{householdId}/ledger/transactions` accepts optional `cursor` and `limit`. Both responses preserve the existing list array and add `page` metadata (`limit`, `nextCursor`, `hasMore`). Balance summaries, settlement/correction action data, and `ledger_obligations` exports use full active-member queries instead of the paginated display size.
+
 ### Settlements
 
 - `GET /households/{householdId}/settlements`
@@ -139,6 +141,8 @@ Current implementation: owners/admins can close a ledger month by `YYYY-MM` and 
 - `GET /households/{householdId}/settlement-suggestions`
 
 Current implementation: debtors can submit a settlement against one open obligation, a directly settleable suggested transfer, or an enabled household-clearing transfer. The request can include completed uploaded `fileIds` as settlement evidence; the files must belong to the household, be uploaded by the submitting user, and have completed byte upload. Settlement responses include evidence metadata plus short-lived signed download URLs so creditors can review attachments before confirming.
+
+Current settlement listing implementation: `GET /households/{householdId}/settlements` accepts optional `status`, `cursor`, and `limit` query parameters and returns the existing `settlements` array plus `page` metadata (`limit`, `nextCursor`, `hasMore`). Settlement exports and ledger-page action data use a separate full-history query so pagination does not truncate reconciliation or creditor review workflows.
 
 ### Calendar and tasks
 

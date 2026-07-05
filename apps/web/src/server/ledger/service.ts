@@ -1,14 +1,17 @@
 import Decimal from "decimal.js";
 import {
   ClearingPolicy,
+  type DebtObligation,
   DebtStatus,
   LedgerPeriodStatus,
+  type LedgerTransaction,
   LedgerTransactionType,
   type Prisma,
 } from "@prisma/client";
 import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
+import { paginateRows, paginationQueryFields } from "@/server/pagination";
 import { requireActiveMembership, requireLedgerCorrector } from "@/server/permissions/rbac";
 
 export type BalanceEdge = {
@@ -52,6 +55,7 @@ const currencySchema = z
 
 const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const periodMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+const emptyToUndefined = (value: unknown) => (value === "" || value === null ? undefined : value);
 
 export const reverseLedgerObligationSchema = z.object({
   reason: z.string().trim().min(3).max(500),
@@ -78,6 +82,38 @@ export const closeLedgerPeriodSchema = z.object({
     .optional(),
 });
 
+const listLedgerObligationQuerySchema = z.object({
+  status: z.preprocess(emptyToUndefined, z.nativeEnum(DebtStatus).optional()),
+  ...paginationQueryFields(50),
+});
+
+const listLedgerTransactionQuerySchema = z.object({
+  ...paginationQueryFields(50),
+});
+
+type ListLedgerObligationQuery = z.infer<typeof listLedgerObligationQuerySchema>;
+
+const ledgerObligationInclude = {
+  transaction: true,
+  allocations: true,
+} satisfies Prisma.DebtObligationInclude;
+
+const ledgerObligationOrderBy = [
+  { createdAt: "desc" as const },
+  { id: "asc" as const },
+] satisfies Prisma.DebtObligationOrderByWithRelationInput[];
+
+const ledgerTransactionInclude = {
+  obligations: true,
+  settlements: true,
+} satisfies Prisma.LedgerTransactionInclude;
+
+const ledgerTransactionOrderBy = [
+  { occurredAt: "desc" as const },
+  { createdAt: "desc" as const },
+  { id: "asc" as const },
+] satisfies Prisma.LedgerTransactionOrderByWithRelationInput[];
+
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
 }
@@ -94,6 +130,121 @@ export function dateToLedgerPeriodMonth(value: Date) {
 
 export function ledgerPeriodMonthToKey(value: Date) {
   return value.toISOString().slice(0, 7);
+}
+
+function buildLedgerObligationWhere(
+  householdId: string,
+  query: Pick<ListLedgerObligationQuery, "status">,
+  cursorObligation?: Pick<DebtObligation, "id" | "createdAt">,
+) {
+  const cursorWindow: Prisma.DebtObligationWhereInput | undefined = cursorObligation
+    ? {
+        OR: [
+          {
+            createdAt: {
+              lt: cursorObligation.createdAt,
+            },
+          },
+          {
+            createdAt: cursorObligation.createdAt,
+            id: {
+              gt: cursorObligation.id,
+            },
+          },
+        ],
+      }
+    : undefined;
+
+  return {
+    householdId,
+    status: query.status,
+    AND: cursorWindow ? [cursorWindow] : undefined,
+  } satisfies Prisma.DebtObligationWhereInput;
+}
+
+function buildLedgerTransactionWhere(
+  householdId: string,
+  cursorTransaction?: Pick<LedgerTransaction, "id" | "occurredAt" | "createdAt">,
+) {
+  const cursorWindow: Prisma.LedgerTransactionWhereInput | undefined = cursorTransaction
+    ? {
+        OR: [
+          {
+            occurredAt: {
+              lt: cursorTransaction.occurredAt,
+            },
+          },
+          {
+            occurredAt: cursorTransaction.occurredAt,
+            createdAt: {
+              lt: cursorTransaction.createdAt,
+            },
+          },
+          {
+            occurredAt: cursorTransaction.occurredAt,
+            createdAt: cursorTransaction.createdAt,
+            id: {
+              gt: cursorTransaction.id,
+            },
+          },
+        ],
+      }
+    : undefined;
+
+  return {
+    householdId,
+    AND: cursorWindow ? [cursorWindow] : undefined,
+  } satisfies Prisma.LedgerTransactionWhereInput;
+}
+
+async function resolveLedgerObligationCursor(
+  householdId: string,
+  query: Pick<ListLedgerObligationQuery, "status">,
+  cursor: string | undefined,
+) {
+  if (!cursor) {
+    return undefined;
+  }
+
+  const cursorObligation = await prisma.debtObligation.findUnique({
+    where: { id: cursor },
+    select: { id: true, householdId: true, status: true, createdAt: true },
+  });
+
+  if (
+    !cursorObligation ||
+    cursorObligation.householdId !== householdId ||
+    (query.status && cursorObligation.status !== query.status)
+  ) {
+    throw validationError("Ledger obligation query is invalid.", {
+      fieldErrors: {
+        cursor: ["Invalid cursor."],
+      },
+    });
+  }
+
+  return cursorObligation;
+}
+
+async function resolveLedgerTransactionCursor(householdId: string, cursor: string | undefined) {
+  if (!cursor) {
+    return undefined;
+  }
+
+  const cursorTransaction = await prisma.ledgerTransaction.findUnique({
+    where: { id: cursor },
+    select: { id: true, householdId: true, occurredAt: true, createdAt: true },
+  });
+
+  if (!cursorTransaction || cursorTransaction.householdId !== householdId) {
+    throw validationError("Ledger transaction query is invalid.", {
+      fieldErrors: {
+        cursor: ["Invalid cursor."],
+      },
+    });
+  }
+
+  return cursorTransaction;
 }
 
 export async function assertLedgerPeriodOpen(
@@ -127,36 +278,68 @@ function decimalToCompactString(value: Decimal.Value) {
   return new Decimal(value).toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toString();
 }
 
-export async function listLedgerObligationsForHousehold(userId: string, householdId: string) {
+export async function listLedgerObligationsForHousehold(
+  userId: string,
+  householdId: string,
+  query: unknown = {},
+) {
+  await requireActiveMembership(userId, householdId);
+  const parsed = listLedgerObligationQuerySchema.safeParse(query);
+
+  if (!parsed.success) {
+    throw validationError("Ledger obligation query is invalid.", parsed.error.flatten());
+  }
+
+  const cursorObligation = await resolveLedgerObligationCursor(
+    householdId,
+    parsed.data,
+    parsed.data.cursor,
+  );
+  const obligations = await prisma.debtObligation.findMany({
+    where: buildLedgerObligationWhere(householdId, parsed.data, cursorObligation),
+    include: ledgerObligationInclude,
+    orderBy: ledgerObligationOrderBy,
+    take: parsed.data.limit + 1,
+  });
+
+  return paginateRows(obligations, parsed.data.limit);
+}
+
+export async function listAllLedgerObligationsForHousehold(
+  userId: string,
+  householdId: string,
+  options: Pick<ListLedgerObligationQuery, "status"> = {},
+) {
   await requireActiveMembership(userId, householdId);
 
   return prisma.debtObligation.findMany({
-    where: {
-      householdId,
-    },
-    include: {
-      transaction: true,
-      allocations: true,
-    },
-    orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-    take: 50,
+    where: buildLedgerObligationWhere(householdId, options),
+    include: ledgerObligationInclude,
+    orderBy: ledgerObligationOrderBy,
   });
 }
 
-export async function listLedgerTransactionsForHousehold(userId: string, householdId: string) {
+export async function listLedgerTransactionsForHousehold(
+  userId: string,
+  householdId: string,
+  query: unknown = {},
+) {
   await requireActiveMembership(userId, householdId);
+  const parsed = listLedgerTransactionQuerySchema.safeParse(query);
 
-  return prisma.ledgerTransaction.findMany({
-    where: {
-      householdId,
-    },
-    include: {
-      obligations: true,
-      settlements: true,
-    },
-    orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
-    take: 50,
+  if (!parsed.success) {
+    throw validationError("Ledger transaction query is invalid.", parsed.error.flatten());
+  }
+
+  const cursorTransaction = await resolveLedgerTransactionCursor(householdId, parsed.data.cursor);
+  const transactions = await prisma.ledgerTransaction.findMany({
+    where: buildLedgerTransactionWhere(householdId, cursorTransaction),
+    include: ledgerTransactionInclude,
+    orderBy: ledgerTransactionOrderBy,
+    take: parsed.data.limit + 1,
   });
+
+  return paginateRows(transactions, parsed.data.limit);
 }
 
 export async function listLedgerPeriodClosesForHousehold(userId: string, householdId: string) {
@@ -172,7 +355,9 @@ export async function listLedgerPeriodClosesForHousehold(userId: string, househo
 }
 
 export async function listBalanceEdgesForHousehold(userId: string, householdId: string) {
-  const obligations = await listLedgerObligationsForHousehold(userId, householdId);
+  const obligations = await listAllLedgerObligationsForHousehold(userId, householdId, {
+    status: DebtStatus.OPEN,
+  });
   const edgesByKey = new Map<
     string,
     {
@@ -746,12 +931,12 @@ export async function reopenLedgerPeriodForHousehold(
 }
 
 export type LedgerObligationWithRelations = Awaited<
-  ReturnType<typeof listLedgerObligationsForHousehold>
+  ReturnType<typeof listAllLedgerObligationsForHousehold>
 >[number];
 
 export type LedgerTransactionWithRelations = Awaited<
   ReturnType<typeof listLedgerTransactionsForHousehold>
->[number];
+>["items"][number];
 
 export type LedgerPeriodCloseRecord = Awaited<
   ReturnType<typeof listLedgerPeriodClosesForHousehold>

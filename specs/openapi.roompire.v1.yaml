@@ -1211,18 +1211,20 @@ components:
           items: { $ref: "#/components/schemas/BalanceEdge" }
     LedgerObligationListResponse:
       type: object
-      required: [obligations]
+      required: [obligations, page]
       properties:
         obligations:
           type: array
           items: { $ref: "#/components/schemas/LedgerObligation" }
+        page: { $ref: "#/components/schemas/PageInfo" }
     LedgerTransactionListResponse:
       type: object
-      required: [transactions]
+      required: [transactions, page]
       properties:
         transactions:
           type: array
           items: { $ref: "#/components/schemas/LedgerTransaction" }
+        page: { $ref: "#/components/schemas/PageInfo" }
     LedgerTransactionResponse:
       type: object
       required: [transaction]
@@ -1388,11 +1390,12 @@ components:
         settlement: { $ref: "#/components/schemas/Settlement" }
     SettlementListResponse:
       type: object
-      required: [settlements]
+      required: [settlements, page]
       properties:
         settlements:
           type: array
           items: { $ref: "#/components/schemas/Settlement" }
+        page: { $ref: "#/components/schemas/PageInfo" }
     SettlementSuggestion:
       type: object
       required:
@@ -3057,6 +3060,16 @@ paths:
           name: householdId
           required: true
           schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/DebtStatus" }
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+          description: Cursor returned from the previous obligation page.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         "200":
           description: OK
@@ -3077,6 +3090,13 @@ paths:
           name: householdId
           required: true
           schema: { type: string, format: uuid }
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+          description: Cursor returned from the previous transaction page.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         "200":
           description: OK
@@ -3305,6 +3325,16 @@ paths:
           name: householdId
           required: true
           schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/SettlementStatus" }
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+          description: Cursor returned from the previous settlement page.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         "200":
           description: OK

@@ -48,9 +48,9 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Proposal creation and share approve/reject persist `Idempotency-Key` records, replay matching duplicate requests, and reject key reuse with changed request bodies.
 - Rejected shares and pending proposals do not affect formal balances.
 - Dashboard formal balances render from open `DebtObligation` rows, not proposal totals.
-- Dedicated formal ledger page lists net balances, open obligations, settlement actions, pending settlement confirmations, month close/reopen controls, and append-only ledger transactions.
-- Read-only formal ledger APIs expose balances, obligations, and transactions derived from `DebtObligation` and settlement allocations.
-- Settlement APIs let debtors submit payments against one obligation or a suggested transfer; creditor confirmation creates one or more allocations and reduces remaining balances.
+- Dedicated formal ledger page lists net balances, cursor-expandable open obligations and transactions, settlement actions, pending settlement confirmations, and month close/reopen controls.
+- Read-only formal ledger APIs expose balances plus cursor-paginated obligations and transactions derived from `DebtObligation` and settlement allocations.
+- Settlement APIs expose cursor-paginated history and let debtors submit payments against one obligation or a suggested transfer; creditor confirmation creates one or more allocations and reduces remaining balances.
 - Settlement create/confirm/reject mutations persist `Idempotency-Key` records with replay/conflict behavior.
 - Settlement suggestion API/page section nets open obligations by currency and returns optimized debtor-to-creditor transfers.
 - Owner/admin ledger period APIs support closing/reopening months; closed periods block approval maturity, settlements, adjustments, and reversals for posting dates in that month.
@@ -59,7 +59,7 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - The dashboard notification center shows proposal assignments plus idempotent scheduled jobs for recurring expense proposal generation and in-app reminders for due/overdue tasks, due/overdue repayments, and stale settlement confirmations; notification and dashboard proposal lists include cursor pagination metadata plus load-more controls.
 - API abuse controls rate-limit private site-gate failures, local dev-session switching, invite creation/acceptance, file upload intents, proposal comments, and share approve/reject/request-changes endpoints; unsafe browser-style API mutations with cross-site request metadata are rejected before route handlers run.
 - Dashboard proposal queue and proposal detail pages are localized in `en-US` and `zh-CN`.
-- OpenAPI covers the current paginated list/create/detail/revision proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject/request-changes idempotency, notification list/update, balance, obligation, ledger transaction, ledger period close, settlement, settlement suggestion, ledger correction, calendar event create/update/delete with recurring expense templates, task create/update/delete/complete, and task-to-expense proposal endpoints.
+- OpenAPI covers the current paginated list/create/detail/revision proposal, advanced proposal split inputs, private file upload/download, proposal comments, share approve/reject/request-changes idempotency, notification list/update, balance, paginated obligation and ledger transaction lists, ledger period close, paginated settlement history, settlement suggestion, ledger correction, calendar event create/update/delete with recurring expense templates, task create/update/delete/complete, and task-to-expense proposal endpoints.
 
 ## Development
 

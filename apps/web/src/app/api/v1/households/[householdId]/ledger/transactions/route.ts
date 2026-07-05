@@ -14,10 +14,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId } = await context.params;
-    const transactions = await listLedgerTransactionsForHousehold(user.id, householdId);
+    const result = await listLedgerTransactionsForHousehold(user.id, householdId, {
+      cursor: request.nextUrl.searchParams.get("cursor") ?? undefined,
+      limit: request.nextUrl.searchParams.get("limit") ?? undefined,
+    });
 
     return NextResponse.json({
-      transactions: transactions.map(serializeLedgerTransaction),
+      transactions: result.items.map(serializeLedgerTransaction),
+      page: result.page,
     });
   } catch (error) {
     return apiErrorResponse(error);

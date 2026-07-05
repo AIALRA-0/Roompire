@@ -4,6 +4,7 @@ import {
   DebtStatus,
   LedgerTransactionType,
   Role,
+  type Settlement,
   SettlementStatus,
   type Prisma,
 } from "@prisma/client";
@@ -12,6 +13,7 @@ import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
 import { assertFilesReadyForAttachment } from "@/server/files/service";
 import { assertLedgerPeriodOpen, computeSettlementSuggestions } from "@/server/ledger/service";
+import { paginateRows, paginationQueryFields } from "@/server/pagination";
 import { requireActiveMembership } from "@/server/permissions/rbac";
 
 const decimalStringSchema = z
@@ -21,6 +23,7 @@ const decimalStringSchema = z
   .refine((value) => new Decimal(value).isPositive(), "Amount must be greater than zero.");
 
 const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const emptyToUndefined = (value: unknown) => (value === "" || value === null ? undefined : value);
 
 const currencySchema = z
   .string()
@@ -75,6 +78,13 @@ export const createSettlementSchema = z
     }
   });
 
+const listSettlementQuerySchema = z.object({
+  status: z.preprocess(emptyToUndefined, z.nativeEnum(SettlementStatus).optional()),
+  ...paginationQueryFields(50),
+});
+
+type ListSettlementQuery = z.infer<typeof listSettlementQuerySchema>;
+
 type AllocationCandidate = {
   id: string;
   debtorUserId: string;
@@ -93,7 +103,12 @@ const settlementInclude = {
     },
     orderBy: [{ createdAt: "asc" as const }, { fileId: "asc" as const }],
   },
-};
+} satisfies Prisma.SettlementInclude;
+
+const settlementOrderBy = [
+  { createdAt: "desc" as const },
+  { id: "asc" as const },
+] satisfies Prisma.SettlementOrderByWithRelationInput[];
 
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
@@ -101,6 +116,65 @@ function dateOnlyToUtc(value: string) {
 
 function decimalToFixed6(value: Decimal.Value) {
   return new Decimal(value).toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toFixed(6);
+}
+
+function buildSettlementWhere(
+  householdId: string,
+  query: Pick<ListSettlementQuery, "status">,
+  cursorSettlement?: Pick<Settlement, "id" | "createdAt">,
+) {
+  const cursorWindow: Prisma.SettlementWhereInput | undefined = cursorSettlement
+    ? {
+        OR: [
+          {
+            createdAt: {
+              lt: cursorSettlement.createdAt,
+            },
+          },
+          {
+            createdAt: cursorSettlement.createdAt,
+            id: {
+              gt: cursorSettlement.id,
+            },
+          },
+        ],
+      }
+    : undefined;
+
+  return {
+    householdId,
+    status: query.status,
+    AND: cursorWindow ? [cursorWindow] : undefined,
+  } satisfies Prisma.SettlementWhereInput;
+}
+
+async function resolveSettlementCursor(
+  householdId: string,
+  query: Pick<ListSettlementQuery, "status">,
+  cursor: string | undefined,
+) {
+  if (!cursor) {
+    return undefined;
+  }
+
+  const cursorSettlement = await prisma.settlement.findUnique({
+    where: { id: cursor },
+    select: { id: true, householdId: true, status: true, createdAt: true },
+  });
+
+  if (
+    !cursorSettlement ||
+    cursorSettlement.householdId !== householdId ||
+    (query.status && cursorSettlement.status !== query.status)
+  ) {
+    throw validationError("Settlement query is invalid.", {
+      fieldErrors: {
+        cursor: ["Invalid cursor."],
+      },
+    });
+  }
+
+  return cursorSettlement;
 }
 
 function assertCanSettle(role: Role) {
@@ -284,16 +358,44 @@ function buildAllocationPlan(amount: Decimal, obligations: AllocationCandidate[]
   return allocations;
 }
 
-export async function listSettlementsForHousehold(userId: string, householdId: string) {
+export async function listSettlementsForHousehold(
+  userId: string,
+  householdId: string,
+  query: unknown = {},
+) {
+  await requireActiveMembership(userId, householdId);
+  const parsed = listSettlementQuerySchema.safeParse(query);
+
+  if (!parsed.success) {
+    throw validationError("Settlement query is invalid.", parsed.error.flatten());
+  }
+
+  const cursorSettlement = await resolveSettlementCursor(
+    householdId,
+    parsed.data,
+    parsed.data.cursor,
+  );
+  const settlements = await prisma.settlement.findMany({
+    where: buildSettlementWhere(householdId, parsed.data, cursorSettlement),
+    include: settlementInclude,
+    orderBy: settlementOrderBy,
+    take: parsed.data.limit + 1,
+  });
+
+  return paginateRows(settlements, parsed.data.limit);
+}
+
+export async function listAllSettlementsForHousehold(
+  userId: string,
+  householdId: string,
+  options: Pick<ListSettlementQuery, "status"> = {},
+) {
   await requireActiveMembership(userId, householdId);
 
   return prisma.settlement.findMany({
-    where: {
-      householdId,
-    },
+    where: buildSettlementWhere(householdId, options),
     include: settlementInclude,
-    orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-    take: 50,
+    orderBy: settlementOrderBy,
   });
 }
 
@@ -843,5 +945,5 @@ export async function rejectSettlementForHousehold(
 }
 
 export type SettlementWithRelations = Awaited<
-  ReturnType<typeof listSettlementsForHousehold>
+  ReturnType<typeof listAllSettlementsForHousehold>
 >[number];

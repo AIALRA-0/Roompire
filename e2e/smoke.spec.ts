@@ -4352,10 +4352,111 @@ test.describe("Roompire real browser smoke", () => {
       "20",
     ]);
     const directObligationIds = directObligations.map((obligation) => obligation.id);
+
+    const firstObligationPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/ledger/obligations?status=OPEN&limit=1`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(firstObligationPageResponse.ok()).toBeTruthy();
+    const firstObligationPage = (await firstObligationPageResponse.json()) as {
+      obligations: Array<{ id: string; status: string }>;
+      page: { limit: number; nextCursor: string | null; hasMore: boolean };
+    };
+    expect(firstObligationPage.obligations).toHaveLength(1);
+    expect(firstObligationPage.obligations[0]?.status).toBe("OPEN");
+    expect(firstObligationPage.page).toEqual({
+      limit: 1,
+      nextCursor: firstObligationPage.obligations[0]!.id,
+      hasMore: true,
+    });
+
+    const secondObligationPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/ledger/obligations?status=OPEN&limit=1&cursor=${firstObligationPage.page.nextCursor}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(secondObligationPageResponse.ok()).toBeTruthy();
+    const secondObligationPage = (await secondObligationPageResponse.json()) as {
+      obligations: Array<{ id: string; status: string }>;
+      page: { limit: number; nextCursor: string | null; hasMore: boolean };
+    };
+    expect(secondObligationPage.obligations).toHaveLength(1);
+    expect(secondObligationPage.obligations[0]?.id).not.toBe(
+      firstObligationPage.obligations[0]!.id,
+    );
+
+    const invalidObligationCursorResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/ledger/obligations?cursor=not-a-cursor`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(invalidObligationCursorResponse.status()).toBe(400);
+
+    const firstTransactionPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/ledger/transactions?limit=1`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(firstTransactionPageResponse.ok()).toBeTruthy();
+    const firstTransactionPage = (await firstTransactionPageResponse.json()) as {
+      transactions: Array<{ id: string }>;
+      page: { limit: number; nextCursor: string | null; hasMore: boolean };
+    };
+    expect(firstTransactionPage.transactions).toHaveLength(1);
+    expect(firstTransactionPage.page).toEqual({
+      limit: 1,
+      nextCursor: firstTransactionPage.transactions[0]!.id,
+      hasMore: true,
+    });
+
+    const secondTransactionPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/ledger/transactions?limit=1&cursor=${firstTransactionPage.page.nextCursor}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(secondTransactionPageResponse.ok()).toBeTruthy();
+    const secondTransactionPage = (await secondTransactionPageResponse.json()) as {
+      transactions: Array<{ id: string }>;
+      page: { limit: number; nextCursor: string | null; hasMore: boolean };
+    };
+    expect(secondTransactionPage.transactions).toHaveLength(1);
+    expect(secondTransactionPage.transactions[0]?.id).not.toBe(
+      firstTransactionPage.transactions[0]!.id,
+    );
+
     const transferKey = `${debtorUserId}-${ownerUserId}-CNY`;
 
     await setDevSessionWithRetry(page, debtorEmail, "Multi Settlement Debtor E2E");
-    await page.goto("/en-US/app/ledger");
+    await page.goto("/en-US/app/ledger?obligationLimit=1&transactionLimit=1");
+    await expect(page.getByTestId("ledger-obligations-load-more")).toHaveAttribute(
+      "href",
+      "/en-US/app/ledger?transactionLimit=1&obligationLimit=25",
+    );
+    await expect(page.getByTestId("ledger-transactions-load-more")).toHaveAttribute(
+      "href",
+      "/en-US/app/ledger?obligationLimit=1&transactionLimit=25",
+    );
     const suggestionRow = page.getByTestId(`settlement-suggestion-${transferKey}`);
     await expect(suggestionRow).toContainText(
       "Multi Settlement Debtor E2E pays Multi Settlement Owner E2E",
@@ -4418,6 +4519,32 @@ test.describe("Roompire real browser smoke", () => {
         sourceId: null,
       },
       allocations: [],
+    });
+
+    const submittedSettlementPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/settlements?status=SUBMITTED&limit=1`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(submittedSettlementPageResponse.ok()).toBeTruthy();
+    const submittedSettlementPage = (await submittedSettlementPageResponse.json()) as {
+      settlements: Array<{ id: string; status: string }>;
+      page: { limit: number; nextCursor: string | null; hasMore: boolean };
+    };
+    expect(submittedSettlementPage.settlements).toEqual([
+      expect.objectContaining({
+        id: submittedSettlement!.id,
+        status: "SUBMITTED",
+      }),
+    ]);
+    expect(submittedSettlementPage.page).toEqual({
+      limit: 1,
+      nextCursor: null,
+      hasMore: false,
     });
 
     await setDevSessionWithRetry(page, ownerEmail, "Multi Settlement Owner E2E");

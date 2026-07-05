@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DebtStatus } from "@prisma/client";
 import {
   Activity,
   ArrowLeft,
@@ -29,6 +30,7 @@ import {
   serializeLedgerTransaction,
 } from "@/server/ledger/serializers";
 import {
+  listAllLedgerObligationsForHousehold,
   listBalanceEdgesForHousehold,
   listLedgerObligationsForHousehold,
   listLedgerPeriodClosesForHousehold,
@@ -36,18 +38,51 @@ import {
   listLedgerTransactionsForHousehold,
 } from "@/server/ledger/service";
 import { serializeSettlement } from "@/server/settlements/serializers";
-import { listSettlementsForHousehold } from "@/server/settlements/service";
+import { listAllSettlementsForHousehold } from "@/server/settlements/service";
 
 type PageProps = {
   params: Promise<{ locale: Locale }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 function memberName(memberNamesByUserId: Map<string, string>, userId: string) {
   return memberNamesByUserId.get(userId) ?? userId;
 }
 
-export default async function LedgerPage({ params }: PageProps) {
+function firstSearchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function ledgerLimitHref(
+  locale: Locale,
+  rawSearchParams: Record<string, string | string[] | undefined>,
+  key: "obligationLimit" | "transactionLimit",
+  limit: number,
+) {
+  const params = new URLSearchParams();
+
+  for (const [paramKey, value] of Object.entries(rawSearchParams)) {
+    if (paramKey === key) {
+      continue;
+    }
+
+    const firstValue = firstSearchValue(value);
+
+    if (firstValue) {
+      params.set(paramKey, firstValue);
+    }
+  }
+
+  params.set(key, String(limit));
+
+  const query = params.toString();
+
+  return `/${locale}/app/ledger${query ? `?${query}` : ""}`;
+}
+
+export default async function LedgerPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
+  const rawSearchParams = await searchParams;
   const nav = await getTranslations({ locale, namespace: "Nav" });
   const common = await getTranslations({ locale, namespace: "Common" });
   const ledger = await getTranslations({ locale, namespace: "Ledger" });
@@ -74,26 +109,77 @@ export default async function LedgerPage({ params }: PageProps) {
     ]),
   );
   const memberNamesByUserIdRecord = Object.fromEntries(memberNamesByUserId);
-  const [balances, obligations, transactions, settlements, settlementSuggestions, periodCloses] =
-    activeHouseholdId
-      ? await Promise.all([
-          listBalanceEdgesForHousehold(model.user.id, activeHouseholdId),
-          listLedgerObligationsForHousehold(model.user.id, activeHouseholdId),
-          listLedgerTransactionsForHousehold(model.user.id, activeHouseholdId),
-          listSettlementsForHousehold(model.user.id, activeHouseholdId),
-          listSettlementSuggestionsForHousehold(model.user.id, activeHouseholdId),
-          listLedgerPeriodClosesForHousehold(model.user.id, activeHouseholdId),
-        ])
-      : [[], [], [], [], [], []];
+  const limitOptions = ["1", "25", "50", "100"];
+  const obligationLimit = firstSearchValue(rawSearchParams.obligationLimit) ?? "50";
+  const transactionLimit = firstSearchValue(rawSearchParams.transactionLimit) ?? "50";
+  const selectedObligationLimit = limitOptions.includes(obligationLimit)
+    ? Number(obligationLimit)
+    : 50;
+  const selectedTransactionLimit = limitOptions.includes(transactionLimit)
+    ? Number(transactionLimit)
+    : 50;
+  const [
+    balances,
+    obligationResult,
+    transactionResult,
+    actionObligations,
+    actionSettlements,
+    settlementSuggestions,
+    periodCloses,
+  ] = activeHouseholdId
+    ? await Promise.all([
+        listBalanceEdgesForHousehold(model.user.id, activeHouseholdId),
+        listLedgerObligationsForHousehold(model.user.id, activeHouseholdId, {
+          limit: selectedObligationLimit,
+          status: DebtStatus.OPEN,
+        }),
+        listLedgerTransactionsForHousehold(model.user.id, activeHouseholdId, {
+          limit: selectedTransactionLimit,
+        }),
+        listAllLedgerObligationsForHousehold(model.user.id, activeHouseholdId, {
+          status: DebtStatus.OPEN,
+        }),
+        listAllSettlementsForHousehold(model.user.id, activeHouseholdId),
+        listSettlementSuggestionsForHousehold(model.user.id, activeHouseholdId),
+        listLedgerPeriodClosesForHousehold(model.user.id, activeHouseholdId),
+      ])
+    : [
+        [],
+        {
+          items: [],
+          page: {
+            limit: selectedObligationLimit,
+            nextCursor: null,
+            hasMore: false,
+          },
+        },
+        {
+          items: [],
+          page: {
+            limit: selectedTransactionLimit,
+            nextCursor: null,
+            hasMore: false,
+          },
+        },
+        [],
+        [],
+        [],
+        [],
+      ];
   const serializedBalances = balances.map(serializeBalanceEdge);
-  const serializedObligations = obligations.map(serializeLedgerObligation);
-  const serializedOpenObligations = serializedObligations.filter(
-    (obligation) => obligation.status === "OPEN",
-  );
-  const serializedTransactions = transactions.map(serializeLedgerTransaction);
-  const serializedSettlements = settlements.map(serializeSettlement);
+  const serializedObligations = obligationResult.items.map(serializeLedgerObligation);
+  const serializedOpenObligations = serializedObligations;
+  const serializedActionObligations = actionObligations.map(serializeLedgerObligation);
+  const serializedTransactions = transactionResult.items.map(serializeLedgerTransaction);
+  const serializedSettlements = actionSettlements.map(serializeSettlement);
   const serializedSettlementSuggestions = settlementSuggestions.map(serializeSettlementSuggestion);
   const serializedPeriodCloses = periodCloses.map(serializeLedgerPeriodClose);
+  const nextObligationLimit = obligationResult.page.hasMore
+    ? limitOptions.map(Number).find((limit) => limit > obligationResult.page.limit)
+    : undefined;
+  const nextTransactionLimit = transactionResult.page.hasMore
+    ? limitOptions.map(Number).find((limit) => limit > transactionResult.page.limit)
+    : undefined;
   const memberSummaries = model.members.map((member) => ({
     userId: member.userId,
     displayName: member.displayNameOverride ?? member.user.displayName,
@@ -182,7 +268,7 @@ export default async function LedgerPage({ params }: PageProps) {
               </div>
               <div className="rounded-lg border border-border bg-card p-4">
                 <p className="text-sm text-muted-foreground">{ledger("openObligations")}</p>
-                <p className="mt-3 text-2xl font-semibold">{serializedOpenObligations.length}</p>
+                <p className="mt-3 text-2xl font-semibold">{serializedActionObligations.length}</p>
               </div>
               <div className="rounded-lg border border-border bg-card p-4">
                 <p className="text-sm text-muted-foreground">{ledger("transactions")}</p>
@@ -280,7 +366,7 @@ export default async function LedgerPage({ params }: PageProps) {
                   errorFallback: ledger("settlementErrorFallback"),
                 }}
                 memberNamesByUserId={memberNamesByUserIdRecord}
-                obligations={serializedObligations}
+                obligations={serializedActionObligations}
                 suggestions={serializedSettlementSuggestions}
                 settlements={serializedSettlements}
               />
@@ -340,7 +426,7 @@ export default async function LedgerPage({ params }: PageProps) {
                 }}
                 memberNamesByUserId={memberNamesByUserIdRecord}
                 members={memberSummaries}
-                obligations={serializedObligations}
+                obligations={serializedActionObligations}
                 settlementCurrency={model.activeHousehold.settlementCurrency}
               />
             ) : null}
@@ -423,6 +509,23 @@ export default async function LedgerPage({ params }: PageProps) {
                   ) : (
                     <p className="p-5 text-sm text-muted-foreground">{ledger("noObligations")}</p>
                   )}
+                  {nextObligationLimit ? (
+                    <div className="border-t border-border p-4 text-center">
+                      <Button asChild variant="outline">
+                        <Link
+                          data-testid="ledger-obligations-load-more"
+                          href={ledgerLimitHref(
+                            locale,
+                            rawSearchParams,
+                            "obligationLimit",
+                            nextObligationLimit,
+                          )}
+                        >
+                          {ledger("loadMore")}
+                        </Link>
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -457,6 +560,23 @@ export default async function LedgerPage({ params }: PageProps) {
                 ) : (
                   <p className="p-5 text-sm text-muted-foreground">{ledger("noTransactions")}</p>
                 )}
+                {nextTransactionLimit ? (
+                  <div className="border-t border-border p-4 text-center">
+                    <Button asChild variant="outline">
+                      <Link
+                        data-testid="ledger-transactions-load-more"
+                        href={ledgerLimitHref(
+                          locale,
+                          rawSearchParams,
+                          "transactionLimit",
+                          nextTransactionLimit,
+                        )}
+                      >
+                        {ledger("loadMore")}
+                      </Link>
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </section>
           </div>

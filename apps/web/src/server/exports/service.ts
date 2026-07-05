@@ -6,10 +6,10 @@ import { listAllAuditEventsForHousehold } from "@/server/audit/service";
 import { prisma } from "@/server/db/prisma";
 import { serializeExpenseProposal } from "@/server/expenses/serializers";
 import { serializeLedgerObligation } from "@/server/ledger/serializers";
-import { listLedgerObligationsForHousehold } from "@/server/ledger/service";
+import { listAllLedgerObligationsForHousehold } from "@/server/ledger/service";
 import { requireActiveMembership } from "@/server/permissions/rbac";
 import { serializeSettlement } from "@/server/settlements/serializers";
-import { listSettlementsForHousehold } from "@/server/settlements/service";
+import { listAllSettlementsForHousehold } from "@/server/settlements/service";
 
 export const exportDatasets = [
   "expense_proposals",
@@ -223,13 +223,13 @@ async function exportRecords(userId: string, householdId: string, dataset: Expor
   }
 
   if (dataset === "ledger_obligations") {
-    return (await listLedgerObligationsForHousehold(userId, householdId)).map(
+    return (await listAllLedgerObligationsForHousehold(userId, householdId)).map(
       serializeLedgerObligation,
     );
   }
 
   if (dataset === "settlements") {
-    return (await listSettlementsForHousehold(userId, householdId)).map(serializeSettlement);
+    return (await listAllSettlementsForHousehold(userId, householdId)).map(serializeSettlement);
   }
 
   if (dataset === "audit_events") {

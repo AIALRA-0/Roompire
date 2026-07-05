@@ -100,7 +100,7 @@ Current implemented subset for FX: proposal/revision/task-expense/event-expense 
 - Settlement suggestions.
 - Reversal/adjustment flow.
 
-Current implementation for settlement suggestions exposes optimized net transfers with explicit actionability. Direct debtor/payee/currency suggestions are `DIRECTLY_SETTLEABLE` and can be submitted by the debtor when enough matching open obligations exist. Fully netted non-direct suggestions stay `GUIDANCE_ONLY` by default, and become `CLEARING_SETTLEABLE` only when owner/admin household settings enable `HOUSEHOLD_NETTING`. A confirmed clearing settlement reduces the payer's outgoing open obligations and the payee's incoming open obligations through audited allocation rows while keeping the recorded payment amount as the actual payer-to-payee transfer. Owners/admins can also close and reopen ledger months; closed periods block approval maturity, settlement submit/confirm/reject, adjustments, and reversals for posting dates in that month until reopened.
+Current implementation for settlement suggestions exposes optimized net transfers with explicit actionability. Direct debtor/payee/currency suggestions are `DIRECTLY_SETTLEABLE` and can be submitted by the debtor when enough matching open obligations exist. Fully netted non-direct suggestions stay `GUIDANCE_ONLY` by default, and become `CLEARING_SETTLEABLE` only when owner/admin household settings enable `HOUSEHOLD_NETTING`. A confirmed clearing settlement reduces the payer's outgoing open obligations and the payee's incoming open obligations through audited allocation rows while keeping the recorded payment amount as the actual payer-to-payee transfer. Owners/admins can also close and reopen ledger months; closed periods block approval maturity, settlement submit/confirm/reject, adjustments, and reversals for posting dates in that month until reopened. Ledger obligation and transaction list APIs now return cursor pagination metadata while balance summaries, ledger actions, and exports use full active-member query paths.
 
 ## Epic 5 — Settlements
 
@@ -116,7 +116,7 @@ Current implementation for settlement suggestions exposes optimized net transfer
 - Settlement suggestion optimizer.
 - Settlement receipt/evidence.
 
-Current implemented subset for settlements: debtors can submit direct-obligation, directly suggested, or household-clearing settlements with payment method, optional payment reference, optional note, and optional uploaded receipt/evidence files; creditors see pending settlement metadata and evidence download links before confirming or rejecting; confirmed settlements allocate across the appropriate open obligations and reduce remaining balances only after creditor confirmation.
+Current implemented subset for settlements: debtors can submit direct-obligation, directly suggested, or household-clearing settlements with payment method, optional payment reference, optional note, and optional uploaded receipt/evidence files; creditors see pending settlement metadata and evidence download links before confirming or rejecting; confirmed settlements allocate across the appropriate open obligations and reduce remaining balances only after creditor confirmation; settlement history APIs return cursor pagination metadata while exports and ledger-page action data use full-history query paths.
 
 ## Epic 6 — Calendar and tasks
 

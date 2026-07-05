@@ -26,10 +26,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId } = await context.params;
-    const settlements = await listSettlementsForHousehold(user.id, householdId);
+    const result = await listSettlementsForHousehold(user.id, householdId, {
+      cursor: request.nextUrl.searchParams.get("cursor") ?? undefined,
+      limit: request.nextUrl.searchParams.get("limit") ?? undefined,
+      status: request.nextUrl.searchParams.get("status") ?? undefined,
+    });
 
     return NextResponse.json({
-      settlements: settlements.map(serializeSettlement),
+      settlements: result.items.map(serializeSettlement),
+      page: result.page,
     });
   } catch (error) {
     return apiErrorResponse(error);

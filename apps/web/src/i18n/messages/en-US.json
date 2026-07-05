@@ -102,6 +102,7 @@
     "noBalancesHint": "Approved shares will appear here after they mature into obligations.",
     "noObligations": "No open obligations",
     "noTransactions": "No ledger transactions",
+    "loadMore": "Load more",
     "owes": "owes",
     "obligations": "obligations",
     "source": "Source",
