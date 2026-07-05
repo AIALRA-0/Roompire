@@ -141,7 +141,7 @@ ROOMPIRE_BACKUP_ENCRYPTION=enabled \
   ./scripts/backup_all.sh
 ```
 
-When encryption is enabled, `backup_all.sh` verifies the plaintext PostgreSQL dump first, writes `.enc` files plus `.sha256` sidecars, and removes plaintext artifacts by default. Set `ROOMPIRE_BACKUP_REMOVE_PLAINTEXT=false` only for a controlled local drill.
+When encryption is enabled, `backup_all.sh` verifies the plaintext PostgreSQL dump first, writes `.enc` files plus `.sha256` sidecars, and removes plaintext artifacts by default. The combined flow includes PostgreSQL, the upload volume, and a Roompire file manifest export under `file-manifests/`. Set `ROOMPIRE_BACKUP_REMOVE_PLAINTEXT=false` only for a controlled local drill.
 
 Create a PostgreSQL backup:
 
@@ -155,7 +155,13 @@ Create an upload-volume backup:
 ./scripts/backup_uploads.sh
 ```
 
-Backups are written under `backups/` and are ignored by git. For S3-compatible production storage, enable bucket versioning or provider snapshots and export an object inventory/manifest alongside the PostgreSQL backup; file metadata in PostgreSQL stores the provider, bucket, object key, MIME type, size, and SHA-256 hash.
+Create a Roompire file/object manifest backup:
+
+```bash
+./scripts/backup_file_manifest.sh
+```
+
+Backups are written under `backups/` and are ignored by git. For S3-compatible production storage, enable bucket versioning or provider snapshots and keep the generated Roompire file manifest alongside the PostgreSQL backup; file metadata in PostgreSQL stores the provider, bucket, object key, MIME type, size, and SHA-256 hash.
 
 `scripts/verify_postgres_backup.sh <backup.dump>` restores a custom-format dump into a temporary database, verifies Prisma migration metadata, checks the audit hash chain, and drops the temporary database. This is the preferred daily restore drill because it does not touch the live database. Encrypted PostgreSQL dumps can be verified directly:
 

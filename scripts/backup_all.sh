@@ -24,21 +24,25 @@ esac
 
 postgres_dir="$BACKUP_ROOT/postgres"
 uploads_dir="$BACKUP_ROOT/uploads"
+file_manifests_dir="$BACKUP_ROOT/file-manifests"
 
 postgres_backup=$(BACKUP_DIR="$postgres_dir" ./scripts/backup_postgres.sh)
 uploads_backup=$(BACKUP_DIR="$uploads_dir" ./scripts/backup_uploads.sh)
+file_manifest_backup=$(BACKUP_DIR="$file_manifests_dir" ./scripts/backup_file_manifest.sh)
 
 ./scripts/verify_postgres_backup.sh "$postgres_backup"
 
 encrypted_postgres_backup=""
 encrypted_uploads_backup=""
+encrypted_file_manifest_backup=""
 
 if [ "$ROOMPIRE_BACKUP_ENCRYPTION" = "enabled" ]; then
   encrypted_postgres_backup=$(./scripts/encrypt_backup_file.sh "$postgres_backup")
   encrypted_uploads_backup=$(./scripts/encrypt_backup_file.sh "$uploads_backup")
+  encrypted_file_manifest_backup=$(./scripts/encrypt_backup_file.sh "$file_manifest_backup")
 
   if [ "$ROOMPIRE_BACKUP_REMOVE_PLAINTEXT" = "true" ]; then
-    rm -f "$postgres_backup" "$uploads_backup"
+    rm -f "$postgres_backup" "$uploads_backup" "$file_manifest_backup"
   fi
 fi
 
@@ -48,12 +52,17 @@ find "$postgres_dir" -type f -name "roompire_*.dump.enc.sha256" -mtime +"$RETENT
 find "$uploads_dir" -type f -name "roompire_uploads_*.tar.gz" -mtime +"$RETENTION_DAYS" -delete
 find "$uploads_dir" -type f -name "roompire_uploads_*.tar.gz.enc" -mtime +"$RETENTION_DAYS" -delete
 find "$uploads_dir" -type f -name "roompire_uploads_*.tar.gz.enc.sha256" -mtime +"$RETENTION_DAYS" -delete
+find "$file_manifests_dir" -type f -name "roompire_file_manifest_*.json" -mtime +"$RETENTION_DAYS" -delete
+find "$file_manifests_dir" -type f -name "roompire_file_manifest_*.json.enc" -mtime +"$RETENTION_DAYS" -delete
+find "$file_manifests_dir" -type f -name "roompire_file_manifest_*.json.enc.sha256" -mtime +"$RETENTION_DAYS" -delete
 
 echo "postgres backup: $postgres_backup"
 echo "uploads backup: $uploads_backup"
+echo "file manifest backup: $file_manifest_backup"
 if [ -n "$encrypted_postgres_backup" ]; then
   echo "encrypted postgres backup: $encrypted_postgres_backup"
   echo "encrypted uploads backup: $encrypted_uploads_backup"
+  echo "encrypted file manifest backup: $encrypted_file_manifest_backup"
   if [ "$ROOMPIRE_BACKUP_REMOVE_PLAINTEXT" = "true" ]; then
     echo "plaintext backups removed after encryption: true"
   fi

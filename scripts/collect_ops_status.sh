@@ -214,7 +214,8 @@ function collectBackupEncryption() {
 
       return (
         /^roompire_\d{8}T\d{6}Z\.dump\.enc$/.test(base) ||
-        /^roompire_uploads_\d{8}T\d{6}Z\.tar\.gz\.enc$/.test(base)
+        /^roompire_uploads_\d{8}T\d{6}Z\.tar\.gz\.enc$/.test(base) ||
+        /^roompire_file_manifest_\d{8}T\d{6}Z\.json\.enc$/.test(base)
       );
     });
     const plaintextFiles = files.filter((file) => {
@@ -222,7 +223,8 @@ function collectBackupEncryption() {
 
       return (
         /^roompire_\d{8}T\d{6}Z\.dump$/.test(base) ||
-        /^roompire_uploads_\d{8}T\d{6}Z\.tar\.gz$/.test(base)
+        /^roompire_uploads_\d{8}T\d{6}Z\.tar\.gz$/.test(base) ||
+        /^roompire_file_manifest_\d{8}T\d{6}Z\.json$/.test(base)
       );
     });
     const missingSidecars = encryptedFiles.filter((file) => !fs.existsSync(`${file}.sha256`));
