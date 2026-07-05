@@ -195,6 +195,13 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 ## Last session verification
 
+- 2026-07-05 Calendar/task pagination:
+  - Branch/commit: `feat/calendar-task-pagination` / `5fee9c4 feat: paginate calendar task lists`, pushed to `origin/feat/calendar-task-pagination`.
+  - Verification passed before deployment: `pnpm db:generate && pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test` (11 files, 45 tests), `pnpm build`, `git diff --check`, `jq empty`, OpenAPI YAML parse with `python3`, and targeted `pnpm e2e --grep "member creates calendar work and completes an assigned task"` (desktop/mobile, 2 passed).
+  - Production deployment from the self-hosted server used Docker Compose only, without SSH: built `web` and `migrate`, ran `prisma migrate deploy` with no pending migrations, recreated `roompire-web-1`, and confirmed the container healthy on `127.0.0.1:18300`.
+  - Real-domain smoke passed for `https://roompire.aialra.online`: `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`.
+  - Live production validation through the gate created isolated temporary calendar data, verified event/task `limit=1` first pages with `hasMore=true`, matching `nextCursor`, distinct second cursor pages, invalid cursor `400`, session active-household switching, and `/en-US/app/calendar?eventLimit=1&taskLimit=1` load-more controls. A second real-browser production check used the live HTTP APIs to create a temporary household plus event/task rows, opened the production calendar page with Playwright, confirmed both load-more controls visible, and cleaned temporary rows with zero remaining household/event/task counts.
+  - GitHub Actions passed for the pushed commit: CI https://github.com/AIALRA-0/Roompire/actions/runs/28750725912 and E2E https://github.com/AIALRA-0/Roompire/actions/runs/28750725963.
 - 2026-07-05 Ledger list pagination:
   - Branch/commit: `feat/ledger-list-pagination` / `c2a2aeb feat: paginate ledger lists`, pushed to `origin/feat/ledger-list-pagination`.
   - Verification passed before final deployment: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test` (11 files, 45 tests), `pnpm build`, `git diff --check`, `jq empty`, OpenAPI YAML parse with `python3`, and targeted `pnpm e2e --grep "debtor settles a suggested transfer across multiple obligations"` (desktop/mobile, 2 passed).
