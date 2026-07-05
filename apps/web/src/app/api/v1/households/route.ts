@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiErrorResponse } from "@/server/api/errors";
 import { requireApiUser } from "@/server/auth/session";
+import {
+  ACTIVE_HOUSEHOLD_COOKIE_NAME,
+  activeHouseholdCookieOptions,
+} from "@/server/households/active-household";
 import { createHouseholdForUser, listHouseholdsForUser } from "@/server/households/service";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +38,7 @@ export async function POST(request: NextRequest) {
     const body: unknown = await request.json();
     const { household, membership } = await createHouseholdForUser(user.id, body);
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         household: {
           id: household.id,
@@ -50,6 +54,14 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 },
     );
+
+    response.cookies.set(
+      ACTIVE_HOUSEHOLD_COOKIE_NAME,
+      household.id,
+      activeHouseholdCookieOptions(),
+    );
+
+    return response;
   } catch (error) {
     return apiErrorResponse(error);
   }

@@ -1440,6 +1440,88 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
   });
 
+  test("user switches active household across dashboard and app pages", async ({
+    page,
+  }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `switch-owner+${suffix}@example.test`;
+    const firstHouseholdName = `Switch A ${suffix}`;
+    const secondHouseholdName = `Switch B ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "Switch Owner E2E");
+    await page.goto("/en-US/app");
+
+    await page.getByTestId("create-household-name").fill(firstHouseholdName);
+    await page.getByTestId("create-household-timezone").fill("America/Los_Angeles");
+    await page.getByTestId("create-household-currency").fill("CNY");
+    await clickHouseholdCreateWithRetry(page);
+    await expect(page.getByRole("heading", { name: firstHouseholdName })).toBeVisible();
+
+    await page.getByTestId("create-household-name").fill(secondHouseholdName);
+    await page.getByTestId("create-household-timezone").fill("Asia/Shanghai");
+    await page.getByTestId("create-household-currency").fill("USD");
+    await clickHouseholdCreateWithRetry(page);
+    await expect(page.getByRole("heading", { name: secondHouseholdName })).toBeVisible();
+    await expect(page.getByTestId("dashboard-stat-settlement-currency")).toContainText("USD");
+
+    const householdsResponse = await getApiWithRetry(page, "/api/v1/households");
+    expect(householdsResponse.ok()).toBeTruthy();
+    const householdsPayload = (await householdsResponse.json()) as {
+      households: Array<{ id: string; name: string }>;
+    };
+    const firstHousehold = householdsPayload.households.find(
+      (household) => household.name === firstHouseholdName,
+    );
+    const secondHousehold = householdsPayload.households.find(
+      (household) => household.name === secondHouseholdName,
+    );
+
+    expect(firstHousehold?.id).toBeTruthy();
+    expect(secondHousehold?.id).toBeTruthy();
+
+    const sessionAfterCreateResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(sessionAfterCreateResponse.ok()).toBeTruthy();
+    const sessionAfterCreate = (await sessionAfterCreateResponse.json()) as {
+      household: { id: string; name: string } | null;
+    };
+    expect(sessionAfterCreate.household).toMatchObject({
+      id: secondHousehold!.id,
+      name: secondHouseholdName,
+    });
+
+    const inaccessibleSwitchResponse = await page.request.patch("/api/v1/session", {
+      data: {
+        activeHouseholdId: "00000000-0000-4000-8000-000000000123",
+      },
+    });
+    expect(inaccessibleSwitchResponse.status()).toBe(404);
+
+    const switchResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/v1/session") && response.request().method() === "PATCH",
+    );
+    await page.getByTestId(`household-switch-${firstHousehold!.id}`).click();
+    const switchResponse = await switchResponsePromise;
+    expect(switchResponse.ok()).toBeTruthy();
+
+    await expect(page.getByText("Active household changed")).toBeVisible();
+    await expect(page.getByRole("heading", { name: firstHouseholdName })).toBeVisible();
+    await expect(page.getByTestId("dashboard-stat-settlement-currency")).toContainText("CNY");
+
+    const sessionAfterSwitchResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(sessionAfterSwitchResponse.ok()).toBeTruthy();
+    const sessionAfterSwitch = (await sessionAfterSwitchResponse.json()) as {
+      household: { id: string; name: string } | null;
+    };
+    expect(sessionAfterSwitch.household).toMatchObject({
+      id: firstHousehold!.id,
+      name: firstHouseholdName,
+    });
+
+    await page.goto("/en-US/app/ledger");
+    await expect(page.getByText(firstHouseholdName).first()).toBeVisible();
+  });
+
   test("user updates profile and notification preferences", async ({ page }, testInfo) => {
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
     const userEmail = `profile+${suffix}@example.test`;

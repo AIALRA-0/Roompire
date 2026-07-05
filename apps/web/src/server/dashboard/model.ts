@@ -1,7 +1,12 @@
 import { ExpenseProposalStatus } from "@prisma/client";
+import { cookies } from "next/headers";
 import { listAuditEventsForHousehold } from "@/server/audit/service";
 import { requirePageUser } from "@/server/auth/session";
 import { prisma } from "@/server/db/prisma";
+import {
+  ACTIVE_HOUSEHOLD_COOKIE_NAME,
+  selectActiveHouseholdMembership,
+} from "@/server/households/active-household";
 import {
   listExpenseCategoriesForHousehold,
   listExpenseProposalsForHousehold,
@@ -18,12 +23,14 @@ import { getUserSettings } from "@/server/users/service";
 
 export async function getDashboardModel() {
   const user = await requirePageUser();
-  const [householdMemberships, userSettings, notificationResult] = await Promise.all([
+  const [householdMemberships, userSettings, notificationResult, cookieStore] = await Promise.all([
     listHouseholdsForUser(user.id),
     getUserSettings(user.id),
     listNotificationsForUser(user.id),
+    cookies(),
   ]);
-  const activeMembership = householdMemberships[0] ?? null;
+  const activeHouseholdId = cookieStore.get(ACTIVE_HOUSEHOLD_COOKIE_NAME)?.value;
+  const activeMembership = selectActiveHouseholdMembership(householdMemberships, activeHouseholdId);
   const activeHousehold = activeMembership?.household ?? null;
 
   if (!activeHousehold || !activeMembership) {

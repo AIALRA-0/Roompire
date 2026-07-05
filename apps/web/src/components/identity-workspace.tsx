@@ -96,6 +96,9 @@ type IdentityLabels = {
   householdCreated: string;
   householdList: string;
   activeHousehold: string;
+  activeHouseholdHint: string;
+  useHousehold: string;
+  householdSwitched: string;
   memberDirectory: string;
   memberDirectoryHint: string;
   inviteMember: string;
@@ -272,6 +275,7 @@ export function IdentityWorkspace({
   const [devEmail, setDevEmail] = useState(currentUserEmail);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [createMessage, setCreateMessage] = useState<string | null>(null);
+  const [householdMessage, setHouseholdMessage] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [memberMessage, setMemberMessage] = useState<string | null>(null);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
@@ -286,6 +290,7 @@ export function IdentityWorkspace({
   function clearActionMessages() {
     setProfileMessage(null);
     setCreateMessage(null);
+    setHouseholdMessage(null);
     setSettingsMessage(null);
     setMemberMessage(null);
     setInviteMessage(null);
@@ -363,6 +368,24 @@ export function IdentityWorkspace({
       refreshAfter(setCreateMessage, labels.householdCreated);
     } catch (error) {
       setCreateMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onSwitchActiveHousehold(householdId: string) {
+    setHouseholdMessage(null);
+
+    try {
+      await submitJson(
+        "/api/v1/session",
+        {
+          activeHouseholdId: householdId,
+        },
+        labels.errorFallback,
+        "PATCH",
+      );
+      refreshAfter(setHouseholdMessage, labels.householdSwitched);
+    } catch (error) {
+      setHouseholdMessage(error instanceof Error ? error.message : labels.errorFallback);
     }
   }
 
@@ -619,6 +642,7 @@ export function IdentityWorkspace({
             <Badge variant="neutral">{labels.apiBoundary}</Badge>
           </div>
           <p className="mt-3 text-sm text-muted-foreground">{labels.apiBoundaryHint}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{labels.activeHouseholdHint}</p>
 
           <div className="mt-5 grid gap-3">
             {households.length === 0 ? (
@@ -632,6 +656,7 @@ export function IdentityWorkspace({
                     "grid gap-3 rounded-lg border border-border bg-background p-4 md:grid-cols-[1fr_auto] md:items-center",
                     household.id === activeHouseholdId && "border-primary/50",
                   )}
+                  data-testid={`household-row-${household.id}`}
                   key={household.id}
                 >
                   <div>
@@ -649,15 +674,33 @@ export function IdentityWorkspace({
                       {labels.locales[household.defaultLocale]}
                     </p>
                   </div>
-                  <Button asChild size="sm" variant="outline">
-                    <a href={`/${locale}/app/households/${household.id}/members`}>
-                      {labels.openMembers}
-                    </a>
-                  </Button>
+                  <div className="flex flex-wrap gap-2 md:justify-end">
+                    {household.id !== activeHouseholdId ? (
+                      <Button
+                        data-testid={`household-switch-${household.id}`}
+                        disabled={isPending}
+                        onClick={() => onSwitchActiveHousehold(household.id)}
+                        size="sm"
+                        type="button"
+                      >
+                        {isPending ? labels.working : labels.useHousehold}
+                      </Button>
+                    ) : null}
+                    <Button asChild size="sm" variant="outline">
+                      <a href={`/${locale}/app/households/${household.id}/members`}>
+                        {labels.openMembers}
+                      </a>
+                    </Button>
+                  </div>
                 </div>
               ))
             )}
           </div>
+          {householdMessage ? (
+            <p className="mt-3 text-sm text-muted-foreground" role="status">
+              {householdMessage}
+            </p>
+          ) : null}
         </div>
 
         <form

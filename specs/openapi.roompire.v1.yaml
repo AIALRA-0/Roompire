@@ -427,6 +427,20 @@ components:
       required: [user]
       properties:
         user: { $ref: "#/components/schemas/User" }
+    UpdateSessionRequest:
+      type: object
+      required: [activeHouseholdId]
+      properties:
+        activeHouseholdId: { type: string, format: uuid }
+    SessionResponse:
+      type: object
+      required: [user, household]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        household:
+          allOf:
+            - { $ref: "#/components/schemas/HouseholdMembershipSummary" }
+          nullable: true
     Notification:
       type: object
       required: [id, householdId, type, titleKey, bodyKey, payload, readAt, createdAt]
@@ -1870,7 +1884,44 @@ paths:
       summary: Get current session
       responses:
         "200":
-          description: Current session or null user
+          description: Current session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      summary: Set active household for the current browser session
+      description: Stores the selected active household in a secure session cookie after verifying the current user is an active member.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSessionRequest" }
+      responses:
+        "200":
+          description: Active household updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Household not found or inaccessible
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /users/me:
     get:
       summary: Get current user profile and notification preferences

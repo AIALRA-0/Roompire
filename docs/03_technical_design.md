@@ -267,6 +267,7 @@ MVP options:
 Rules:
 
 - Session must resolve current user.
+- The active household is a browser-session preference stored in an HttpOnly cookie and revalidated against active membership on every dashboard/session read.
 - Every household-scoped request must check membership.
 - Every mutation must check role/permission.
 - Never rely only on client-side checks.
