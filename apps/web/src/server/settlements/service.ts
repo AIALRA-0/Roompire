@@ -1,5 +1,6 @@
 import Decimal from "decimal.js";
 import {
+  ClearingPolicy,
   DebtStatus,
   LedgerTransactionType,
   Role,
@@ -9,6 +10,7 @@ import {
 import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
+import { computeSettlementSuggestions } from "@/server/ledger/service";
 import { requireActiveMembership } from "@/server/permissions/rbac";
 
 const decimalStringSchema = z
@@ -137,6 +139,93 @@ async function listOpenTransferObligations(
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
+}
+
+async function listOpenClearingPayerObligations(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  payerUserId: string,
+  payeeUserId: string,
+  currency: string,
+) {
+  return tx.debtObligation.findMany({
+    where: {
+      householdId,
+      debtorUserId: payerUserId,
+      settlementCurrency: currency,
+      status: DebtStatus.OPEN,
+      NOT: {
+        creditorUserId: payeeUserId,
+      },
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+}
+
+async function listOpenClearingPayeeObligations(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  payerUserId: string,
+  payeeUserId: string,
+  currency: string,
+) {
+  return tx.debtObligation.findMany({
+    where: {
+      householdId,
+      creditorUserId: payeeUserId,
+      settlementCurrency: currency,
+      status: DebtStatus.OPEN,
+      NOT: {
+        debtorUserId: payerUserId,
+      },
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+}
+
+async function findClearingSuggestion(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  payerUserId: string,
+  payeeUserId: string,
+  currency: string,
+) {
+  const [household, obligations] = await Promise.all([
+    tx.household.findUnique({
+      where: { id: householdId },
+      select: { clearingPolicy: true },
+    }),
+    tx.debtObligation.findMany({
+      where: {
+        householdId,
+        settlementCurrency: currency,
+        status: DebtStatus.OPEN,
+      },
+      select: {
+        debtorUserId: true,
+        creditorUserId: true,
+        remainingAmount: true,
+        settlementCurrency: true,
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    }),
+  ]);
+
+  if (household?.clearingPolicy !== ClearingPolicy.HOUSEHOLD_NETTING) {
+    return null;
+  }
+
+  return (
+    computeSettlementSuggestions(obligations, {
+      clearingPolicy: household.clearingPolicy,
+    }).find(
+      (suggestion) =>
+        suggestion.debtorUserId === payerUserId &&
+        suggestion.creditorUserId === payeeUserId &&
+        suggestion.currency === currency &&
+        suggestion.actionability === "CLEARING_SETTLEABLE",
+    ) ?? null
+  );
 }
 
 function buildAllocationPlan(amount: Decimal, obligations: AllocationCandidate[]) {
@@ -310,17 +399,40 @@ export async function createSettlementForHousehold(
       data.payeeUserId,
       data.currency,
     );
+    const directRemaining = totalRemaining(obligations);
+    let sourceType = "SettlementSuggestion";
+    let allocationPolicy = "OLDEST_OPEN_OBLIGATIONS";
+    let candidateDebtObligationIds = obligations.map((obligation) => obligation.id);
 
-    if (obligations.length === 0 || totalRemaining(obligations).isZero()) {
-      throw new ApiError(
-        409,
-        "NO_SETTLEABLE_OBLIGATIONS",
-        "No open obligations match this settlement transfer.",
+    if (obligations.length === 0 || directRemaining.isZero() || amount.gt(directRemaining)) {
+      const clearingSuggestion = await findClearingSuggestion(
+        tx,
+        householdId,
+        userId,
+        data.payeeUserId,
+        data.currency,
       );
-    }
 
-    if (amount.gt(totalRemaining(obligations))) {
-      throw new ApiError(409, "SETTLEMENT_OVERPAYS", "Settlement exceeds remaining obligation.");
+      if (!clearingSuggestion || amount.gt(new Decimal(clearingSuggestion.amount))) {
+        throw new ApiError(
+          409,
+          obligations.length > 0 ? "SETTLEMENT_OVERPAYS" : "NO_SETTLEABLE_OBLIGATIONS",
+          obligations.length > 0
+            ? "Settlement exceeds remaining obligation."
+            : "No open obligations match this settlement transfer.",
+        );
+      }
+
+      sourceType = "SettlementClearing";
+      allocationPolicy = "HOUSEHOLD_NETTING";
+      const [payerObligations, payeeObligations] = await Promise.all([
+        listOpenClearingPayerObligations(tx, householdId, userId, data.payeeUserId, data.currency),
+        listOpenClearingPayeeObligations(tx, householdId, userId, data.payeeUserId, data.currency),
+      ]);
+      candidateDebtObligationIds = [
+        ...payerObligations.map((obligation) => obligation.id),
+        ...payeeObligations.map((obligation) => obligation.id),
+      ];
     }
 
     const ledgerTransaction = await tx.ledgerTransaction.create({
@@ -328,7 +440,7 @@ export async function createSettlementForHousehold(
         householdId,
         type: LedgerTransactionType.SETTLEMENT_RECORDED,
         description: `Settlement submitted for ${data.currency} ${decimalToFixed6(amount)}`,
-        sourceType: "SettlementSuggestion",
+        sourceType,
         createdByUserId: userId,
         occurredAt: settlementDate,
       },
@@ -362,8 +474,8 @@ export async function createSettlementForHousehold(
         entityType: "Settlement",
         entityId: settlement.id,
         after: {
-          allocationPolicy: "OLDEST_OPEN_OBLIGATIONS",
-          candidateDebtObligationIds: obligations.map((obligation) => obligation.id),
+          allocationPolicy,
+          candidateDebtObligationIds,
           payerUserId: settlement.payerUserId,
           payeeUserId: settlement.payeeUserId,
           amount: settlement.amount.toString(),
@@ -419,6 +531,7 @@ export async function confirmSettlementForHousehold(
     const amount = new Decimal(settlement.amount.toString());
     let allocationPolicy = "OLDEST_OPEN_OBLIGATIONS";
     let obligations: AllocationCandidate[];
+    let allocationPlan: ReturnType<typeof buildAllocationPlan> | null = null;
 
     if (settlement.transaction.sourceType === "DebtObligation" && settlement.transaction.sourceId) {
       const obligation = await tx.debtObligation.findFirst({
@@ -456,11 +569,51 @@ export async function confirmSettlementForHousehold(
           "No open obligations match this settlement transfer.",
         );
       }
+    } else if (settlement.transaction.sourceType === "SettlementClearing") {
+      const clearingSuggestion = await findClearingSuggestion(
+        tx,
+        householdId,
+        settlement.payerUserId,
+        settlement.payeeUserId,
+        settlement.currency,
+      );
+
+      if (!clearingSuggestion || amount.gt(new Decimal(clearingSuggestion.amount))) {
+        throw new ApiError(
+          409,
+          "NO_SETTLEABLE_OBLIGATIONS",
+          "No open obligations match this settlement transfer.",
+        );
+      }
+
+      const [payerObligations, payeeObligations] = await Promise.all([
+        listOpenClearingPayerObligations(
+          tx,
+          householdId,
+          settlement.payerUserId,
+          settlement.payeeUserId,
+          settlement.currency,
+        ),
+        listOpenClearingPayeeObligations(
+          tx,
+          householdId,
+          settlement.payerUserId,
+          settlement.payeeUserId,
+          settlement.currency,
+        ),
+      ]);
+
+      allocationPolicy = "HOUSEHOLD_NETTING";
+      allocationPlan = [
+        ...buildAllocationPlan(amount, payerObligations),
+        ...buildAllocationPlan(amount, payeeObligations),
+      ];
+      obligations = [];
     } else {
       throw new ApiError(409, "SETTLEMENT_SOURCE_MISSING", "Settlement source is missing.");
     }
 
-    const allocationPlan = buildAllocationPlan(amount, obligations);
+    allocationPlan = allocationPlan ?? buildAllocationPlan(amount, obligations);
 
     for (const allocation of allocationPlan) {
       await tx.settlementAllocation.create({

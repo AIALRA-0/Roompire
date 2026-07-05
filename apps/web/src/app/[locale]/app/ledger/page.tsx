@@ -213,13 +213,15 @@ export default async function LedgerPage({ params }: PageProps) {
                         <p className="mt-1 text-xs text-muted-foreground">
                           {suggestion.actionability === "DIRECTLY_SETTLEABLE"
                             ? ledger("directlySettleable")
-                            : ledger("guidanceOnlySuggestion")}
+                            : suggestion.actionability === "CLEARING_SETTLEABLE"
+                              ? ledger("clearingSettleable")
+                              : ledger("guidanceOnlySuggestion")}
                         </p>
                       </div>
                       <Badge
                         data-testid={`settlement-suggestion-actionability-${suggestion.debtorUserId}-${suggestion.creditorUserId}-${suggestion.currency}`}
                         variant={
-                          suggestion.actionability === "DIRECTLY_SETTLEABLE" ? "success" : "neutral"
+                          suggestion.actionability === "GUIDANCE_ONLY" ? "neutral" : "success"
                         }
                       >
                         {suggestion.currency} {suggestion.amount}
@@ -257,7 +259,9 @@ export default async function LedgerPage({ params }: PageProps) {
                   noSettlementActions: ledger("noSettlementActions"),
                   noPendingSettlements: ledger("noPendingSettlements"),
                   suggestedTransfer: ledger("suggestedTransfer"),
+                  clearingSettlement: ledger("clearingSettlement"),
                   suggestedTransfersHint: ledger("suggestedTransfersHint"),
+                  clearingTransfersHint: ledger("clearingTransfersHint"),
                   directObligations: ledger("directObligations"),
                   manualMethod: ledger("manualMethod"),
                   payer: ledger("payer"),

@@ -30,7 +30,9 @@ type SettlementLabels = {
   noSettlementActions: string;
   noPendingSettlements: string;
   suggestedTransfer: string;
+  clearingSettlement: string;
   suggestedTransfersHint: string;
+  clearingTransfersHint: string;
   directObligations: string;
   manualMethod: string;
   payer: string;
@@ -115,8 +117,7 @@ export function SettlementActions({
   );
   const recordableSuggestions = suggestions.filter(
     (suggestion) =>
-      suggestion.debtorUserId === currentUserId &&
-      suggestion.actionability === "DIRECTLY_SETTLEABLE",
+      suggestion.debtorUserId === currentUserId && suggestion.actionability !== "GUIDANCE_ONLY",
   );
   const pendingSettlements = settlements.filter(
     (settlement) => settlement.status === "SUBMITTED" && settlement.payeeUserId === currentUserId,
@@ -234,11 +235,16 @@ export function SettlementActions({
                         {memberName(memberNamesByUserId, suggestion.creditorUserId)} {labels.payee}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {labels.suggestedTransfer}: {suggestion.currency} {suggestion.amount} ·{" "}
+                        {suggestion.actionability === "CLEARING_SETTLEABLE"
+                          ? labels.clearingSettlement
+                          : labels.suggestedTransfer}
+                        : {suggestion.currency} {suggestion.amount} ·{" "}
                         {suggestion.directOpenObligationCount} {labels.directObligations}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {labels.suggestedTransfersHint}
+                        {suggestion.actionability === "CLEARING_SETTLEABLE"
+                          ? labels.clearingTransfersHint
+                          : labels.suggestedTransfersHint}
                       </p>
                     </div>
                     <Badge variant="success">
@@ -252,7 +258,11 @@ export function SettlementActions({
                         className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                         data-testid={`suggested-settlement-amount-${key}`}
                         defaultValue={suggestion.amount}
-                        max={decimalInputValue(Number(suggestion.directRemainingAmount))}
+                        max={
+                          suggestion.actionability === "CLEARING_SETTLEABLE"
+                            ? suggestion.amount
+                            : decimalInputValue(Number(suggestion.directRemainingAmount))
+                        }
                         min="0.000001"
                         name="amount"
                         required
@@ -419,9 +429,11 @@ export function SettlementActions({
                         {memberName(memberNamesByUserId, settlement.payerUserId)} {labels.payer}
                         {sourceObligation
                           ? ` · ${labels.remaining}: ${sourceObligation.settlementCurrency} ${sourceObligation.remainingAmount}`
-                          : settlement.sourceTransaction.sourceType === "SettlementSuggestion"
-                            ? ` · ${labels.suggestedTransfer}`
-                            : ""}
+                          : settlement.sourceTransaction.sourceType === "SettlementClearing"
+                            ? ` · ${labels.clearingSettlement}`
+                            : settlement.sourceTransaction.sourceType === "SettlementSuggestion"
+                              ? ` · ${labels.suggestedTransfer}`
+                              : ""}
                       </p>
                     </div>
                     <Badge variant="warning">{settlement.status}</Badge>

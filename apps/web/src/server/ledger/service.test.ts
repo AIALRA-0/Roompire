@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ClearingPolicy } from "@prisma/client";
 import { computeSettlementSuggestions } from "./service";
 
 describe("computeSettlementSuggestions", () => {
@@ -29,6 +30,40 @@ describe("computeSettlementSuggestions", () => {
         directOpenObligationCount: 0,
         directRemainingAmount: "0",
         actionability: "GUIDANCE_ONLY",
+      },
+    ]);
+  });
+
+  it("marks non-direct netted transfers actionable when household netting is enabled", () => {
+    const suggestions = computeSettlementSuggestions(
+      [
+        {
+          debtorUserId: "alice",
+          creditorUserId: "bob",
+          remainingAmount: "10",
+          settlementCurrency: "CNY",
+        },
+        {
+          debtorUserId: "bob",
+          creditorUserId: "chen",
+          remainingAmount: "10",
+          settlementCurrency: "CNY",
+        },
+      ],
+      { clearingPolicy: ClearingPolicy.HOUSEHOLD_NETTING },
+    );
+
+    expect(suggestions).toEqual([
+      {
+        debtorUserId: "alice",
+        creditorUserId: "chen",
+        amount: "10",
+        currency: "CNY",
+        debtorOpenObligationCount: 1,
+        creditorOpenObligationCount: 1,
+        directOpenObligationCount: 0,
+        directRemainingAmount: "0",
+        actionability: "CLEARING_SETTLEABLE",
       },
     ]);
   });

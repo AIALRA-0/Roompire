@@ -25,6 +25,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         defaultLocale: household.defaultLocale,
         fxPolicy: household.fxPolicy,
         approvalPolicy: household.approvalPolicy,
+        clearingPolicy: household.clearingPolicy,
       },
     });
   } catch (error) {

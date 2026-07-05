@@ -127,6 +127,7 @@ Before Playwright starts the dev server, `pnpm e2e:prepare` resets only allowed 
 2. Creditor confirms if required.
 3. Balance decreases.
 4. Settlement appears in ledger and calendar/history.
+5. With household netting enabled, a non-direct optimized transfer can be submitted by the net debtor, confirmed by the net creditor, and allocated across both sides' open obligations.
 
 ### Calendar/task path
 

@@ -109,9 +109,12 @@ export default async function AppPage({ params }: PageProps) {
     defaultLocale: identity("defaultLocale"),
     fxPolicy: identity("fxPolicy"),
     approvalPolicy: identity("approvalPolicy"),
+    clearingPolicy: identity("clearingPolicy"),
     approvalEachDebtor: identity("approvalEachDebtor"),
     approvalAllParticipants: identity("approvalAllParticipants"),
     approvalPayerOnly: identity("approvalPayerOnly"),
+    clearingDirectOnly: identity("clearingDirectOnly"),
+    clearingHouseholdNetting: identity("clearingHouseholdNetting"),
     fxLockExpenseDate: identity("fxLockExpenseDate"),
     fxOriginalCurrency: identity("fxOriginalCurrency"),
     fxManualApproval: identity("fxManualApproval"),
@@ -411,6 +414,8 @@ export default async function AppPage({ params }: PageProps) {
                   fxPolicy: membership.household.fxPolicy,
                   approvalPolicy: membership.household.approvalPolicy as
                     "PAYER_AND_EACH_DEBTOR" | "ALL_PARTICIPANTS" | "PAYER_ONLY",
+                  clearingPolicy: membership.household.clearingPolicy as
+                    "DIRECT_ONLY" | "HOUSEHOLD_NETTING",
                 }))}
                 labels={identityLabels}
                 locale={locale}

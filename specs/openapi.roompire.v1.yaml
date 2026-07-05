@@ -58,6 +58,9 @@ components:
     ApprovalPolicy:
       type: string
       enum: [PAYER_AND_EACH_DEBTOR, ALL_PARTICIPANTS, PAYER_ONLY]
+    ClearingPolicy:
+      type: string
+      enum: [DIRECT_ONLY, HOUSEHOLD_NETTING]
     ApprovalDecision:
       type: string
       enum: [APPROVED, REJECTED, REQUEST_CHANGES]
@@ -397,7 +400,17 @@ components:
         preferredLocale: { type: string, enum: [zh-CN, en-US] }
     Household:
       type: object
-      required: [id, name, timezone, settlementCurrency, defaultLocale, fxPolicy, approvalPolicy]
+      required:
+        [
+          id,
+          name,
+          timezone,
+          settlementCurrency,
+          defaultLocale,
+          fxPolicy,
+          approvalPolicy,
+          clearingPolicy,
+        ]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -406,10 +419,21 @@ components:
         defaultLocale: { type: string, enum: [zh-CN, en-US] }
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
         approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
+        clearingPolicy: { $ref: "#/components/schemas/ClearingPolicy" }
     HouseholdMembershipSummary:
       type: object
       required:
-        [id, name, timezone, settlementCurrency, defaultLocale, fxPolicy, approvalPolicy, role]
+        [
+          id,
+          name,
+          timezone,
+          settlementCurrency,
+          defaultLocale,
+          fxPolicy,
+          approvalPolicy,
+          clearingPolicy,
+          role,
+        ]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -418,6 +442,7 @@ components:
         defaultLocale: { type: string, enum: [zh-CN, en-US] }
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
         approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
+        clearingPolicy: { $ref: "#/components/schemas/ClearingPolicy" }
         role: { $ref: "#/components/schemas/Role" }
     CreateHouseholdRequest:
       type: object
@@ -429,7 +454,16 @@ components:
         defaultLocale: { type: string, enum: [zh-CN, en-US] }
     UpdateHouseholdRequest:
       type: object
-      required: [name, timezone, settlementCurrency, defaultLocale, fxPolicy, approvalPolicy]
+      required:
+        [
+          name,
+          timezone,
+          settlementCurrency,
+          defaultLocale,
+          fxPolicy,
+          approvalPolicy,
+          clearingPolicy,
+        ]
       properties:
         name: { type: string, minLength: 2, maxLength: 80 }
         timezone: { type: string, example: America/Los_Angeles }
@@ -437,6 +471,7 @@ components:
         defaultLocale: { type: string, enum: [zh-CN, en-US] }
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
         approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
+        clearingPolicy: { $ref: "#/components/schemas/ClearingPolicy" }
     Member:
       type: object
       required: [id, userId, role, displayName]
@@ -1162,7 +1197,7 @@ components:
         directRemainingAmount: { $ref: "#/components/schemas/DecimalString" }
         actionability:
           type: string
-          enum: [DIRECTLY_SETTLEABLE, GUIDANCE_ONLY]
+          enum: [DIRECTLY_SETTLEABLE, CLEARING_SETTLEABLE, GUIDANCE_ONLY]
     SettlementSuggestionListResponse:
       type: object
       required: [suggestions]

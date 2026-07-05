@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { FxPolicy, Role, type Prisma } from "@prisma/client";
+import { ClearingPolicy, FxPolicy, Role, type Prisma } from "@prisma/client";
 import { z } from "zod";
 import categoriesSeed from "../../../../../seed-data/initial_categories.json";
 import { ApiError, validationError } from "@/server/api/errors";
@@ -46,6 +46,7 @@ export const updateHouseholdSchema = z.object({
     "FX_DIFFERENCE_ADJUSTMENT",
   ]),
   approvalPolicy: z.enum(["PAYER_AND_EACH_DEBTOR", "ALL_PARTICIPANTS", "PAYER_ONLY"]),
+  clearingPolicy: z.enum(["DIRECT_ONLY", "HOUSEHOLD_NETTING"]),
 });
 
 export const createInviteSchema = z.object({
@@ -133,6 +134,7 @@ export async function createHouseholdForUser(userId: string, input: unknown) {
         settlementCurrency: data.settlementCurrency,
         defaultLocale: data.defaultLocale,
         fxPolicy: FxPolicy.LOCK_AT_EXPENSE_DATE,
+        clearingPolicy: ClearingPolicy.DIRECT_ONLY,
         createdByUserId: userId,
       },
     });
@@ -196,6 +198,7 @@ export async function updateHouseholdForUser(userId: string, householdId: string
         defaultLocale: data.defaultLocale,
         fxPolicy: data.fxPolicy,
         approvalPolicy: data.approvalPolicy,
+        clearingPolicy: data.clearingPolicy,
       },
     });
 
@@ -213,6 +216,7 @@ export async function updateHouseholdForUser(userId: string, householdId: string
           defaultLocale: previous.defaultLocale,
           fxPolicy: previous.fxPolicy,
           approvalPolicy: previous.approvalPolicy,
+          clearingPolicy: previous.clearingPolicy,
         },
         after: {
           name: household.name,
@@ -221,6 +225,7 @@ export async function updateHouseholdForUser(userId: string, householdId: string
           defaultLocale: household.defaultLocale,
           fxPolicy: household.fxPolicy,
           approvalPolicy: household.approvalPolicy,
+          clearingPolicy: household.clearingPolicy,
         },
       },
     });

@@ -1,5 +1,5 @@
 import Decimal from "decimal.js";
-import { DebtStatus, LedgerTransactionType } from "@prisma/client";
+import { ClearingPolicy, DebtStatus, LedgerTransactionType } from "@prisma/client";
 import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
@@ -22,7 +22,7 @@ export type SettlementSuggestion = {
   creditorOpenObligationCount: number;
   directOpenObligationCount: number;
   directRemainingAmount: string;
-  actionability: "DIRECTLY_SETTLEABLE" | "GUIDANCE_ONLY";
+  actionability: "DIRECTLY_SETTLEABLE" | "CLEARING_SETTLEABLE" | "GUIDANCE_ONLY";
 };
 
 type SettlementSuggestionObligationInput = {
@@ -174,7 +174,9 @@ export async function listBalanceEdgesForHousehold(userId: string, householdId: 
 
 export function computeSettlementSuggestions(
   obligations: SettlementSuggestionObligationInput[],
+  options: { clearingPolicy?: ClearingPolicy } = {},
 ): SettlementSuggestion[] {
+  const clearingPolicy = options.clearingPolicy ?? ClearingPolicy.DIRECT_ONLY;
   const directObligationStats = new Map<
     string,
     {
@@ -293,7 +295,9 @@ export function computeSettlementSuggestions(
           directRemainingAmount: decimalToCompactString(directStats.remainingAmount),
           actionability: directStats.remainingAmount.gte(amount)
             ? "DIRECTLY_SETTLEABLE"
-            : "GUIDANCE_ONLY",
+            : clearingPolicy === ClearingPolicy.HOUSEHOLD_NETTING && directStats.count === 0
+              ? "CLEARING_SETTLEABLE"
+              : "GUIDANCE_ONLY",
         });
       }
 
@@ -316,21 +320,29 @@ export function computeSettlementSuggestions(
 export async function listSettlementSuggestionsForHousehold(userId: string, householdId: string) {
   await requireActiveMembership(userId, householdId);
 
-  const obligations = await prisma.debtObligation.findMany({
-    where: {
-      householdId,
-      status: DebtStatus.OPEN,
-    },
-    select: {
-      debtorUserId: true,
-      creditorUserId: true,
-      remainingAmount: true,
-      settlementCurrency: true,
-    },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-  });
+  const [household, obligations] = await Promise.all([
+    prisma.household.findUnique({
+      where: { id: householdId },
+      select: { clearingPolicy: true },
+    }),
+    prisma.debtObligation.findMany({
+      where: {
+        householdId,
+        status: DebtStatus.OPEN,
+      },
+      select: {
+        debtorUserId: true,
+        creditorUserId: true,
+        remainingAmount: true,
+        settlementCurrency: true,
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    }),
+  ]);
 
-  return computeSettlementSuggestions(obligations);
+  return computeSettlementSuggestions(obligations, {
+    clearingPolicy: household?.clearingPolicy ?? ClearingPolicy.DIRECT_ONLY,
+  });
 }
 
 export async function reverseLedgerObligationForHousehold(

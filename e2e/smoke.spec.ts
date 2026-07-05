@@ -1199,7 +1199,7 @@ test.describe("Roompire real browser smoke", () => {
         currency: string;
         directOpenObligationCount: number;
         directRemainingAmount: string;
-        actionability: "DIRECTLY_SETTLEABLE" | "GUIDANCE_ONLY";
+        actionability: "DIRECTLY_SETTLEABLE" | "CLEARING_SETTLEABLE" | "GUIDANCE_ONLY";
       }>;
     };
     expect(guidanceSuggestionsPayload.suggestions).toContainEqual(
@@ -1463,6 +1463,7 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("settings-household-locale").selectOption("zh-CN");
     await page.getByTestId("settings-household-fx-policy").selectOption("ORIGINAL_CURRENCY_DEBT");
     await page.getByTestId("settings-household-approval-policy").selectOption("ALL_PARTICIPANTS");
+    await page.getByTestId("settings-household-clearing-policy").selectOption("HOUSEHOLD_NETTING");
     await page.getByRole("button", { name: "Save settings" }).click();
 
     await expect(page.getByRole("heading", { name: updatedName })).toBeVisible();
@@ -1998,7 +1999,7 @@ test.describe("Roompire real browser smoke", () => {
         creditorOpenObligationCount: number;
         directOpenObligationCount: number;
         directRemainingAmount: string;
-        actionability: "DIRECTLY_SETTLEABLE" | "GUIDANCE_ONLY";
+        actionability: "DIRECTLY_SETTLEABLE" | "CLEARING_SETTLEABLE" | "GUIDANCE_ONLY";
       }>;
     };
     expect(suggestionsPayload.suggestions).toEqual([
@@ -2560,7 +2561,7 @@ test.describe("Roompire real browser smoke", () => {
         currency: string;
         directOpenObligationCount: number;
         directRemainingAmount: string;
-        actionability: "DIRECTLY_SETTLEABLE" | "GUIDANCE_ONLY";
+        actionability: "DIRECTLY_SETTLEABLE" | "CLEARING_SETTLEABLE" | "GUIDANCE_ONLY";
       }>;
     };
     expect(adjustmentSuggestionsPayload.suggestions).toEqual([
@@ -3328,6 +3329,277 @@ test.describe("Roompire real browser smoke", () => {
     expect(suggestionsResponse.ok()).toBeTruthy();
     const suggestionsPayload = (await suggestionsResponse.json()) as { suggestions: unknown[] };
     expect(suggestionsPayload.suggestions).toEqual([]);
+  });
+
+  test("household netting clearing settles a non-direct suggestion", async ({ page }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `clearing-owner+${suffix}@example.test`;
+    const bobEmail = `clearing-bob+${suffix}@example.test`;
+    const chenEmail = `clearing-chen+${suffix}@example.test`;
+    const householdName = `Clearing House ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "Clearing Owner E2E");
+    const householdResponse = await postApiWithRetry(page, "/api/v1/households", {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+      },
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(householdResponse.ok()).toBeTruthy();
+    const householdPayload = (await householdResponse.json()) as {
+      household: { id: string };
+    };
+    const householdId = householdPayload.household.id;
+
+    const bobInvite = await createInviteWithRetry(
+      page,
+      householdId,
+      { email: bobEmail, role: "MEMBER" },
+      ownerEmail,
+    );
+    const chenInvite = await createInviteWithRetry(
+      page,
+      householdId,
+      { email: chenEmail, role: "MEMBER" },
+      ownerEmail,
+    );
+
+    for (const [email, displayName, token] of [
+      [bobEmail, "Clearing Bob E2E", bobInvite.token],
+      [chenEmail, "Clearing Chen E2E", chenInvite.token],
+    ] as const) {
+      await setDevSessionWithRetry(page, email, displayName);
+      const acceptResponse = await postApiWithRetry(page, "/api/v1/invites/accept", {
+        data: { token },
+        headers: {
+          "x-roompire-dev-user-email": email,
+        },
+      });
+      expect(acceptResponse.ok()).toBeTruthy();
+    }
+
+    await setDevSessionWithRetry(page, ownerEmail, "Clearing Owner E2E");
+    await page.goto("/en-US/app");
+    await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
+    await page.getByTestId("settings-household-clearing-policy").selectOption("HOUSEHOLD_NETTING");
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await expect(page.getByText("Settings saved")).toBeVisible();
+
+    const membersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(membersResponse.ok()).toBeTruthy();
+    const membersPayload = (await membersResponse.json()) as {
+      members: Array<{ userId: string; email: string }>;
+    };
+    const ownerUserId = membersPayload.members.find(
+      (member) => member.email === ownerEmail,
+    )?.userId;
+    const bobUserId = membersPayload.members.find((member) => member.email === bobEmail)?.userId;
+    const chenUserId = membersPayload.members.find((member) => member.email === chenEmail)?.userId;
+    expect(ownerUserId).toBeTruthy();
+    expect(bobUserId).toBeTruthy();
+    expect(chenUserId).toBeTruthy();
+    if (!ownerUserId || !bobUserId || !chenUserId) {
+      throw new Error("Expected clearing test users to exist.");
+    }
+
+    async function createAdjustment(debtorUserId: string, creditorUserId: string, reason: string) {
+      const response = await postApiWithRetry(
+        page,
+        `/api/v1/households/${householdId}/ledger/adjustments`,
+        {
+          data: {
+            debtorUserId,
+            creditorUserId,
+            amount: "10",
+            currency: "CNY",
+            occurredAt: "2026-07-04",
+            reason,
+          },
+          headers: {
+            "Idempotency-Key": `clearing-adjustment-${reason}-${Date.now()}`,
+            "x-roompire-dev-user-email": ownerEmail,
+          },
+        },
+      );
+      expect(response.status()).toBe(201);
+      const payload = (await response.json()) as {
+        transaction: { obligations: Array<{ id: string }> };
+      };
+      const obligationId = payload.transaction.obligations[0]?.id;
+      expect(obligationId).toBeTruthy();
+      return obligationId!;
+    }
+
+    const bobToOwnerObligationId = await createAdjustment(
+      bobUserId,
+      ownerUserId,
+      `Clearing Bob to owner ${suffix}`,
+    );
+    const ownerToChenObligationId = await createAdjustment(
+      ownerUserId,
+      chenUserId,
+      `Clearing owner to Chen ${suffix}`,
+    );
+
+    const suggestionsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/settlement-suggestions`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": bobEmail,
+        },
+      },
+    );
+    expect(suggestionsResponse.ok()).toBeTruthy();
+    const suggestionsPayload = (await suggestionsResponse.json()) as {
+      suggestions: Array<{
+        debtorUserId: string;
+        creditorUserId: string;
+        amount: string;
+        currency: string;
+        directOpenObligationCount: number;
+        actionability: "DIRECTLY_SETTLEABLE" | "CLEARING_SETTLEABLE" | "GUIDANCE_ONLY";
+      }>;
+    };
+    expect(suggestionsPayload.suggestions).toContainEqual(
+      expect.objectContaining({
+        debtorUserId: bobUserId,
+        creditorUserId: chenUserId,
+        amount: "10",
+        currency: "CNY",
+        directOpenObligationCount: 0,
+        actionability: "CLEARING_SETTLEABLE",
+      }),
+    );
+
+    const transferKey = `${bobUserId}-${chenUserId}-CNY`;
+    await setDevSessionWithRetry(page, bobEmail, "Clearing Bob E2E");
+    await page.goto("/en-US/app/ledger");
+    const suggestionRow = page.getByTestId(`settlement-suggestion-${transferKey}`);
+    await expect(suggestionRow).toContainText("Clearing Bob E2E pays Clearing Chen E2E");
+    await expect(suggestionRow).toContainText(
+      "Household netting is enabled, so this non-direct transfer can be submitted for payee confirmation.",
+    );
+    const clearingForm = page.getByTestId(`suggested-settlement-form-${transferKey}`);
+    await expect(clearingForm).toContainText("Household clearing: CNY 10");
+    await page.getByTestId(`suggested-settlement-amount-${transferKey}`).fill("10");
+    await page.getByTestId(`suggested-settlement-date-${transferKey}`).fill("2026-07-04");
+    await clickSuggestedSettlementSubmitWithRetry(page, transferKey);
+
+    const submittedSettlementsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/settlements`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": bobEmail,
+        },
+      },
+    );
+    expect(submittedSettlementsResponse.ok()).toBeTruthy();
+    const submittedSettlementsPayload = (await submittedSettlementsResponse.json()) as {
+      settlements: Array<{
+        id: string;
+        amount: string;
+        currency: string;
+        status: string;
+        sourceTransaction: { sourceType: string | null; sourceId: string | null };
+        allocations: Array<{ amountApplied: string; debtObligationId: string }>;
+      }>;
+    };
+    const submittedSettlement = submittedSettlementsPayload.settlements.find(
+      (settlement) =>
+        settlement.amount === "10" &&
+        settlement.currency === "CNY" &&
+        settlement.sourceTransaction.sourceType === "SettlementClearing",
+    );
+    expect(submittedSettlement).toMatchObject({
+      amount: "10",
+      currency: "CNY",
+      status: "SUBMITTED",
+      sourceTransaction: {
+        sourceType: "SettlementClearing",
+        sourceId: null,
+      },
+      allocations: [],
+    });
+
+    await setDevSessionWithRetry(page, chenEmail, "Clearing Chen E2E");
+    await page.goto("/en-US/app/ledger");
+    const pendingSettlementRow = page.getByTestId(`pending-settlement-${submittedSettlement!.id}`);
+    await expect(pendingSettlementRow).toContainText("CNY 10");
+    await expect(pendingSettlementRow).toContainText("Household clearing");
+    await clickSettlementConfirmWithRetry(page, submittedSettlement!.id);
+
+    const confirmedSettlementsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/settlements`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(confirmedSettlementsResponse.ok()).toBeTruthy();
+    const confirmedSettlementsPayload =
+      (await confirmedSettlementsResponse.json()) as typeof submittedSettlementsPayload;
+    const confirmedSettlement = confirmedSettlementsPayload.settlements.find(
+      (settlement) => settlement.id === submittedSettlement!.id,
+    );
+    expect(confirmedSettlement).toBeTruthy();
+    expect(confirmedSettlement!.status).toBe("CONFIRMED");
+    expect(
+      confirmedSettlement!.allocations.map((allocation) => allocation.amountApplied).sort(),
+    ).toEqual(["10", "10"]);
+    expect(
+      confirmedSettlement!.allocations.map((allocation) => allocation.debtObligationId).sort(),
+    ).toEqual([bobToOwnerObligationId, ownerToChenObligationId].sort());
+
+    const settledObligationsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/ledger/obligations`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(settledObligationsResponse.ok()).toBeTruthy();
+    const settledObligationsPayload = (await settledObligationsResponse.json()) as {
+      obligations: Array<{ id: string; remainingAmount: string; status: string }>;
+    };
+    for (const obligationId of [bobToOwnerObligationId, ownerToChenObligationId]) {
+      expect(
+        settledObligationsPayload.obligations.find((obligation) => obligation.id === obligationId),
+      ).toMatchObject({
+        remainingAmount: "0",
+        status: "SETTLED",
+      });
+    }
+
+    const balancesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/balances`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(balancesResponse.ok()).toBeTruthy();
+    const balancesPayload = (await balancesResponse.json()) as { balances: unknown[] };
+    expect(balancesPayload.balances).toEqual([]);
   });
 
   test("debtor rejects a submitted expense share without ledger impact", async ({

@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
             timezone: activeMembership.household.timezone,
             settlementCurrency: activeMembership.household.settlementCurrency,
             fxPolicy: activeMembership.household.fxPolicy,
+            clearingPolicy: activeMembership.household.clearingPolicy,
           }
         : null,
     });

@@ -14,6 +14,7 @@ type FxPolicy =
   | "MANUAL_RATE_WITH_APPROVAL"
   | "FX_DIFFERENCE_ADJUSTMENT";
 type ApprovalPolicy = "PAYER_AND_EACH_DEBTOR" | "ALL_PARTICIPANTS" | "PAYER_ONLY";
+type ClearingPolicy = "DIRECT_ONLY" | "HOUSEHOLD_NETTING";
 type JsonMethod = "POST" | "PATCH" | "DELETE";
 
 type HouseholdSummary = {
@@ -25,6 +26,7 @@ type HouseholdSummary = {
   defaultLocale: DefaultLocale;
   fxPolicy: FxPolicy;
   approvalPolicy: ApprovalPolicy;
+  clearingPolicy: ClearingPolicy;
 };
 
 type MemberSummary = {
@@ -55,9 +57,12 @@ type IdentityLabels = {
   defaultLocale: string;
   fxPolicy: string;
   approvalPolicy: string;
+  clearingPolicy: string;
   approvalEachDebtor: string;
   approvalAllParticipants: string;
   approvalPayerOnly: string;
+  clearingDirectOnly: string;
+  clearingHouseholdNetting: string;
   fxLockExpenseDate: string;
   fxOriginalCurrency: string;
   fxManualApproval: string;
@@ -217,6 +222,13 @@ function approvalPolicyOptions(labels: IdentityLabels) {
   ] satisfies Array<{ value: ApprovalPolicy; label: string }>;
 }
 
+function clearingPolicyOptions(labels: IdentityLabels) {
+  return [
+    { value: "DIRECT_ONLY", label: labels.clearingDirectOnly },
+    { value: "HOUSEHOLD_NETTING", label: labels.clearingHouseholdNetting },
+  ] satisfies Array<{ value: ClearingPolicy; label: string }>;
+}
+
 export function IdentityWorkspace({
   locale,
   currentUserEmail,
@@ -318,6 +330,7 @@ export function IdentityWorkspace({
           defaultLocale: String(formData.get("defaultLocale") ?? "en-US"),
           fxPolicy: String(formData.get("fxPolicy") ?? "LOCK_AT_EXPENSE_DATE"),
           approvalPolicy: String(formData.get("approvalPolicy") ?? "PAYER_AND_EACH_DEBTOR"),
+          clearingPolicy: String(formData.get("clearingPolicy") ?? "DIRECT_ONLY"),
         },
         labels.errorFallback,
         "PATCH",
@@ -576,21 +589,38 @@ export function IdentityWorkspace({
                 </select>
               </Field>
             </div>
-            <Field label={labels.approvalPolicy}>
-              <select
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                data-testid="settings-household-approval-policy"
-                defaultValue={activeHousehold?.approvalPolicy ?? "PAYER_AND_EACH_DEBTOR"}
-                disabled={settingsDisabled}
-                name="approvalPolicy"
-              >
-                {approvalPolicyOptions(labels).map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.approvalPolicy}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="settings-household-approval-policy"
+                  defaultValue={activeHousehold?.approvalPolicy ?? "PAYER_AND_EACH_DEBTOR"}
+                  disabled={settingsDisabled}
+                  name="approvalPolicy"
+                >
+                  {approvalPolicyOptions(labels).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={labels.clearingPolicy}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="settings-household-clearing-policy"
+                  defaultValue={activeHousehold?.clearingPolicy ?? "DIRECT_ONLY"}
+                  disabled={settingsDisabled}
+                  name="clearingPolicy"
+                >
+                  {clearingPolicyOptions(labels).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
             <Button disabled={isPending || settingsDisabled} type="submit">
               {isPending ? labels.working : labels.saveSettings}
             </Button>

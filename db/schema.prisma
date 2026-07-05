@@ -31,6 +31,11 @@ enum FxPolicy {
   FX_DIFFERENCE_ADJUSTMENT
 }
 
+enum ClearingPolicy {
+  DIRECT_ONLY
+  HOUSEHOLD_NETTING
+}
+
 enum SplitMethod {
   EQUAL
   EXACT
@@ -112,17 +117,18 @@ model User {
 }
 
 model Household {
-  id                 String   @id @default(uuid()) @db.Uuid
+  id                 String         @id @default(uuid()) @db.Uuid
   name               String
-  slug               String?  @unique
-  defaultLocale      String   @default("en-US")
-  timezone           String   @default("America/Los_Angeles")
-  settlementCurrency String   @default("CNY") @db.Char(3)
-  fxPolicy           FxPolicy @default(LOCK_AT_EXPENSE_DATE)
-  approvalPolicy     String   @default("PAYER_AND_EACH_DEBTOR")
-  createdByUserId    String   @db.Uuid
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  slug               String?        @unique
+  defaultLocale      String         @default("en-US")
+  timezone           String         @default("America/Los_Angeles")
+  settlementCurrency String         @default("CNY") @db.Char(3)
+  fxPolicy           FxPolicy       @default(LOCK_AT_EXPENSE_DATE)
+  approvalPolicy     String         @default("PAYER_AND_EACH_DEBTOR")
+  clearingPolicy     ClearingPolicy @default(DIRECT_ONLY)
+  createdByUserId    String         @db.Uuid
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
   createdBy          User                  @relation("HouseholdCreator", fields: [createdByUserId], references: [id])
   memberships        HouseholdMembership[]

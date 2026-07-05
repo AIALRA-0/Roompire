@@ -1,0 +1,4 @@
+CREATE TYPE "ClearingPolicy" AS ENUM ('DIRECT_ONLY', 'HOUSEHOLD_NETTING');
+
+ALTER TABLE "Household"
+  ADD COLUMN "clearingPolicy" "ClearingPolicy" NOT NULL DEFAULT 'DIRECT_ONLY';

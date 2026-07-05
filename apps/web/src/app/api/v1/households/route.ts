@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
         defaultLocale: membership.household.defaultLocale,
         fxPolicy: membership.household.fxPolicy,
         approvalPolicy: membership.household.approvalPolicy,
+        clearingPolicy: membership.household.clearingPolicy,
         role: membership.role,
       })),
     });
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
           defaultLocale: household.defaultLocale,
           fxPolicy: household.fxPolicy,
           approvalPolicy: household.approvalPolicy,
+          clearingPolicy: household.clearingPolicy,
           role: membership.role,
         },
       },
