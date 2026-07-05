@@ -91,7 +91,7 @@ function Field({
   children: React.ReactNode;
 }>) {
   return (
-    <label className="grid min-w-0 gap-1.5 text-sm font-medium">
+    <label className="grid min-w-0 max-w-full gap-1.5 text-sm font-medium">
       <span>{label}</span>
       {children}
     </label>
@@ -186,20 +186,20 @@ export function LedgerCorrectionActions({
   }
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-card">
+    <section className="mt-6 min-w-0 rounded-lg border border-border bg-card">
       <div className="border-b border-border p-5">
         <h2 className="text-lg font-semibold">{labels.corrections}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{labels.correctionsHint}</p>
       </div>
-      <div className="grid gap-6 p-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <form className="grid gap-3" onSubmit={createAdjustment}>
+      <div className="grid min-w-0 gap-6 p-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+        <form className="grid min-w-0 gap-3" onSubmit={createAdjustment}>
           <div>
             <h3 className="text-sm font-semibold">{labels.manualAdjustment}</h3>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
             <Field label={labels.debtor}>
               <select
-                className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                className="h-10 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="ledger-adjustment-debtor"
                 name="debtorUserId"
                 required
@@ -214,7 +214,7 @@ export function LedgerCorrectionActions({
             </Field>
             <Field label={labels.creditor}>
               <select
-                className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                className="h-10 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="ledger-adjustment-creditor"
                 name="creditorUserId"
                 required
@@ -228,7 +228,7 @@ export function LedgerCorrectionActions({
               </select>
             </Field>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-3">
             <Field label={labels.amount}>
               <input
                 className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
@@ -262,7 +262,7 @@ export function LedgerCorrectionActions({
               />
             </Field>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
             <Field label={labels.dueDate}>
               <input
                 className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-ring"
@@ -292,19 +292,19 @@ export function LedgerCorrectionActions({
           </Button>
         </form>
 
-        <div className="grid content-start gap-3">
+        <div className="grid min-w-0 content-start gap-3">
           <h3 className="text-sm font-semibold">{labels.reverseObligation}</h3>
           {reversibleObligations.length > 0 ? (
-            <div className="grid gap-3">
+            <div className="grid min-w-0 gap-3">
               {reversibleObligations.map((obligation) => (
                 <form
-                  className="grid gap-3 rounded-md border border-border bg-background p-3"
+                  className="grid min-w-0 gap-3 rounded-md border border-border bg-background p-3"
                   data-testid={`ledger-reversal-form-${obligation.id}`}
                   key={obligation.id}
                   onSubmit={(event) => reverseObligation(event, obligation.id)}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
+                  <div className="flex min-w-0 max-w-full flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 max-w-full">
                       <p className="truncate text-sm font-medium">
                         {memberName(memberNamesByUserId, obligation.debtorUserId)} ·{" "}
                         {memberName(memberNamesByUserId, obligation.creditorUserId)}

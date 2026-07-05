@@ -28,6 +28,12 @@ const currencySchema = z
   .transform((value) => value.toUpperCase())
   .pipe(z.string().regex(/^[A-Z]{3}$/));
 
+const optionalMetadataSchema = (maxLength: number) =>
+  z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().trim().max(maxLength).optional(),
+  );
+
 export const createSettlementSchema = z
   .object({
     debtObligationId: z.string().uuid().optional(),
@@ -36,7 +42,8 @@ export const createSettlementSchema = z
     amount: decimalStringSchema,
     settlementDate: dateOnlySchema,
     method: z.string().trim().min(1).max(60).default("manual"),
-    note: z.string().trim().max(500).optional(),
+    paymentReference: optionalMetadataSchema(160),
+    note: optionalMetadataSchema(500),
     fileIds: z.array(z.string().uuid()).max(5).default([]),
   })
   .superRefine((value, context) => {
@@ -414,6 +421,7 @@ export async function createSettlementForHousehold(
           currency: obligation.settlementCurrency,
           settlementDate,
           method: data.method,
+          paymentReference: data.paymentReference,
           status: SettlementStatus.SUBMITTED,
           note: data.note,
           createdByUserId: userId,
@@ -441,6 +449,9 @@ export async function createSettlementForHousehold(
             payeeUserId: obligation.creditorUserId,
             amount: settlement.amount.toString(),
             currency: settlement.currency,
+            method: settlement.method,
+            paymentReference: settlement.paymentReference,
+            note: settlement.note,
             fileIds: data.fileIds,
             status: settlement.status,
           },
@@ -524,6 +535,7 @@ export async function createSettlementForHousehold(
         currency: data.currency,
         settlementDate,
         method: data.method,
+        paymentReference: data.paymentReference,
         status: SettlementStatus.SUBMITTED,
         note: data.note,
         createdByUserId: userId,
@@ -551,6 +563,9 @@ export async function createSettlementForHousehold(
           payeeUserId: settlement.payeeUserId,
           amount: settlement.amount.toString(),
           currency: settlement.currency,
+          method: settlement.method,
+          paymentReference: settlement.paymentReference,
+          note: settlement.note,
           fileIds: data.fileIds,
           status: settlement.status,
         },

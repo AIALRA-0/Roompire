@@ -80,7 +80,10 @@ export function serializeLedgerTransaction(transaction: LedgerTransactionWithRel
       payeeUserId: settlement.payeeUserId,
       amount: settlement.amount.toString(),
       currency: settlement.currency,
+      method: settlement.method,
+      paymentReference: settlement.paymentReference,
       status: settlement.status,
+      note: settlement.note,
     })),
   };
 }

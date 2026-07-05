@@ -435,6 +435,7 @@ model Settlement {
   currency            String           @db.Char(3)
   settlementDate      DateTime         @db.Date
   method              String
+  paymentReference    String?          @db.VarChar(160)
   status              SettlementStatus @default(SUBMITTED)
   note                String?
   createdByUserId     String           @db.Uuid

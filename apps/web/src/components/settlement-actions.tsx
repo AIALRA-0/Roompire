@@ -18,6 +18,7 @@ type SettlementLabels = {
   amount: string;
   date: string;
   method: string;
+  reference: string;
   note: string;
   evidence: string;
   evidenceHint: string;
@@ -201,6 +202,7 @@ export function SettlementActions({
           currency: suggestion.currency,
           settlementDate: String(formData.get("settlementDate") ?? ""),
           method: String(formData.get("method") ?? ""),
+          paymentReference: String(formData.get("paymentReference") ?? ""),
           note: String(formData.get("note") ?? ""),
           fileIds,
         },
@@ -237,6 +239,7 @@ export function SettlementActions({
           amount: String(formData.get("amount") ?? ""),
           settlementDate: String(formData.get("settlementDate") ?? ""),
           method: String(formData.get("method") ?? ""),
+          paymentReference: String(formData.get("paymentReference") ?? ""),
           note: String(formData.get("note") ?? ""),
           fileIds,
         },
@@ -272,8 +275,8 @@ export function SettlementActions({
   }
 
   return (
-    <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <div className="rounded-lg border border-border bg-card">
+    <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+      <div className="min-w-0 rounded-lg border border-border bg-card">
         <div className="border-b border-border p-5">
           <h2 className="text-lg font-semibold">{labels.settlementActions}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{labels.settlementActionsHint}</p>
@@ -291,8 +294,8 @@ export function SettlementActions({
                   key={key}
                   onSubmit={(event) => submitSuggestedSettlement(event, suggestion)}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
+                  <div className="flex min-w-0 max-w-full flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 max-w-full">
                       <p className="truncate text-sm font-medium">
                         {memberName(memberNamesByUserId, suggestion.debtorUserId)} {labels.payer} ·{" "}
                         {memberName(memberNamesByUserId, suggestion.creditorUserId)} {labels.payee}
@@ -356,7 +359,16 @@ export function SettlementActions({
                       />
                     </label>
                   </div>
-                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+                  <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] 2xl:items-end">
+                    <label className="grid gap-1.5 text-sm font-medium">
+                      <span>{labels.reference}</span>
+                      <input
+                        className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                        data-testid={`suggested-settlement-reference-${key}`}
+                        maxLength={160}
+                        name="paymentReference"
+                      />
+                    </label>
                     <label className="grid gap-1.5 text-sm font-medium">
                       <span>{labels.note}</span>
                       <input
@@ -380,6 +392,7 @@ export function SettlementActions({
                       </span>
                     </label>
                     <Button
+                      className="self-end"
                       data-testid={`suggested-settlement-submit-${key}`}
                       disabled={isPending || busyActionId === busyId}
                       type="submit"
@@ -398,8 +411,8 @@ export function SettlementActions({
                 key={obligation.id}
                 onSubmit={(event) => submitSettlement(event, obligation.id)}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
+                <div className="flex min-w-0 max-w-full flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 max-w-full">
                     <p className="truncate text-sm font-medium">
                       {memberName(memberNamesByUserId, obligation.debtorUserId)} {labels.payer} ·{" "}
                       {memberName(memberNamesByUserId, obligation.creditorUserId)} {labels.payee}
@@ -449,7 +462,16 @@ export function SettlementActions({
                     />
                   </label>
                 </div>
-                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+                <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] 2xl:items-end">
+                  <label className="grid gap-1.5 text-sm font-medium">
+                    <span>{labels.reference}</span>
+                    <input
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                      data-testid={`settlement-reference-${obligation.id}`}
+                      maxLength={160}
+                      name="paymentReference"
+                    />
+                  </label>
                   <label className="grid gap-1.5 text-sm font-medium">
                     <span>{labels.note}</span>
                     <input
@@ -473,6 +495,7 @@ export function SettlementActions({
                     </span>
                   </label>
                   <Button
+                    className="self-end"
                     data-testid={`settlement-submit-${obligation.id}`}
                     disabled={isPending || busyActionId === `submit-${obligation.id}`}
                     type="submit"
@@ -491,7 +514,7 @@ export function SettlementActions({
         )}
       </div>
 
-      <div className="rounded-lg border border-border bg-card">
+      <div className="min-w-0 rounded-lg border border-border bg-card">
         <div className="border-b border-border p-5">
           <h2 className="text-lg font-semibold">{labels.pendingSettlements}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{labels.pendingSettlementsHint}</p>
@@ -502,6 +525,13 @@ export function SettlementActions({
               const sourceObligation = settlement.sourceTransaction.sourceId
                 ? obligationsById.get(settlement.sourceTransaction.sourceId)
                 : null;
+              const metadataParts = [
+                `${labels.method}: ${settlement.method}`,
+                settlement.paymentReference
+                  ? `${labels.reference}: ${settlement.paymentReference}`
+                  : null,
+                settlement.note ? `${labels.note}: ${settlement.note}` : null,
+              ].filter(Boolean);
 
               return (
                 <div
@@ -509,8 +539,8 @@ export function SettlementActions({
                   data-testid={`pending-settlement-${settlement.id}`}
                   key={settlement.id}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
+                  <div className="flex min-w-0 max-w-full flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 max-w-full">
                       <p className="truncate text-sm font-medium">
                         {settlement.currency} {settlement.amount}
                       </p>
@@ -523,6 +553,12 @@ export function SettlementActions({
                             : settlement.sourceTransaction.sourceType === "SettlementSuggestion"
                               ? ` · ${labels.suggestedTransfer}`
                               : ""}
+                      </p>
+                      <p
+                        className="mt-1 break-all text-xs text-muted-foreground"
+                        data-testid={`pending-settlement-metadata-${settlement.id}`}
+                      >
+                        {metadataParts.join(" · ")}
                       </p>
                     </div>
                     <Badge variant="warning">{settlement.status}</Badge>

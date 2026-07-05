@@ -1117,14 +1117,17 @@ components:
         status: { $ref: "#/components/schemas/DebtStatus" }
     LedgerTransactionSettlement:
       type: object
-      required: [id, payerUserId, payeeUserId, amount, currency, status]
+      required: [id, payerUserId, payeeUserId, amount, currency, method, status]
       properties:
         id: { type: string, format: uuid }
         payerUserId: { type: string, format: uuid }
         payeeUserId: { type: string, format: uuid }
         amount: { $ref: "#/components/schemas/DecimalString" }
         currency: { $ref: "#/components/schemas/CurrencyCode" }
+        method: { type: string }
+        paymentReference: { type: string, maxLength: 160, nullable: true }
         status: { $ref: "#/components/schemas/SettlementStatus" }
+        note: { type: string, nullable: true }
     LedgerTransaction:
       type: object
       required: [id, householdId, type, occurredAt, createdAt, obligations, settlements]
@@ -1228,6 +1231,7 @@ components:
         currency: { $ref: "#/components/schemas/CurrencyCode" }
         settlementDate: { type: string, format: date }
         method: { type: string }
+        paymentReference: { type: string, maxLength: 160, nullable: true }
         status: { $ref: "#/components/schemas/SettlementStatus" }
         note: { type: string, nullable: true }
         createdByUserId: { type: string, format: uuid }
@@ -1250,6 +1254,7 @@ components:
           description: Positive amount, up to six decimal places, not exceeding the obligation remaining amount.
         settlementDate: { type: string, format: date }
         method: { type: string, minLength: 1, maxLength: 60, default: manual }
+        paymentReference: { type: string, maxLength: 160 }
         note: { type: string, maxLength: 500 }
         fileIds:
           type: array
@@ -1271,6 +1276,7 @@ components:
         currency: { $ref: "#/components/schemas/CurrencyCode" }
         settlementDate: { type: string, format: date }
         method: { type: string, minLength: 1, maxLength: 60, default: manual }
+        paymentReference: { type: string, maxLength: 160 }
         note: { type: string, maxLength: 500 }
         fileIds:
           type: array

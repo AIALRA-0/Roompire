@@ -2015,6 +2015,9 @@ test.describe("Roompire real browser smoke", () => {
     const householdName = `Expense House ${suffix}`;
     const proposalTitle = `E2E Grocery ${suffix}`;
     const settlementEvidenceFileName = `settlement-evidence-${suffix}.pdf`;
+    const settlementMethod = "WECHAT";
+    const settlementPaymentReference = `wx-e2e-${suffix}`;
+    const settlementNote = `Paid from E2E receipt ${suffix}`;
     const settlementEvidenceBuffer = Buffer.from(
       `%PDF-1.4\nRoompire settlement evidence ${suffix}\n%%EOF`,
     );
@@ -2360,6 +2363,11 @@ test.describe("Roompire real browser smoke", () => {
 
     await page.getByTestId(`settlement-amount-${primaryObligationId}`).fill("324");
     await page.getByTestId(`settlement-date-${primaryObligationId}`).fill("2026-07-04");
+    await page.getByTestId(`settlement-method-${primaryObligationId}`).fill(settlementMethod);
+    await page
+      .getByTestId(`settlement-reference-${primaryObligationId}`)
+      .fill(settlementPaymentReference);
+    await page.getByTestId(`settlement-note-${primaryObligationId}`).fill(settlementNote);
     await page.getByTestId(`settlement-evidence-${primaryObligationId}`).setInputFiles({
       name: settlementEvidenceFileName,
       mimeType: "application/pdf",
@@ -2381,6 +2389,9 @@ test.describe("Roompire real browser smoke", () => {
       settlements: Array<{
         id: string;
         amount: string;
+        method: string;
+        paymentReference: string | null;
+        note: string | null;
         status: string;
         allocations: unknown[];
         files: Array<{
@@ -2396,6 +2407,9 @@ test.describe("Roompire real browser smoke", () => {
     expect(submittedSettlementsPayload.settlements).toHaveLength(1);
     expect(submittedSettlementsPayload.settlements[0]).toMatchObject({
       amount: "324",
+      method: settlementMethod,
+      paymentReference: settlementPaymentReference,
+      note: settlementNote,
       status: "SUBMITTED",
       allocations: [],
     });
@@ -2424,10 +2438,18 @@ test.describe("Roompire real browser smoke", () => {
     await page.goto("/en-US/app/ledger");
     const pendingSettlementRow = page.getByTestId(`pending-settlement-${submittedSettlementId}`);
     await expect(pendingSettlementRow).toContainText("CNY 324");
+    await expect(pendingSettlementRow).toContainText(settlementMethod);
+    await expect(pendingSettlementRow).toContainText(settlementPaymentReference);
+    await expect(pendingSettlementRow).toContainText(settlementNote);
     await expect(pendingSettlementRow).toContainText(settlementEvidenceFileName);
     await expect(
       pendingSettlementRow.getByRole("link", { name: "Download evidence" }),
     ).toBeVisible();
+    await expect
+      .poll(() =>
+        page.locator("main").evaluate((element) => element.scrollWidth <= element.clientWidth),
+      )
+      .toBe(true);
     await clickSettlementConfirmWithRetry(page, submittedSettlementId!);
 
     const settledBalancesResponse = await getApiWithRetry(
@@ -2805,6 +2827,7 @@ test.describe("Roompire real browser smoke", () => {
       amount: idempotentObligation!.remainingAmount,
       settlementDate: "2026-07-04",
       method: "manual",
+      paymentReference: "api-replay-reference",
       note: "API replay",
     };
     const idempotentSettlementResponse = await page.request.post(
@@ -3451,6 +3474,9 @@ test.describe("Roompire real browser smoke", () => {
     const ownerEmail = `multi-settle-owner+${suffix}@example.test`;
     const debtorEmail = `multi-settle-debtor+${suffix}@example.test`;
     const householdName = `Multi Settlement House ${suffix}`;
+    const suggestedSettlementMethod = "ZELLE";
+    const suggestedSettlementReference = `zelle-e2e-${suffix}`;
+    const suggestedSettlementNote = `Suggested settlement metadata ${suffix}`;
 
     await setDevSessionWithRetry(page, ownerEmail, "Multi Settlement Owner E2E");
     const householdResponse = await postApiWithRetry(page, "/api/v1/households", {
@@ -3606,6 +3632,15 @@ test.describe("Roompire real browser smoke", () => {
     await expect(suggestedForm).toContainText("2 direct obligations");
     await page.getByTestId(`suggested-settlement-amount-${transferKey}`).fill("30");
     await page.getByTestId(`suggested-settlement-date-${transferKey}`).fill("2026-07-04");
+    await page
+      .getByTestId(`suggested-settlement-method-${transferKey}`)
+      .fill(suggestedSettlementMethod);
+    await page
+      .getByTestId(`suggested-settlement-reference-${transferKey}`)
+      .fill(suggestedSettlementReference);
+    await page
+      .getByTestId(`suggested-settlement-note-${transferKey}`)
+      .fill(suggestedSettlementNote);
     await clickSuggestedSettlementSubmitWithRetry(page, transferKey);
 
     const submittedSettlementsResponse = await getApiWithRetry(
@@ -3623,6 +3658,9 @@ test.describe("Roompire real browser smoke", () => {
         id: string;
         amount: string;
         currency: string;
+        method: string;
+        paymentReference: string | null;
+        note: string | null;
         status: string;
         sourceTransaction: { sourceType: string | null; sourceId: string | null };
         allocations: unknown[];
@@ -3637,6 +3675,9 @@ test.describe("Roompire real browser smoke", () => {
     expect(submittedSettlement).toMatchObject({
       amount: "30",
       currency: "CNY",
+      method: suggestedSettlementMethod,
+      paymentReference: suggestedSettlementReference,
+      note: suggestedSettlementNote,
       status: "SUBMITTED",
       sourceTransaction: {
         sourceType: "SettlementSuggestion",
@@ -3650,6 +3691,14 @@ test.describe("Roompire real browser smoke", () => {
     const pendingSettlementRow = page.getByTestId(`pending-settlement-${submittedSettlement!.id}`);
     await expect(pendingSettlementRow).toContainText("CNY 30");
     await expect(pendingSettlementRow).toContainText("Suggested transfer");
+    await expect(pendingSettlementRow).toContainText(suggestedSettlementMethod);
+    await expect(pendingSettlementRow).toContainText(suggestedSettlementReference);
+    await expect(pendingSettlementRow).toContainText(suggestedSettlementNote);
+    await expect
+      .poll(() =>
+        page.locator("main").evaluate((element) => element.scrollWidth <= element.clientWidth),
+      )
+      .toBe(true);
     await clickSettlementConfirmWithRetry(page, submittedSettlement!.id);
 
     const confirmedSettlementsResponse = await getApiWithRetry(

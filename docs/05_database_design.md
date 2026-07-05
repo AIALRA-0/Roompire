@@ -401,6 +401,7 @@ Fields:
 - `currency char(3)`
 - `settlement_date`
 - `method` manual/venmo/zelle/wechat/alipay/cash/other
+- `payment_reference`
 - `status` submitted/confirmed/rejected/cancelled
 - `note`
 - `created_by_user_id`

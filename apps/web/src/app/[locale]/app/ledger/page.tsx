@@ -137,9 +137,9 @@ export default async function LedgerPage({ params }: PageProps) {
 
         <section className="min-w-0">
           <header className="sticky top-0 z-20 border-b border-border bg-background/92 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 max-w-full">
+                <p className="break-words text-xs font-medium uppercase text-muted-foreground sm:truncate">
                   {activeHouseholdName}
                 </p>
                 <h1 className="truncate text-xl font-semibold sm:text-2xl">{ledger("title")}</h1>
@@ -147,7 +147,7 @@ export default async function LedgerPage({ params }: PageProps) {
                   {identity("signedInAs", { name: model.user.displayName })}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex max-w-full flex-wrap items-center gap-2">
                 <Button asChild variant="outline">
                   <Link href={`/${locale}/app`}>
                     <ArrowLeft aria-hidden="true" className="h-4 w-4" />
@@ -247,6 +247,7 @@ export default async function LedgerPage({ params }: PageProps) {
                   amount: ledger("amount"),
                   date: ledger("date"),
                   method: ledger("method"),
+                  reference: ledger("reference"),
                   note: ledger("note"),
                   evidence: ledger("evidence"),
                   evidenceHint: ledger("evidenceHint"),
@@ -314,7 +315,7 @@ export default async function LedgerPage({ params }: PageProps) {
             ) : null}
 
             <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <div className="grid gap-6">
+              <div className="grid min-w-0 gap-6">
                 <div className="rounded-lg border border-border bg-card">
                   <div className="border-b border-border p-5">
                     <h2 className="text-lg font-semibold">{ledger("balanceEdges")}</h2>
@@ -394,7 +395,7 @@ export default async function LedgerPage({ params }: PageProps) {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-border bg-card">
+              <div className="min-w-0 rounded-lg border border-border bg-card">
                 <div className="border-b border-border p-5">
                   <h2 className="text-lg font-semibold">{ledger("transactions")}</h2>
                   <p className="mt-1 text-sm text-muted-foreground">{ledger("transactionsHint")}</p>
@@ -403,8 +404,8 @@ export default async function LedgerPage({ params }: PageProps) {
                   <ol className="divide-y divide-border">
                     {serializedTransactions.map((transaction) => (
                       <li className="grid gap-2 p-4" key={transaction.id}>
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
+                        <div className="flex min-w-0 max-w-full flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0 max-w-full">
                             <p className="truncate text-sm font-medium">
                               {transaction.description ?? transaction.type}
                             </p>

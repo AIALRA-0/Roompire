@@ -16,6 +16,7 @@ export function serializeSettlement(settlement: SettlementWithRelations) {
     currency: settlement.currency,
     settlementDate: dateToDateOnly(settlement.settlementDate),
     method: settlement.method,
+    paymentReference: settlement.paymentReference,
     status: settlement.status,
     note: settlement.note,
     createdByUserId: settlement.createdByUserId,

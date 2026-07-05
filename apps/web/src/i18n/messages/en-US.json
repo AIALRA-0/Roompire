@@ -121,6 +121,7 @@
     "amount": "Amount",
     "date": "Date",
     "method": "Method",
+    "reference": "Reference",
     "note": "Note",
     "evidence": "Evidence",
     "evidenceHint": "PDF, PNG, JPG, or WebP up to 5 MB.",

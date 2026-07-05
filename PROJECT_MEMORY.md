@@ -158,6 +158,7 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 | 2026-07-05 | Keep offsite backup sync explicit and disabled by default   | Copying backup artifacts to the same root filesystem is not real offsite protection, so the system should expose a warning until a true mounted/off-host target or `rclone` remote is configured.   |
 | 2026-07-05 | Expose Docker storage before expanding cleanup              | Docker image and volume cleanup can affect other services on this shared server, so the ops snapshot should show storage pressure and reclaimable estimates before any broader pruning policy.      |
 | 2026-07-05 | Surface ops automation health in ops snapshots              | A stale/failed snapshot refresh or production smoke timer should be visible to the owner from the real site before web requests need host command privileges.                                       |
+| 2026-07-05 | Treat settlement payment metadata as reviewable evidence    | Submitted settlements should carry method, optional payment reference, optional note, and optional evidence files so creditors can review context before confirmation without processing payments.  |
 
 ## Open questions for later human review
 
@@ -169,11 +170,19 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 ## Next recommended tasks
 
 1. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
-2. Continue root-disk capacity planning; production now has roughly 11GB free after post-deploy build-cache cleanup, and ops health intentionally warns when disk or Docker reclaimable storage crosses configured thresholds.
+2. Continue root-disk capacity planning; production now has roughly 8.9GB free after post-deploy build-cache cleanup, and ops health intentionally warns when disk or Docker reclaimable storage crosses configured thresholds.
 3. Configure a real off-host backup copy target plus passphrase escrow once private production data grows beyond the initial household; the sync/status mechanism now exists and intentionally warns while disabled.
 
 ## Last session verification
 
+- 2026-07-05 Settlement payment metadata:
+  - Added nullable `Settlement.paymentReference` with migration `20260705090000_add_settlement_payment_reference`, settlement create validation/serialization, ledger transaction settlement serialization, OpenAPI/API/database docs, backlog updates, and en-US/zh-CN labels.
+  - Ledger settlement forms now collect payment reference for direct and suggested settlements; pending settlement review displays method, reference, note, and evidence before creditor confirmation.
+  - Hardened ledger mobile layouts around settlement actions, correction forms, reversal rows, transactions, and the ledger header so long member names, emails, and payment references do not create page-level horizontal overflow.
+  - Verification passed: `prisma format`, `pnpm db:generate`, `pnpm db:validate`, `jq empty`, OpenAPI YAML parse, `git diff --check`, `pnpm typecheck`, `pnpm test` (8 files, 28 tests), `pnpm lint`, `pnpm format:check`, `pnpm build`, targeted Playwright desktop/mobile settlement metadata flows, full `pnpm e2e` (38 browser tests), and secret scans for the production gate strings.
+  - Production migration `20260705090000_add_settlement_payment_reference` applied on the local self-hosted server; `roompire-web-1` was rebuilt/recreated with `docker-compose.nginx.example.yml` preserving `127.0.0.1:18300->3000`; no SSH or external VPS access was used.
+  - Real-domain smoke passed for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`; authenticated live validation created a temporary household, synthetic member, ledger adjustments, an API-created settlement with payment reference, and a pending review settlement, verified settlement API metadata plus desktop/mobile ledger rendering with zero horizontal overflow, and deleted all temporary production rows.
+  - Post-deploy housekeeping reclaimed 2.853GB of Docker build cache and refreshed ops status; production ended around 8.9GB free / 96% used with expected Docker storage visibility still active.
 - 2026-07-05 Calendar day view:
   - Added a localized Day tab to the calendar event view switcher, with same-day event grouping, date heading, event time/all-day display, type/status badges, and responsive desktop/mobile layout.
   - Updated README, API specification narrative, backlog, and en-US/zh-CN copy; the calendar E2E flow now checks list, day, week, and month event views.

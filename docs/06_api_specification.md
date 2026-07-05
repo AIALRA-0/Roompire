@@ -284,6 +284,7 @@ Single obligation:
   "amount": "287.20",
   "settlementDate": "2026-07-08",
   "method": "WECHAT",
+  "paymentReference": "wx_20260708_001",
   "note": "Paid via WeChat.",
   "fileIds": ["uploaded_receipt_file_id"]
 }
@@ -298,13 +299,14 @@ Suggested transfer across matching obligations:
   "currency": "CNY",
   "settlementDate": "2026-07-08",
   "method": "WECHAT",
+  "paymentReference": "wx_20260708_002",
   "note": "Paid via WeChat.",
   "fileIds": ["uploaded_receipt_file_id"]
 }
 ```
 
 Current implementation records either one submitted settlement against a single open debt obligation or one suggested-transfer settlement for a debtor/payee/currency pair.
-Only the debtor can submit it. Optional `fileIds` attach completed uploads as settlement evidence for creditor review. The creditor must confirm it before the service creates settlement allocations and reduces obligation remaining amounts. Suggested-transfer confirmation allocates across matching open obligations in deterministic oldest-first order. Rejection leaves obligation balances unchanged.
+Only the debtor can submit it. Payment metadata includes `method`, optional `paymentReference`, optional `note`, and optional `fileIds` for completed settlement evidence uploads. The creditor can review those details before confirming, and balances are reduced only after confirmation. Suggested-transfer confirmation allocates across matching open obligations in deterministic oldest-first order. Rejection leaves obligation balances unchanged.
 
 ### Settlement suggestions
 
