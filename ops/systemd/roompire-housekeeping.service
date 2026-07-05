@@ -7,7 +7,8 @@ After=network-online.target
 Type=oneshot
 WorkingDirectory=/srv/aialra/apps/codexapp/state/browser-workspaces/2026-07-04-roompire
 Environment=ROOMPIRE_HOUSEKEEPING_CONFIRM=cleanup
-Environment=ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=false
+Environment=ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=auto
+Environment=ROOMPIRE_HOUSEKEEPING_REPO_ARTIFACT_MIN_AVAILABLE_BYTES=6442450944
 Environment=ROOMPIRE_HOUSEKEEPING_CLEAN_TMP=true
 Environment=ROOMPIRE_HOUSEKEEPING_DOCKER_PRUNE=true
 Environment=ROOMPIRE_HOUSEKEEPING_JOURNAL_VACUUM=true

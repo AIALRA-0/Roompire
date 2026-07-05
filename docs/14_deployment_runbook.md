@@ -117,11 +117,13 @@ docker system df
 ROOMPIRE_HOUSEKEEPING_CONFIRM=cleanup ./scripts/server_housekeeping.sh
 ```
 
+For unattended runs, set `ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=auto` so the current checkout's `.next`, `.turbo`, Playwright report, and test-output directories are removed only when available root-disk bytes fall below `ROOMPIRE_HOUSEKEEPING_REPO_ARTIFACT_MIN_AVAILABLE_BYTES` and no active Next/Playwright/Turbo/pnpm build or test process is detected.
+
 To also clear Python `uv` package caches, add `ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE=true`. The housekeeping script intentionally avoids Docker volumes, running-container data, production backups, and non-dangling images used by currently running services.
 
 When the server root disk pressure comes from old Codex browser workspaces, add `ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=true` to remove generated dependency/build/test-output directories outside the current checkout while preserving source files and git history.
 
-For routine unattended cleanup, install the conservative housekeeping timer. It skips current-checkout build artifacts to avoid racing active builds/tests, but prunes targeted `/tmp` leftovers, dangling Docker/build cache, and excess journal archives, then refreshes the ops snapshot:
+For routine unattended cleanup, install the conservative housekeeping timer. It prunes targeted `/tmp` leftovers, dangling Docker/build cache, and excess journal archives, auto-cleans current-checkout build/test artifacts only under low-disk conditions, then refreshes the ops snapshot:
 
 ```bash
 cp ops/systemd/roompire-housekeeping.service /etc/systemd/system/

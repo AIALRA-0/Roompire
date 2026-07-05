@@ -7,6 +7,7 @@ TMP_MAX_AGE_DAYS=${ROOMPIRE_TMP_MAX_AGE_DAYS:-1}
 JOURNAL_VACUUM_SIZE=${ROOMPIRE_JOURNAL_VACUUM_SIZE:-200M}
 CLEAN_UV_CACHE=${ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE:-false}
 MANAGE_REPO_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS:-true}
+REPO_ARTIFACT_MIN_AVAILABLE_BYTES=${ROOMPIRE_HOUSEKEEPING_REPO_ARTIFACT_MIN_AVAILABLE_BYTES:-6442450944}
 MANAGE_TMP_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_TMP:-true}
 MANAGE_DOCKER_PRUNE=${ROOMPIRE_HOUSEKEEPING_DOCKER_PRUNE:-true}
 MANAGE_JOURNAL_VACUUM=${ROOMPIRE_HOUSEKEEPING_JOURNAL_VACUUM:-true}
@@ -63,19 +64,71 @@ report_disk() {
   fi
 }
 
-clean_repo_artifacts() {
-  section "repo artifacts"
+available_bytes() {
+  df -PB1 "$ROOT_PATH" | awk 'NR == 2 { print $4 }'
+}
 
-  if [ "$MANAGE_REPO_ARTIFACTS" != "true" ]; then
-    echo "Skipping current checkout artifacts; set ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=true to remove them."
-    return
+repo_artifact_activity() {
+  if ! command -v ps >/dev/null 2>&1; then
+    return 1
   fi
 
+  ps -eo args= |
+    grep -E "(next (dev|build)|playwright test|turbo (build|dev|test|lint|typecheck)|pnpm (build|dev|e2e|test|lint|typecheck)|vitest|tsc --noEmit)" |
+    grep -v -E "(grep|server_housekeeping)" || true
+}
+
+clean_current_repo_artifacts() {
   run_or_print rm -rf \
     "$REPO_ROOT/apps/web/.next" \
     "$REPO_ROOT/.turbo" \
     "$REPO_ROOT/playwright-report" \
     "$REPO_ROOT/test-results"
+}
+
+clean_repo_artifacts() {
+  section "repo artifacts"
+
+  if [ "$MANAGE_REPO_ARTIFACTS" = "false" ]; then
+    echo "Skipping current checkout artifacts; set ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=true to remove them."
+    return
+  fi
+
+  if [ "$MANAGE_REPO_ARTIFACTS" = "auto" ]; then
+    local available
+    local active_processes
+
+    available=$(available_bytes)
+
+    if ! [[ "$available" =~ ^[0-9]+$ ]]; then
+      echo "Skipping current checkout artifacts; could not read available bytes."
+      return
+    fi
+
+    if [ "$available" -ge "$REPO_ARTIFACT_MIN_AVAILABLE_BYTES" ]; then
+      echo "Skipping current checkout artifacts; available bytes $available is above threshold $REPO_ARTIFACT_MIN_AVAILABLE_BYTES."
+      return
+    fi
+
+    active_processes=$(repo_artifact_activity)
+
+    if [ -n "$active_processes" ]; then
+      echo "Skipping current checkout artifacts; active build/test processes were detected:"
+      printf '%s\n' "$active_processes"
+      return
+    fi
+
+    echo "Available bytes $available is below threshold $REPO_ARTIFACT_MIN_AVAILABLE_BYTES; cleaning current checkout artifacts."
+    clean_current_repo_artifacts
+    return
+  fi
+
+  if [ "$MANAGE_REPO_ARTIFACTS" = "true" ]; then
+    clean_current_repo_artifacts
+    return
+  fi
+
+  echo "Skipping current checkout artifacts; unsupported ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=$MANAGE_REPO_ARTIFACTS."
 }
 
 clean_tmp_artifacts() {

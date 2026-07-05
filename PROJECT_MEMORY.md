@@ -75,6 +75,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Scheduled housekeeping slice implemented on branch `ops/scheduled-housekeeping`: `server_housekeeping.sh` has category switches for unattended cleanup, and `roompire-housekeeping.timer` runs conservative daily cleanup for targeted `/tmp` leftovers, Docker/build cache, journal archives, and ops status refresh while skipping current checkout artifacts by default.
 - Housekeeping ops visibility slice implemented on branch `ops/housekeeping-status`: `collect_ops_status.sh` records `roompire-housekeeping.timer` and service state, `/api/v1/ops/status` and `/[locale]/app/ops` expose the housekeeping card, OpenAPI and E2E fixtures cover the new fields, and the live site shows housekeeping as OK while disk high-usage remains the only expected ops warning.
 - CI workflow hardening slice implemented on branch `chore/ci-workflow-hardening`: GitHub Actions now use pnpm `11.9.0`, CI/E2E push triggers include `ops/**`, E2E runs on feature/ops/chore pushes with explicit worker/port settings, workflow permissions/timeouts are constrained, and Playwright ops-status fixtures are isolated under `test-results/` instead of overwriting the live host ops snapshot.
+- Disk headroom auto-cleanup slice implemented on branch `ops/disk-headroom-auto-cleanup`: `server_housekeeping.sh` supports `ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=auto`, which removes current-checkout `.next`, `.turbo`, Playwright reports, and test outputs only when root free bytes fall below the configured threshold and no active build/test process is detected; the installed housekeeping timer now uses this mode.
 
 ## Current phase
 
@@ -136,6 +137,7 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 | 2026-07-05 | Surface housekeeping health in ops snapshots                | Scheduled cleanup only helps if timer/service drift is visible to the owner; the host snapshot can expose systemd state without giving the web container host command privileges.                   |
 | 2026-07-05 | Run CI and E2E on ops branches                              | Production-hardening branches change the real server contract, so GitHub Actions must cover `ops/**` pushes instead of only feature/fix/docs/test/chore branches.                                   |
 | 2026-07-05 | Isolate E2E ops-status fixtures from production snapshots   | The live web container reads `ops/status` from this checkout; browser tests must use a test-only status file so local E2E cannot replace the host-generated production snapshot.                    |
+| 2026-07-05 | Auto-clean checkout artifacts only under low disk pressure  | `.next` and `.turbo` are safe to regenerate, but unattended cleanup should remove them only under low disk and after active process checks.                                                         |
 
 ## Open questions for later human review
 
@@ -147,12 +149,19 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 ## Next recommended tasks
 
 1. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
-2. Continue root-disk capacity planning; production now has roughly 4.6GB free after repeated builds/E2E runs, and ops health intentionally warns with disk pressure.
+2. Continue root-disk capacity planning; production now has roughly 4.8GiB free after auto-cleaning current checkout build artifacts, and ops health intentionally warns with disk pressure.
 3. Add off-host backup copy and passphrase escrow once private production data grows beyond the initial household.
 4. Design an explicit household clearing policy only if guidance-only netted suggestions should become executable later.
 
 ## Last session verification
 
+- 2026-07-05 Disk headroom auto-cleanup:
+  - Added `ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=auto` and `ROOMPIRE_HOUSEKEEPING_REPO_ARTIFACT_MIN_AVAILABLE_BYTES` to `scripts/server_housekeeping.sh`.
+  - Auto mode removes current-checkout `.next`, `.turbo`, Playwright report, and test-output directories only when root available bytes are below the configured threshold and no active Next/Playwright/Turbo/pnpm/Vitest/TypeScript process is detected.
+  - Updated `ops/systemd/roompire-housekeeping.service` to use auto mode with a 6GiB threshold, installed the updated unit on the local self-hosted server, reloaded systemd, and manually started `roompire-housekeeping.service`; it exited with status 0.
+  - `bash -n`, `systemd-analyze verify`, `pnpm format:check`, dry-run low-disk cleanup, and simulated active-process skip checks passed.
+  - The manual housekeeping run detected low disk, cleaned current checkout artifacts, refreshed `ops/status/ops-status.json`, and raised root availability from about 4.0GB to about 4.8GiB while preserving Docker volumes, backups, and production containers.
+  - Production Compose services remained healthy on `127.0.0.1:18300`; real-domain smoke passed for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`; authenticated `/api/v1/ops/status` returned housekeeping timer/service `ok`, latest smoke `passed`, and expected disk-pressure warnings.
 - 2026-07-05 CI workflow hardening:
   - Updated `.github/workflows/ci.yml` and `.github/workflows/e2e.yml` to use pnpm `11.9.0`, include `ops/**` push triggers, add manual CI dispatch, set read-only workflow permissions, add job timeouts, generate the Prisma client before CI typecheck, and make the E2E Postgres health check explicit.
   - Added E2E push coverage for feature/fix/test/chore/ops branches with explicit `ROOMPIRE_E2E_PORT=3100` and `ROOMPIRE_E2E_WORKERS=1`.
