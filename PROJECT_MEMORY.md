@@ -197,6 +197,13 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 ## Last session verification
 
+- 2026-07-05 Expense tags:
+  - Branch/commit: `feat/expense-tags` / `e587a69 feat: add expense tags`, pushed to `origin/feat/expense-tags`.
+  - Verification passed before deployment: `pnpm db:generate && pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test` (11 files, 45 tests), `pnpm db:migrate`, `pnpm build`, `git diff --check`, `jq empty`, OpenAPI YAML parse with `python3`, and targeted `pnpm e2e --grep "owner updates settings and manages a linked invitee"` (desktop/mobile, 2 passed).
+  - Production deployment from the self-hosted server used Docker Compose only, without SSH: built `web` and `migrate`, applied migration `20260705140000_add_expense_tags`, recreated `roompire-web-1`, and confirmed the container healthy on `127.0.0.1:18300`.
+  - Real-domain smoke passed for `https://roompire.aialra.online`: `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`.
+  - Live production validation through the site gate created an isolated temporary household, added a synthetic member, created and updated a tag through the public API, submitted a tagged proposal from the real `/en-US/app` UI, verified proposal response tags, queue badges, and proposal detail `proposal-tags`, archived the tag through the UI, confirmed archived tags disappear from the active API/form while historical proposal detail keeps the tag, downgraded the temporary owner membership to `MEMBER` and confirmed tag creation returns 403, then cleaned temporary household/tag/proposal/proposal-tag/membership/audit/notification/invite/idempotency rows with zero remaining counts.
+  - GitHub Actions passed for the pushed commit: CI https://github.com/AIALRA-0/Roompire/actions/runs/28752436825 and E2E https://github.com/AIALRA-0/Roompire/actions/runs/28752436814.
 - 2026-07-05 Household category management:
   - Branch/commit: `feat/category-management` / `7b3eda1 feat: manage household categories`, pushed to `origin/feat/category-management`.
   - Verification passed before deployment: `pnpm db:generate && pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test` (11 files, 45 tests), `pnpm build`, `git diff --check`, `jq empty`, OpenAPI YAML parse with `python3`, and targeted `pnpm e2e --grep "owner updates settings and manages a linked invitee"` (desktop/mobile, 2 passed).
