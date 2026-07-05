@@ -75,6 +75,7 @@ Before Playwright starts the dev server, `pnpm e2e:prepare` resets only allowed 
 ### Auth and household
 
 - User signs in.
+- User updates display name, preferred locale, and notification preferences.
 - Creates household.
 - Invites another member.
 - Member accepts invite.

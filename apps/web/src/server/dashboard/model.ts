@@ -13,16 +13,21 @@ import {
   canCreateHouseholdWorkItem,
   canManageMembers,
 } from "@/server/permissions/rbac";
+import { getUserSettings } from "@/server/users/service";
 
 export async function getDashboardModel() {
   const user = await requirePageUser();
-  const householdMemberships = await listHouseholdsForUser(user.id);
+  const [householdMemberships, userSettings] = await Promise.all([
+    listHouseholdsForUser(user.id),
+    getUserSettings(user.id),
+  ]);
   const activeMembership = householdMemberships[0] ?? null;
   const activeHousehold = activeMembership?.household ?? null;
 
   if (!activeHousehold || !activeMembership) {
     return {
       user,
+      userSettings,
       householdMemberships,
       activeHousehold: null,
       activeMembership: null,
@@ -100,6 +105,7 @@ export async function getDashboardModel() {
 
   return {
     user,
+    userSettings,
     householdMemberships,
     activeHousehold,
     activeMembership,

@@ -95,6 +95,19 @@ export default async function AppPage({ params }: PageProps) {
       : [t("auditCreated"), t("auditFx"), t("auditGuard")];
 
   const identityLabels = {
+    profileSettings: identity("profileSettings"),
+    profileSettingsHint: identity("profileSettingsHint"),
+    displayName: identity("displayName"),
+    preferredLocale: identity("preferredLocale"),
+    notificationPreferences: identity("notificationPreferences"),
+    notificationPreferencesHint: identity("notificationPreferencesHint"),
+    inAppNotifications: identity("inAppNotifications"),
+    emailNotifications: identity("emailNotifications"),
+    proposalUpdates: identity("proposalUpdates"),
+    settlementUpdates: identity("settlementUpdates"),
+    taskReminders: identity("taskReminders"),
+    saveProfile: identity("saveProfile"),
+    profileSaved: identity("profileSaved"),
     devSession: identity("devSession"),
     devSessionHint: identity("devSessionHint"),
     devUser: identity("devUser"),
@@ -396,7 +409,9 @@ export default async function AppPage({ params }: PageProps) {
                 activeHouseholdId={model.activeHousehold?.id ?? null}
                 canInviteMembers={model.canInviteMembers}
                 canManageMembers={model.canManageMembers}
+                currentUserDisplayName={model.userSettings.displayName}
                 currentUserEmail={model.user.email}
+                currentUserPreferredLocale={model.userSettings.preferredLocale}
                 devUsers={[
                   { displayName: "Alice", email: "alice@example.test" },
                   { displayName: "Bob", email: "bob@example.test" },
@@ -426,6 +441,7 @@ export default async function AppPage({ params }: PageProps) {
                   email: member.user.email,
                   role: member.role,
                 }))}
+                notificationPreferences={model.userSettings.notificationPreferences}
               />
             </div>
 

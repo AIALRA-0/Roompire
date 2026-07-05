@@ -3,22 +3,21 @@ import type { NextRequest } from "next/server";
 import { apiErrorResponse } from "@/server/api/errors";
 import { requireApiUser } from "@/server/auth/session";
 import { listHouseholdsForUser } from "@/server/households/service";
+import { getUserSettings } from "@/server/users/service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
     const user = await requireApiUser(request);
-    const memberships = await listHouseholdsForUser(user.id);
+    const [memberships, userSettings] = await Promise.all([
+      listHouseholdsForUser(user.id),
+      getUserSettings(user.id),
+    ]);
     const activeMembership = memberships[0] ?? null;
 
     return NextResponse.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        preferredLocale: user.preferredLocale,
-      },
+      user: userSettings,
       household: activeMembership
         ? {
             id: activeMembership.household.id,

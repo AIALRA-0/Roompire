@@ -1440,6 +1440,77 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
   });
 
+  test("user updates profile and notification preferences", async ({ page }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const userEmail = `profile+${suffix}@example.test`;
+    const updatedName = `Profile User ${suffix}`;
+
+    await setDevSessionWithRetry(page, userEmail, "Profile Initial");
+    await page.goto("/en-US/app");
+    await expect(page.getByTestId("profile-settings-form")).toBeVisible();
+
+    await page.getByTestId("profile-display-name").fill(updatedName);
+    await page.getByTestId("profile-preferred-locale").selectOption("zh-CN");
+    await page.getByTestId("profile-emailEnabled").check();
+    await page.getByTestId("profile-taskRemindersEnabled").uncheck();
+
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/users/me") && response.request().method() === "PATCH",
+    );
+    await page.getByRole("button", { name: "Save profile" }).click();
+    const response = await responsePromise;
+    expect(response.ok()).toBeTruthy();
+    await expect(page.getByText("Profile saved")).toBeVisible();
+
+    const profileResponse = await getApiWithRetry(page, "/api/v1/users/me");
+    expect(profileResponse.ok()).toBeTruthy();
+    const profilePayload = (await profileResponse.json()) as {
+      user: {
+        displayName: string;
+        preferredLocale: string;
+        notificationPreferences: {
+          emailEnabled: boolean;
+          taskRemindersEnabled: boolean;
+        };
+      };
+    };
+    expect(profilePayload.user).toEqual(
+      expect.objectContaining({
+        displayName: updatedName,
+        preferredLocale: "zh-CN",
+        notificationPreferences: expect.objectContaining({
+          emailEnabled: true,
+          taskRemindersEnabled: false,
+        }),
+      }),
+    );
+
+    const sessionResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(sessionResponse.ok()).toBeTruthy();
+    const sessionPayload = (await sessionResponse.json()) as {
+      user: {
+        displayName: string;
+        notificationPreferences: { emailEnabled: boolean; taskRemindersEnabled: boolean };
+      };
+    };
+    expect(sessionPayload.user).toEqual(
+      expect.objectContaining({
+        displayName: updatedName,
+        notificationPreferences: expect.objectContaining({
+          emailEnabled: true,
+          taskRemindersEnabled: false,
+        }),
+      }),
+    );
+
+    await page.goto("/en-US/app");
+    await expect(page.getByTestId("profile-display-name")).toHaveValue(updatedName);
+    await expect(page.getByTestId("profile-preferred-locale")).toHaveValue("zh-CN");
+    await expect(page.getByTestId("profile-emailEnabled")).toBeChecked();
+    await expect(page.getByTestId("profile-taskRemindersEnabled")).not.toBeChecked();
+  });
+
   test("owner updates settings and manages a linked invitee", async ({ page }, testInfo) => {
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
     const ownerEmail = `owner+${suffix}@example.test`;

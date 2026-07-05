@@ -38,7 +38,7 @@
 - Profile settings.
 - Notification preferences.
 
-Current implemented subset for identity/household: dev-session and site-gate-backed MVP auth, household create/read/update, membership directory, invite token/code acceptance, owner/admin role management and removal guards, explicit owner-only ownership transfer that demotes the previous owner to admin, and RBAC checks across household-scoped APIs. Profile settings, notification preferences, and long-term multi-user auth provider selection remain backlog items.
+Current implemented subset for identity/household: dev-session and site-gate-backed MVP auth, user profile settings, notification preference persistence, household create/read/update, membership directory, invite token/code acceptance, owner/admin role management and removal guards, explicit owner-only ownership transfer that demotes the previous owner to admin, and RBAC checks across household-scoped APIs. Long-term multi-user auth provider selection remains a backlog item.
 
 ## Epic 2 — Expense proposals
 

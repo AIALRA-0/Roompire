@@ -392,12 +392,41 @@ components:
           items: { $ref: "#/components/schemas/MemberStat" }
     User:
       type: object
-      required: [id, email, displayName]
+      required: [id, email, displayName, preferredLocale, notificationPreferences]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
         displayName: { type: string }
         preferredLocale: { type: string, enum: [zh-CN, en-US] }
+        notificationPreferences: { $ref: "#/components/schemas/NotificationPreferences" }
+    NotificationPreferences:
+      type: object
+      required:
+        [
+          inAppEnabled,
+          emailEnabled,
+          proposalUpdatesEnabled,
+          settlementUpdatesEnabled,
+          taskRemindersEnabled,
+        ]
+      properties:
+        inAppEnabled: { type: boolean }
+        emailEnabled: { type: boolean }
+        proposalUpdatesEnabled: { type: boolean }
+        settlementUpdatesEnabled: { type: boolean }
+        taskRemindersEnabled: { type: boolean }
+    UpdateCurrentUserRequest:
+      type: object
+      required: [displayName, preferredLocale, notificationPreferences]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 80 }
+        preferredLocale: { type: string, enum: [zh-CN, en-US] }
+        notificationPreferences: { $ref: "#/components/schemas/NotificationPreferences" }
+    CurrentUserResponse:
+      type: object
+      required: [user]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
     Household:
       type: object
       required:
@@ -1764,6 +1793,43 @@ paths:
       responses:
         "200":
           description: Current session or null user
+  /users/me:
+    get:
+      summary: Get current user profile and notification preferences
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentUserResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      summary: Update current user profile and notification preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCurrentUserRequest" }
+      responses:
+        "200":
+          description: User settings updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentUserResponse" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /dev/session:
     post:
       summary: Set local developer session user

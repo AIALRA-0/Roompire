@@ -50,11 +50,15 @@ Mutation headers:
 ### Auth/session
 
 - `GET /session`
+- `GET /users/me`
+- `PATCH /users/me`
 - `POST /auth/login-link`
 - `POST /auth/dev-login` in development only
 - `POST /auth/logout`
 
 Current private-deployment MVP: when site-level Basic Auth is configured, verified Basic Auth requests map to the app session email from `ROOMPIRE_SITE_GATE_SESSION_EMAIL`, or from the gate username when it is already an email address. Development session headers/cookies are accepted only while dev auth is enabled.
+
+Current user settings implementation: `GET /users/me` returns the authenticated user's display name, preferred locale, and notification preferences. `PATCH /users/me` updates display name, preferred locale, and in-app/email/proposal/settlement/task reminder preference switches. Email delivery remains dormant until an email provider is configured.
 
 ### Households
 

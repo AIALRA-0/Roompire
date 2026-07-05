@@ -237,11 +237,11 @@ Background jobs generate upcoming recurrence instances.
 Initial notification model:
 
 - `notifications`
-- `notification_preferences`
+- `notification_preferences` for per-user in-app/email/proposal/settlement/task reminder defaults
 
 Delivery channels:
 
-- in-app MVP
+- in-app MVP, gated by preferences
 - email later
 - Web Push later
 - WeChat subscription message later

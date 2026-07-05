@@ -42,7 +42,28 @@ type DevUser = {
   displayName: string;
 };
 
+type NotificationPreferences = {
+  inAppEnabled: boolean;
+  emailEnabled: boolean;
+  proposalUpdatesEnabled: boolean;
+  settlementUpdatesEnabled: boolean;
+  taskRemindersEnabled: boolean;
+};
+
 type IdentityLabels = {
+  profileSettings: string;
+  profileSettingsHint: string;
+  displayName: string;
+  preferredLocale: string;
+  notificationPreferences: string;
+  notificationPreferencesHint: string;
+  inAppNotifications: string;
+  emailNotifications: string;
+  proposalUpdates: string;
+  settlementUpdates: string;
+  taskReminders: string;
+  saveProfile: string;
+  profileSaved: string;
   devSession: string;
   devSessionHint: string;
   devUser: string;
@@ -114,6 +135,9 @@ type IdentityLabels = {
 type IdentityWorkspaceProps = {
   locale: string;
   currentUserEmail: string;
+  currentUserDisplayName: string;
+  currentUserPreferredLocale: DefaultLocale;
+  notificationPreferences: NotificationPreferences;
   activeHouseholdId: string | null;
   canInviteMembers: boolean;
   canManageMembers: boolean;
@@ -232,6 +256,9 @@ function clearingPolicyOptions(labels: IdentityLabels) {
 export function IdentityWorkspace({
   locale,
   currentUserEmail,
+  currentUserDisplayName,
+  currentUserPreferredLocale,
+  notificationPreferences,
   activeHouseholdId,
   canInviteMembers,
   canManageMembers,
@@ -243,6 +270,7 @@ export function IdentityWorkspace({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [devEmail, setDevEmail] = useState(currentUserEmail);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [createMessage, setCreateMessage] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [memberMessage, setMemberMessage] = useState<string | null>(null);
@@ -256,6 +284,7 @@ export function IdentityWorkspace({
   const canTransferOwnership = activeHousehold?.role === "OWNER";
 
   function clearActionMessages() {
+    setProfileMessage(null);
     setCreateMessage(null);
     setSettingsMessage(null);
     setMemberMessage(null);
@@ -283,6 +312,34 @@ export function IdentityWorkspace({
       startTransition(() => router.refresh());
     } catch (error) {
       setCreateMessage(error instanceof Error ? error.message : labels.errorFallback);
+    }
+  }
+
+  async function onUpdateUserSettings(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setProfileMessage(null);
+    const formData = new FormData(event.currentTarget);
+
+    try {
+      await submitJson(
+        "/api/v1/users/me",
+        {
+          displayName: String(formData.get("displayName") ?? ""),
+          preferredLocale: String(formData.get("preferredLocale") ?? "en-US"),
+          notificationPreferences: {
+            inAppEnabled: formData.has("inAppEnabled"),
+            emailEnabled: formData.has("emailEnabled"),
+            proposalUpdatesEnabled: formData.has("proposalUpdatesEnabled"),
+            settlementUpdatesEnabled: formData.has("settlementUpdatesEnabled"),
+            taskRemindersEnabled: formData.has("taskRemindersEnabled"),
+          },
+        },
+        labels.errorFallback,
+        "PATCH",
+      );
+      refreshAfter(setProfileMessage, labels.profileSaved);
+    } catch (error) {
+      setProfileMessage(error instanceof Error ? error.message : labels.errorFallback);
     }
   }
 
@@ -462,6 +519,97 @@ export function IdentityWorkspace({
   return (
     <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_410px]">
       <div className="grid gap-6">
+        <form
+          className="rounded-lg border border-border bg-card p-5"
+          data-testid="profile-settings-form"
+          onSubmit={onUpdateUserSettings}
+        >
+          <h2 className="text-lg font-semibold">{labels.profileSettings}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{labels.profileSettingsHint}</p>
+          <div className="mt-4 grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.displayName}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="profile-display-name"
+                  defaultValue={currentUserDisplayName}
+                  maxLength={80}
+                  name="displayName"
+                  required
+                />
+              </Field>
+              <Field label={labels.preferredLocale}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="profile-preferred-locale"
+                  defaultValue={currentUserPreferredLocale}
+                  name="preferredLocale"
+                >
+                  <option value="en-US">{labels.locales["en-US"]}</option>
+                  <option value="zh-CN">{labels.locales["zh-CN"]}</option>
+                </select>
+              </Field>
+            </div>
+            <div className="rounded-lg border border-border bg-background p-4">
+              <p className="text-sm font-medium">{labels.notificationPreferences}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {labels.notificationPreferencesHint}
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {[
+                  {
+                    name: "inAppEnabled",
+                    label: labels.inAppNotifications,
+                    defaultChecked: notificationPreferences.inAppEnabled,
+                  },
+                  {
+                    name: "emailEnabled",
+                    label: labels.emailNotifications,
+                    defaultChecked: notificationPreferences.emailEnabled,
+                  },
+                  {
+                    name: "proposalUpdatesEnabled",
+                    label: labels.proposalUpdates,
+                    defaultChecked: notificationPreferences.proposalUpdatesEnabled,
+                  },
+                  {
+                    name: "settlementUpdatesEnabled",
+                    label: labels.settlementUpdates,
+                    defaultChecked: notificationPreferences.settlementUpdatesEnabled,
+                  },
+                  {
+                    name: "taskRemindersEnabled",
+                    label: labels.taskReminders,
+                    defaultChecked: notificationPreferences.taskRemindersEnabled,
+                  },
+                ].map((option) => (
+                  <label
+                    className="flex min-h-10 items-center gap-2 rounded-md border border-border px-3 text-sm"
+                    key={option.name}
+                  >
+                    <input
+                      className="h-4 w-4 accent-primary"
+                      data-testid={`profile-${option.name}`}
+                      defaultChecked={option.defaultChecked}
+                      name={option.name}
+                      type="checkbox"
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <Button disabled={isPending} type="submit">
+              {isPending ? labels.working : labels.saveProfile}
+            </Button>
+            {profileMessage ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                {profileMessage}
+              </p>
+            ) : null}
+          </div>
+        </form>
+
         <div className="rounded-lg border border-border bg-card p-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>

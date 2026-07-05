@@ -488,6 +488,20 @@ Fields:
 - `read_at` nullable
 - `created_at`
 
+### notification_preferences
+
+Fields:
+
+- `id`
+- `user_id` unique
+- `in_app_enabled`
+- `email_enabled`
+- `proposal_updates_enabled`
+- `settlement_updates_enabled`
+- `task_reminders_enabled`
+- `created_at`
+- `updated_at`
+
 ### audit_events
 
 Fields:
