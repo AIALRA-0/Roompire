@@ -56,6 +56,8 @@ find "$file_manifests_dir" -type f -name "roompire_file_manifest_*.json" -mtime 
 find "$file_manifests_dir" -type f -name "roompire_file_manifest_*.json.enc" -mtime +"$RETENTION_DAYS" -delete
 find "$file_manifests_dir" -type f -name "roompire_file_manifest_*.json.enc.sha256" -mtime +"$RETENTION_DAYS" -delete
 
+./scripts/sync_backup_artifacts.sh
+
 echo "postgres backup: $postgres_backup"
 echo "uploads backup: $uploads_backup"
 echo "file manifest backup: $file_manifest_backup"

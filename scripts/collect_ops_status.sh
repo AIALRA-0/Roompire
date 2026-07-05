@@ -16,6 +16,8 @@ const housekeepingServiceName =
   process.env.ROOMPIRE_HOUSEKEEPING_SERVICE || "roompire-housekeeping.service";
 const backupRoot =
   process.env.ROOMPIRE_BACKUP_ROOT || process.env.BACKUP_ROOT || "/srv/aialra/backups/roompire";
+const backupOffsiteStatusPath =
+  process.env.ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE || "ops/status/backup-offsite.json";
 const smokeStatusPath = process.env.ROOMPIRE_SMOKE_STATUS_FILE || "ops/status/latest-smoke.json";
 const generatedAt = new Date().toISOString();
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
@@ -169,6 +171,18 @@ function parseUnitEnvironment(output) {
   return values;
 }
 
+function healthStateValue(value) {
+  return ["ok", "warning", "unknown"].includes(value) ? value : "unknown";
+}
+
+function backupOffsiteModeValue(value) {
+  return ["disabled", "local", "rclone"].includes(value) ? value : "unknown";
+}
+
+function finiteNumberValue(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 function walkBackupFiles(root) {
   const files = [];
 
@@ -292,6 +306,149 @@ function collectBackupEncryption() {
   }
 }
 
+function collectBackupOffsite() {
+  const serviceEnvResult = command("systemctl", [
+    "show",
+    backupServiceName,
+    "--property=Environment",
+    "--value",
+  ]);
+  const serviceEnv = serviceEnvResult.ok ? parseUnitEnvironment(serviceEnvResult.stdout) : {};
+  const mode = backupOffsiteModeValue(
+    serviceEnv.ROOMPIRE_BACKUP_OFFSITE_MODE ||
+      process.env.ROOMPIRE_BACKUP_OFFSITE_MODE ||
+      "disabled",
+  );
+  const localTarget =
+    serviceEnv.ROOMPIRE_BACKUP_OFFSITE_TARGET_DIR ||
+    process.env.ROOMPIRE_BACKUP_OFFSITE_TARGET_DIR ||
+    "";
+  const rcloneRemote =
+    serviceEnv.ROOMPIRE_BACKUP_OFFSITE_RCLONE_REMOTE ||
+    process.env.ROOMPIRE_BACKUP_OFFSITE_RCLONE_REMOTE ||
+    "";
+  const statusPath =
+    serviceEnv.ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE ||
+    process.env.ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE ||
+    backupOffsiteStatusPath;
+  const configured = mode === "local" || mode === "rclone";
+  const target =
+    mode === "local" && localTarget
+      ? `local:${path.resolve(localTarget)}`
+      : mode === "rclone" && rcloneRemote
+        ? `rclone:${rcloneRemote}`
+        : null;
+  const targetConfigured = target !== null;
+
+  if (!configured) {
+    return {
+      mode,
+      configured: false,
+      targetConfigured: false,
+      target: null,
+      statusFile: statusPath,
+      lastSyncAt: null,
+      artifactCount: 0,
+      totalBytes: 0,
+      latestArtifact: null,
+      status: mode === "disabled" ? "warning" : "unknown",
+      checkedAt: generatedAt,
+      error: serviceEnvResult.ok
+        ? mode === "disabled"
+          ? null
+          : "Offsite backup mode is not readable."
+        : serviceEnvResult.error,
+    };
+  }
+
+  if (!targetConfigured) {
+    return {
+      mode,
+      configured: true,
+      targetConfigured: false,
+      target: null,
+      statusFile: statusPath,
+      lastSyncAt: null,
+      artifactCount: 0,
+      totalBytes: 0,
+      latestArtifact: null,
+      status: "warning",
+      checkedAt: generatedAt,
+      error:
+        mode === "local"
+          ? "ROOMPIRE_BACKUP_OFFSITE_TARGET_DIR is not configured."
+          : "ROOMPIRE_BACKUP_OFFSITE_RCLONE_REMOTE is not configured.",
+    };
+  }
+
+  if (!fs.existsSync(statusPath)) {
+    return {
+      mode,
+      configured: true,
+      targetConfigured: true,
+      target,
+      statusFile: statusPath,
+      lastSyncAt: null,
+      artifactCount: 0,
+      totalBytes: 0,
+      latestArtifact: null,
+      status: "warning",
+      checkedAt: generatedAt,
+      error: "Offsite backup sync has not written a status file.",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(statusPath, "utf8"));
+    const statusMode = backupOffsiteModeValue(parsed.mode);
+    const statusTarget = typeof parsed.target === "string" && parsed.target ? parsed.target : target;
+    const errors = [];
+
+    if (statusMode !== "unknown" && statusMode !== mode) {
+      errors.push("Offsite backup status mode does not match the backup unit configuration.");
+    }
+
+    if (typeof parsed.error === "string" && parsed.error) {
+      errors.push(parsed.error);
+    }
+
+    if (!serviceEnvResult.ok) {
+      errors.push(serviceEnvResult.error);
+    }
+
+    return {
+      mode,
+      configured: true,
+      targetConfigured: true,
+      target: statusTarget,
+      statusFile: statusPath,
+      lastSyncAt: typeof parsed.generatedAt === "string" ? parsed.generatedAt : null,
+      artifactCount: finiteNumberValue(parsed.artifactCount),
+      totalBytes: finiteNumberValue(parsed.totalBytes),
+      latestArtifact: typeof parsed.latestArtifact === "string" ? parsed.latestArtifact : null,
+      status:
+        errors.length > 0 || statusMode !== mode ? "warning" : healthStateValue(parsed.status),
+      checkedAt: generatedAt,
+      error: errors.join("; ") || null,
+    };
+  } catch (error) {
+    return {
+      mode,
+      configured: true,
+      targetConfigured: true,
+      target,
+      statusFile: statusPath,
+      lastSyncAt: null,
+      artifactCount: 0,
+      totalBytes: 0,
+      latestArtifact: null,
+      status: "unknown",
+      checkedAt: generatedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function collectDisk() {
   const result = command("df", ["-P", "-B1", diskPath]);
 
@@ -395,6 +552,7 @@ const snapshot = {
   housekeepingTimer: collectHousekeepingTimer(),
   housekeepingService: collectHousekeepingService(),
   backupEncryption: collectBackupEncryption(),
+  backupOffsite: collectBackupOffsite(),
   latestSmoke: readLatestSmoke(),
 };
 

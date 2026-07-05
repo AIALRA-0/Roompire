@@ -34,6 +34,7 @@ type PageProps = {
 type HealthState = OpsStatusSnapshot["summary"]["status"];
 type SmokeState = OpsStatusSnapshot["latestSmoke"]["status"];
 type BackupEncryptionMode = OpsStatusSnapshot["backupEncryption"]["configured"];
+type BackupOffsiteMode = OpsStatusSnapshot["backupOffsite"]["mode"];
 
 function formatBytes(locale: Locale, bytes: number | null) {
   if (bytes === null) {
@@ -48,12 +49,31 @@ function formatBytes(locale: Locale, bytes: number | null) {
   }).format(gib)} GB`;
 }
 
+function formatFileSize(locale: Locale, bytes: number) {
+  if (bytes <= 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"] as const;
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exponent;
+
+  return `${new Intl.NumberFormat(locale, {
+    maximumFractionDigits: exponent === 0 ? 0 : 1,
+    minimumFractionDigits: 0,
+  }).format(value)} ${units[exponent]}`;
+}
+
 function formatPercent(locale: Locale, value: number | null) {
   if (value === null) {
     return "—";
   }
 
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value)}%`;
+}
+
+function formatInteger(locale: Locale, value: number) {
+  return new Intl.NumberFormat(locale).format(value);
 }
 
 function formatDateTime(locale: Locale, value: string | null) {
@@ -124,6 +144,25 @@ function backupEncryptionModeLabel(
   return ops("statusUnknown");
 }
 
+function backupOffsiteModeLabel(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  mode: BackupOffsiteMode,
+) {
+  if (mode === "local") {
+    return ops("offsiteLocal");
+  }
+
+  if (mode === "rclone") {
+    return ops("offsiteRclone");
+  }
+
+  if (mode === "disabled") {
+    return ops("offsiteDisabled");
+  }
+
+  return ops("statusUnknown");
+}
+
 function passphraseFileLabel(
   ops: Awaited<ReturnType<typeof getTranslations>>,
   configured: boolean,
@@ -153,6 +192,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     backup_encryption_sidecar_missing: ops("warningBackupEncryptionSidecarMissing"),
     backup_passphrase_missing: ops("warningBackupPassphraseMissing"),
     backup_encryption_unknown: ops("warningBackupEncryptionUnknown"),
+    backup_offsite_disabled: ops("warningBackupOffsiteDisabled"),
+    backup_offsite_attention: ops("warningBackupOffsiteAttention"),
     smoke_failed: ops("warningSmokeFailed"),
     smoke_missing: ops("warningSmokeMissing"),
   };
@@ -514,6 +555,44 @@ export default async function OpsPage({ params }: PageProps) {
                     </div>
                     {status.backupEncryption.error ? (
                       <p className="mt-3 text-sm text-rose-700">{status.backupEncryption.error}</p>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">{ops("offsiteCopy")}</span>
+                      <Badge
+                        data-testid="ops-backup-offsite-status"
+                        variant={healthVariant(status.backupOffsite.status)}
+                      >
+                        {healthLabel(ops, status.backupOffsite.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("offsiteMode")}
+                        testId="ops-backup-offsite-mode"
+                        value={backupOffsiteModeLabel(ops, status.backupOffsite.mode)}
+                      />
+                      <MetricRow
+                        label={ops("offsiteArtifacts")}
+                        testId="ops-backup-offsite-artifacts"
+                        value={formatInteger(locale, status.backupOffsite.artifactCount)}
+                      />
+                      <MetricRow
+                        label={ops("offsiteBytes")}
+                        value={formatFileSize(locale, status.backupOffsite.totalBytes)}
+                      />
+                      <MetricRow
+                        label={ops("offsiteLastSync")}
+                        value={formatDateTime(locale, status.backupOffsite.lastSyncAt)}
+                      />
+                      <MetricRow
+                        label={ops("offsiteTarget")}
+                        value={status.backupOffsite.target ?? "—"}
+                      />
+                    </div>
+                    {status.backupOffsite.error ? (
+                      <p className="mt-3 text-sm text-rose-700">{status.backupOffsite.error}</p>
                     ) : null}
                   </div>
                 </div>

@@ -111,6 +111,7 @@ Current implementation hash-chains audit events with `prev_hash` and `event_hash
 - Daily object storage manifest/export. `scripts/backup_file_manifest.sh` exports the database `File` rows, configured storage provider, bucket, object keys, MIME types, sizes, SHA-256 hashes, and pending/completed counts so stored receipt objects can be reconciled after backup or restore.
 - Retention policy: at least 14 daily backups for early MVP.
 - Encrypted backup storage. `scripts/backup_all.sh` supports optional OpenSSL-based backup encryption through `ROOMPIRE_BACKUP_ENCRYPTION=enabled` and a passphrase file kept outside git.
+- Optional offsite copy. `scripts/sync_backup_artifacts.sh` copies encrypted backup artifacts and `.sha256` sidecars to a configured mounted directory or `rclone` remote after the local backup and retention pass succeeds.
 - Daily non-destructive restore drill with `scripts/verify_postgres_backup.sh` to validate dump readability, migration metadata, and audit hash-chain integrity.
 - Restore instructions in repo docs.
 
@@ -119,12 +120,14 @@ Current implementation hash-chains audit events with `prev_hash` and `event_hash
 - PostgreSQL continuous archiving/WAL with point-in-time recovery, or managed PostgreSQL PITR.
 - Daily base backup.
 - Object storage versioning.
-- Offsite backup copy.
+- Offsite backup copy to storage that is not the same server root filesystem.
 - Monthly restore drill.
 
 Private receipts can be stored locally for development or in S3-compatible object storage for production. Production buckets must be private, should use versioning or provider snapshots, and should be covered by an object inventory/manifest export that can be reconciled against the database `File` rows. The combined backup flow writes the Roompire file manifest beside the PostgreSQL and upload-volume backups, then encrypts it with the other artifacts when backup encryption is enabled.
 
 When encrypted local backups are enabled, the passphrase file must be backed up separately in the server secret-management workflow. The encrypted `.enc` artifacts include `.sha256` sidecars for ciphertext integrity checks; restore drills can verify encrypted PostgreSQL dumps directly after decryption.
+
+Offsite backup sync is disabled by default until a real target is configured. When enabled, the sync status is written to `ops/status/backup-offsite.json` and folded into the authenticated ops dashboard without exposing storage credentials. The offsite copy does not replace passphrase escrow; the backup encryption passphrase still needs a separate secret-management backup.
 
 ## Restore drill
 

@@ -8,6 +8,7 @@ import { prisma } from "@/server/db/prisma";
 type HealthState = "ok" | "warning" | "unknown";
 type SmokeState = "passed" | "failed" | "missing" | "unknown";
 type BackupEncryptionMode = "enabled" | "disabled" | "unknown";
+type BackupOffsiteMode = "disabled" | "local" | "rclone" | "unknown";
 
 export type OpsSmokeCheck = {
   path: string;
@@ -99,6 +100,20 @@ export type OpsStatusSnapshot = {
     checkedAt: string | null;
     error: string | null;
   };
+  backupOffsite: {
+    mode: BackupOffsiteMode;
+    configured: boolean;
+    targetConfigured: boolean;
+    target: string | null;
+    statusFile: string;
+    lastSyncAt: string | null;
+    artifactCount: number;
+    totalBytes: number;
+    latestArtifact: string | null;
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
   latestSmoke: OpsSmokeStatus;
 };
 
@@ -133,6 +148,12 @@ function smokeStateValue(value: unknown): SmokeState {
 
 function backupEncryptionModeValue(value: unknown): BackupEncryptionMode {
   return value === "enabled" || value === "disabled" || value === "unknown" ? value : "unknown";
+}
+
+function backupOffsiteModeValue(value: unknown): BackupOffsiteMode {
+  return value === "disabled" || value === "local" || value === "rclone" || value === "unknown"
+    ? value
+    : "unknown";
 }
 
 function booleanValue(value: unknown) {
@@ -319,6 +340,12 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("backup_encryption_unknown");
   }
 
+  if (!status.backupOffsite.configured || status.backupOffsite.mode === "disabled") {
+    warnings.push("backup_offsite_disabled");
+  } else if (status.backupOffsite.status !== "ok") {
+    warnings.push("backup_offsite_attention");
+  }
+
   if (status.latestSmoke.status === "failed") {
     warnings.push("smoke_failed");
   }
@@ -338,6 +365,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawHousekeepingTimer = isRecord(raw.housekeepingTimer) ? raw.housekeepingTimer : {};
   const rawHousekeepingService = isRecord(raw.housekeepingService) ? raw.housekeepingService : {};
   const rawBackupEncryption = isRecord(raw.backupEncryption) ? raw.backupEncryption : {};
+  const rawBackupOffsite = isRecord(raw.backupOffsite) ? raw.backupOffsite : {};
   const availableBytes = numberValue(rawDisk.availableBytes);
   const usedPercent = numberValue(rawDisk.usedPercent);
   const diskStatus = healthStateValue(rawDisk.status);
@@ -411,6 +439,20 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       status: healthStateValue(rawBackupEncryption.status),
       checkedAt: nullableStringValue(rawBackupEncryption.checkedAt),
       error: nullableStringValue(rawBackupEncryption.error),
+    },
+    backupOffsite: {
+      mode: backupOffsiteModeValue(rawBackupOffsite.mode),
+      configured: booleanValue(rawBackupOffsite.configured),
+      targetConfigured: booleanValue(rawBackupOffsite.targetConfigured),
+      target: nullableStringValue(rawBackupOffsite.target),
+      statusFile: stringValue(rawBackupOffsite.statusFile, "ops/status/backup-offsite.json"),
+      lastSyncAt: nullableStringValue(rawBackupOffsite.lastSyncAt),
+      artifactCount: numberValue(rawBackupOffsite.artifactCount) ?? 0,
+      totalBytes: numberValue(rawBackupOffsite.totalBytes) ?? 0,
+      latestArtifact: nullableStringValue(rawBackupOffsite.latestArtifact),
+      status: healthStateValue(rawBackupOffsite.status),
+      checkedAt: nullableStringValue(rawBackupOffsite.checkedAt),
+      error: nullableStringValue(rawBackupOffsite.error),
     },
     latestSmoke: normalizeSmoke(raw.latestSmoke),
   };
@@ -519,6 +561,21 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       plaintextArtifacts: 0,
       missingSha256Sidecars: 0,
       latestEncryptedArtifact: null,
+      status: "unknown" as const,
+      checkedAt: new Date().toISOString(),
+      error: "Host status file has not been generated.",
+    },
+    backupOffsite: {
+      mode: "unknown" as const,
+      configured: false,
+      targetConfigured: false,
+      target: null,
+      statusFile:
+        process.env.ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE?.trim() || "ops/status/backup-offsite.json",
+      lastSyncAt: null,
+      artifactCount: 0,
+      totalBytes: 0,
+      latestArtifact: null,
       status: "unknown" as const,
       checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",

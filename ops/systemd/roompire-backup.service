@@ -13,4 +13,6 @@ Environment=RETENTION_DAYS=14
 Environment=ROOMPIRE_BACKUP_ENCRYPTION=enabled
 Environment=ROOMPIRE_BACKUP_ENCRYPTION_PASSPHRASE_FILE=/srv/aialra/secrets/roompire-backup-passphrase
 Environment=ROOMPIRE_BACKUP_REMOVE_PLAINTEXT=true
+Environment=ROOMPIRE_BACKUP_OFFSITE_MODE=disabled
+Environment=ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE=ops/status/backup-offsite.json
 ExecStart=/usr/bin/env bash ./scripts/backup_all.sh

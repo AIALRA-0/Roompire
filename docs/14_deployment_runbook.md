@@ -208,6 +208,24 @@ Environment=ROOMPIRE_BACKUP_ENCRYPTION_PASSPHRASE_FILE=/srv/aialra/secrets/roomp
 Environment=ROOMPIRE_BACKUP_REMOVE_PLAINTEXT=true
 ```
 
+Offsite backup sync is disabled until a real target exists. The sync only copies encrypted artifacts and `.sha256` sidecars, then writes `ops/status/backup-offsite.json` for the ops dashboard. For a mounted off-host directory, add:
+
+```ini
+Environment=ROOMPIRE_BACKUP_OFFSITE_MODE=local
+Environment=ROOMPIRE_BACKUP_OFFSITE_TARGET_DIR=/mnt/roompire-offsite
+Environment=ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE=ops/status/backup-offsite.json
+```
+
+For a configured `rclone` remote, use:
+
+```ini
+Environment=ROOMPIRE_BACKUP_OFFSITE_MODE=rclone
+Environment=ROOMPIRE_BACKUP_OFFSITE_RCLONE_REMOTE=roompire-offsite:backups/roompire
+Environment=ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE=ops/status/backup-offsite.json
+```
+
+Leave `ROOMPIRE_BACKUP_OFFSITE_MODE=disabled` until the target is truly off the server root filesystem. The ops dashboard will show an expected warning while no offsite copy is configured.
+
 ## Ops Automation
 
 The ops dashboard reads generated JSON snapshots from `ops/status/`. Install the timer units to keep those snapshots fresh without running host commands from the web request path:
@@ -229,7 +247,7 @@ systemctl start roompire-ops-status.service roompire-smoke.service
 systemctl list-timers 'roompire-*'
 ```
 
-`roompire-ops-status.timer` refreshes disk, backup timer/service state, housekeeping timer/service state, backup encryption health, and latest smoke state every 15 minutes. The encryption health snapshot checks the backup unit configuration, passphrase file presence, encrypted artifact count, plaintext artifact count, and `.sha256` sidecar coverage without exposing secret values. `roompire-smoke.timer` runs authenticated real-domain checks hourly at minute 7, updates `ops/status/latest-smoke.json`, then refreshes the ops snapshot.
+`roompire-ops-status.timer` refreshes disk, backup timer/service state, housekeeping timer/service state, backup encryption health, offsite backup copy status, and latest smoke state every 15 minutes. The encryption health snapshot checks the backup unit configuration, passphrase file presence, encrypted artifact count, plaintext artifact count, and `.sha256` sidecar coverage without exposing secret values. The offsite snapshot checks whether a real sync target is configured and whether the latest sync status is healthy. `roompire-smoke.timer` runs authenticated real-domain checks hourly at minute 7, updates `ops/status/latest-smoke.json`, then refreshes the ops snapshot.
 
 ## Restore Drill
 

@@ -199,6 +199,21 @@ async function writeOpsStatusFixture() {
           checkedAt: generatedAt,
           error: null,
         },
+        backupOffsite: {
+          mode: "local",
+          configured: true,
+          targetConfigured: true,
+          target: "local:/mnt/roompire-offsite",
+          statusFile: "ops/status/backup-offsite.json",
+          lastSyncAt: generatedAt,
+          artifactCount: 6,
+          totalBytes: 123456789,
+          latestArtifact:
+            "/srv/aialra/backups/roompire/postgres/roompire_20260704T235250Z.dump.enc.sha256",
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
         latestSmoke: {
           status: "passed",
           generatedAt,
@@ -1227,6 +1242,9 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-backup-encryption-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-encryption-mode")).toContainText("Enabled");
     await expect(page.getByTestId("ops-backup-plaintext-artifacts")).toContainText("0");
+    await expect(page.getByTestId("ops-backup-offsite-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-backup-offsite-mode")).toContainText("Local mount");
+    await expect(page.getByTestId("ops-backup-offsite-artifacts")).toContainText("6");
     await expect(page.getByTestId("ops-smoke-status")).toContainText("Passed");
     await expect(page.getByTestId("ops-status-file-card")).toContainText("Loaded");
 
@@ -1242,6 +1260,12 @@ test.describe("Roompire real browser smoke", () => {
           configured: string;
           encryptedArtifacts: number;
           plaintextArtifacts: number;
+        };
+        backupOffsite: {
+          mode: string;
+          configured: boolean;
+          artifactCount: number;
+          status: string;
         };
         latestSmoke: { status: string; checks: Array<{ path: string }> };
       };
@@ -1259,6 +1283,14 @@ test.describe("Roompire real browser smoke", () => {
         configured: "enabled",
         encryptedArtifacts: 3,
         plaintextArtifacts: 0,
+      }),
+    );
+    expect(opsPayload.status.backupOffsite).toEqual(
+      expect.objectContaining({
+        mode: "local",
+        configured: true,
+        artifactCount: 6,
+        status: "ok",
       }),
     );
     expect(opsPayload.status.latestSmoke).toEqual(

@@ -1347,6 +1347,9 @@ components:
     OpsBackupEncryptionMode:
       type: string
       enum: [enabled, disabled, unknown]
+    OpsBackupOffsiteMode:
+      type: string
+      enum: [disabled, local, rclone, unknown]
     OpsSmokeCheck:
       type: object
       required: [path, status, httpStatus, message]
@@ -1376,6 +1379,7 @@ components:
           housekeepingTimer,
           housekeepingService,
           backupEncryption,
+          backupOffsite,
           latestSmoke,
         ]
       properties:
@@ -1520,6 +1524,51 @@ components:
             plaintextArtifacts: { type: integer }
             missingSha256Sidecars: { type: integer }
             latestEncryptedArtifact:
+              type: string
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        backupOffsite:
+          type: object
+          required:
+            [
+              mode,
+              configured,
+              targetConfigured,
+              target,
+              statusFile,
+              lastSyncAt,
+              artifactCount,
+              totalBytes,
+              latestArtifact,
+              status,
+              checkedAt,
+              error,
+            ]
+          properties:
+            mode: { $ref: "#/components/schemas/OpsBackupOffsiteMode" }
+            configured: { type: boolean }
+            targetConfigured: { type: boolean }
+            target:
+              type: string
+              nullable: true
+              example: local:/mnt/roompire-offsite
+            statusFile:
+              type: string
+              example: ops/status/backup-offsite.json
+            lastSyncAt:
+              type: string
+              format: date-time
+              nullable: true
+            artifactCount: { type: integer }
+            totalBytes: { type: integer }
+            latestArtifact:
               type: string
               nullable: true
             status: { $ref: "#/components/schemas/OpsHealthState" }
