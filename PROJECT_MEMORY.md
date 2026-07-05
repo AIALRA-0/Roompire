@@ -194,6 +194,13 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 ## Last session verification
 
+- 2026-07-05 Ledger list pagination:
+  - Branch/commit: `feat/ledger-list-pagination` / `c2a2aeb feat: paginate ledger lists`, pushed to `origin/feat/ledger-list-pagination`.
+  - Verification passed before final deployment: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test` (11 files, 45 tests), `pnpm build`, `git diff --check`, `jq empty`, OpenAPI YAML parse with `python3`, and targeted `pnpm e2e --grep "debtor settles a suggested transfer across multiple obligations"` (desktop/mobile, 2 passed).
+  - Production deployment from the self-hosted server used Docker Compose only, without SSH: built `web` and `migrate`, ran `prisma migrate deploy` with no pending migrations, recreated `roompire-web-1`, and confirmed the container healthy on `127.0.0.1:18300`.
+  - Real-domain smoke passed for `https://roompire.aialra.online`: `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`.
+  - Live validation through the production gate created an isolated temporary household, verified obligation/transaction/settlement `limit=1` first pages with `hasMore=true`, matching `nextCursor`, distinct second cursor pages, valid-but-missing cursor `400`, ledger page load-more controls for obligations and transactions, and full-history exports returning 2 ledger obligations and 2 settlements despite paginated display windows; temporary validation users/households were cleaned up and follow-up counts returned zero.
+  - GitHub Actions passed for the final pushed commit: CI https://github.com/AIALRA-0/Roompire/actions/runs/28749890156 and E2E https://github.com/AIALRA-0/Roompire/actions/runs/28749890153.
 - 2026-07-05 Audit pagination:
   - Branch/commit: `feat/audit-pagination` / `dd7546e feat: paginate audit events`, pushed to `origin/feat/audit-pagination`.
   - Verification passed before deployment: `pnpm db:generate`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test` (11 files, 45 tests), `pnpm build`, `git diff --check`, and full `pnpm e2e` (46 browser tests across desktop/mobile).
