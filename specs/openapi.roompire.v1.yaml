@@ -929,7 +929,7 @@ components:
         proposalId:
           type: string
           format: uuid
-          description: Optional proposal to attach this uploaded file to.
+          description: Optional proposal to attach this completed uploaded file to as a timeline-visible proposal file.
         purpose: { type: string, enum: [receipt, evidence, other], default: receipt }
     FileResponse:
       type: object
@@ -2899,6 +2899,7 @@ paths:
   /households/{householdId}/files/complete-upload:
     post:
       summary: Finalize a private upload and optionally attach it to a proposal
+      description: Completes an uploaded private file. When `proposalId` is supplied, owners/admins/members attach the file to that proposal and the proposal detail timeline includes the receipt attachment event.
       parameters:
         - in: header
           name: Idempotency-Key

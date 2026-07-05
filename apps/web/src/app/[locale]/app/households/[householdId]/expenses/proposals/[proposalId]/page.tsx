@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { ExpenseProposalComments } from "@/components/expense-proposal-comments";
 import { ExpenseProposalRevisionForm } from "@/components/expense-proposal-revision-form";
 import { ExpenseShareActions } from "@/components/expense-share-actions";
+import { ProposalReceiptUpload } from "@/components/proposal-receipt-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/routing";
@@ -246,6 +247,14 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
     errorFallback: expense("errorFallback"),
     working: common("working"),
   };
+  const receiptUploadLabels = {
+    attachReceipt: expense("attachReceipt"),
+    receiptHint: expense("receiptHint"),
+    receiptAttached: expense("receiptAttached"),
+    selectedReceipt: expense("selectedReceipt"),
+    errorFallback: expense("errorFallback"),
+    working: common("working"),
+  };
   const revisionLabels = {
     reviseTitle: expense("reviseTitle"),
     reviseHint: expense("reviseHint"),
@@ -296,6 +305,13 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
       label: expense("timelineCommented"),
       body: comment.body,
       occurredAt: comment.createdAt,
+    })),
+    ...proposal.files.map((file) => ({
+      id: `file-${file.id}`,
+      actorName: memberNames.get(file.uploadedByUserId) ?? file.uploadedByUserId,
+      label: expense("timelineAttachedReceipt"),
+      body: file.originalFilename,
+      occurredAt: file.createdAt,
     })),
   ].sort(
     (left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime(),
@@ -445,6 +461,13 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
 
               <div className="rounded-lg border border-border bg-background p-4">
                 <h2 className="text-sm font-semibold">{expense("receipts")}</h2>
+                {canComment ? (
+                  <ProposalReceiptUpload
+                    householdId={householdId}
+                    labels={receiptUploadLabels}
+                    proposalId={proposal.id}
+                  />
+                ) : null}
                 <div className="mt-3 divide-y divide-border" data-testid="proposal-files">
                   {proposal.files.length > 0 ? (
                     proposal.files.map((file) => {

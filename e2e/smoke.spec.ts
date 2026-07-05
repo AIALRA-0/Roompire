@@ -3445,7 +3445,11 @@ test.describe("Roompire real browser smoke", () => {
     const householdName = `Receipt House ${suffix}`;
     const proposalTitle = `E2E Receipt ${suffix}`;
     const receiptFileName = `receipt-${suffix}.pdf`;
+    const followUpReceiptFileName = `receipt-follow-up-${suffix}.pdf`;
     const receiptBuffer = Buffer.from(`%PDF-1.4\nRoompire receipt ${suffix}\n%%EOF`);
+    const followUpReceiptBuffer = Buffer.from(
+      `%PDF-1.4\nRoompire follow-up receipt ${suffix}\n%%EOF`,
+    );
 
     await setDevSessionWithRetry(page, ownerEmail, "Receipt Owner E2E");
     const householdResponse = await page.request.post("/api/v1/households", {
@@ -3505,6 +3509,23 @@ test.describe("Roompire real browser smoke", () => {
     ]);
     await expect(page.getByTestId("proposal-files")).toContainText(receiptFileName);
     await expect(page.getByRole("link", { name: "Download receipt" })).toBeVisible();
+    await expect(page.getByTestId("proposal-timeline")).toContainText("attached receipt");
+    await expect(page.getByTestId("proposal-timeline")).toContainText(receiptFileName);
+
+    await page.getByTestId("proposal-receipt-upload-file").setInputFiles({
+      name: followUpReceiptFileName,
+      mimeType: "application/pdf",
+      buffer: followUpReceiptBuffer,
+    });
+    const attachReceiptResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/files/complete-upload") && response.request().method() === "POST",
+    );
+    await page.getByTestId("proposal-receipt-upload-submit").click();
+    expect((await attachReceiptResponse).ok()).toBeTruthy();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("proposal-files")).toContainText(followUpReceiptFileName);
+    await expect(page.getByTestId("proposal-timeline")).toContainText(followUpReceiptFileName);
 
     const detailIds = parseProposalDetailUrl(page.url());
     const proposalResponse = await getApiWithRetry(
@@ -3528,15 +3549,21 @@ test.describe("Roompire real browser smoke", () => {
         }>;
       };
     };
-    expect(proposalPayload.proposal.files).toHaveLength(1);
+    expect(proposalPayload.proposal.files).toHaveLength(2);
     expect(proposalPayload.proposal.files[0]).toMatchObject({
       originalFilename: receiptFileName,
       mimeType: "application/pdf",
       sizeBytes: receiptBuffer.length,
     });
     expect(proposalPayload.proposal.files[0]!.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(proposalPayload.proposal.files[1]).toMatchObject({
+      originalFilename: followUpReceiptFileName,
+      mimeType: "application/pdf",
+      sizeBytes: followUpReceiptBuffer.length,
+    });
+    expect(proposalPayload.proposal.files[1]!.sha256).toMatch(/^[a-f0-9]{64}$/);
 
-    const receiptFileId = proposalPayload.proposal.files[0]!.id;
+    const receiptFileId = proposalPayload.proposal.files[1]!.id;
     const downloadUrlResponse = await getApiWithRetry(
       page,
       `/api/v1/households/${detailIds.householdId}/files/${receiptFileId}/download-url`,
@@ -3554,7 +3581,7 @@ test.describe("Roompire real browser smoke", () => {
     expect(new Date(downloadUrlPayload.expiresAt).getTime()).toBeGreaterThan(Date.now());
     const downloadResponse = await getApiWithRetry(page, downloadUrlPayload.downloadUrl);
     expect(downloadResponse.ok()).toBeTruthy();
-    expect(Buffer.from(await downloadResponse.body()).equals(receiptBuffer)).toBeTruthy();
+    expect(Buffer.from(await downloadResponse.body()).equals(followUpReceiptBuffer)).toBeTruthy();
   });
 
   test("creator revises a disputed proposal after requested changes", async ({

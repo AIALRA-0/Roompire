@@ -404,6 +404,8 @@
     "receipt": "Receipt",
     "receiptHint": "PNG, JPG, WebP, or PDF up to 5 MB.",
     "selectedReceipt": "Selected receipt",
+    "attachReceipt": "Attach receipt",
+    "receiptAttached": "Receipt attached",
     "submitProposal": "Submit proposal",
     "proposalSubmitted": "Proposal submitted",
     "noProposals": "No expense proposals yet",
@@ -448,12 +450,13 @@
     "commentReadOnly": "Viewers can read proposal comments but cannot add new ones.",
     "noComments": "No comments yet",
     "timeline": "Proposal timeline",
-    "timelineHint": "Submitted, approval, rejection, change-request, and comment activity.",
+    "timelineHint": "Submitted, approval, rejection, change-request, receipt, and comment activity.",
     "timelineSubmitted": "submitted proposal",
     "timelineApproved": "approved share",
     "timelineRejected": "rejected share",
     "timelineRequestedChanges": "requested changes",
     "timelineCommented": "commented",
+    "timelineAttachedReceipt": "attached receipt",
     "errorFallback": "Expense action failed."
   },
   "Audit": {

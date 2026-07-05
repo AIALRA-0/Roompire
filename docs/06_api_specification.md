@@ -156,7 +156,7 @@ Current implementation supports list/create/update/delete calendar events, list/
 - `POST /households/{householdId}/files/complete-upload`
 - `GET /households/{householdId}/files/{fileId}/download-url`
 
-Current MVP implements private receipt/evidence storage behind a stable API shape: presign creates a file intent, clients upload bytes to the returned private `PUT` URL, proposal creation can attach uploaded `fileIds` as receipt files, settlement creation can attach uploaded `fileIds` as evidence files, and download-url returns a short-lived signed Roompire URL. Supported receipt/evidence MIME types are PDF, PNG, JPG, and WebP up to 5 MB. Development defaults to the local private adapter; production can use S3-compatible object storage through `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` and `ROOMPIRE_S3_*` settings without changing the client API.
+Current MVP implements private receipt/evidence storage behind a stable API shape: presign creates a file intent, clients upload bytes to the returned private `PUT` URL, proposal creation can attach uploaded `fileIds` as receipt files, `complete-upload` can attach a completed receipt to an existing proposal, settlement creation can attach uploaded `fileIds` as evidence files, and download-url returns a short-lived signed Roompire URL. Supported receipt/evidence MIME types are PDF, PNG, JPG, and WebP up to 5 MB. Development defaults to the local private adapter; production can use S3-compatible object storage through `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` and `ROOMPIRE_S3_*` settings without changing the client API.
 
 ### Stats/export/audit
 
@@ -233,7 +233,7 @@ The original creator can then call `POST /households/{householdId}/expenses/prop
 }
 ```
 
-Current implementation lets owners, admins, and members comment on an expense proposal; viewers can read detail but cannot comment. Comments are returned on proposal detail and are also shown in the proposal timeline. The mutation requires `Idempotency-Key` and records an audit event.
+Current implementation lets owners, admins, and members comment on an expense proposal; viewers can read detail but cannot comment. Comments and proposal receipt attachments are returned on proposal detail and shown in the proposal timeline. The comment mutation requires `Idempotency-Key` and records an audit event; file completion with a `proposalId` is also idempotent and records an `expense_proposal.file_attached` audit event.
 
 ### Approve share
 

@@ -64,7 +64,7 @@ Current implemented subset for identity/household: dev-session and site-gate-bac
 - Revision flow.
 - Dispute state.
 
-Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, receipt upload/attachment with private signed download URLs on local disk or S3-compatible storage, proposal submission, debtor-only approve/reject/request-changes actions, disputed/rejected proposal revision/resubmit with supersedes links, proposal comments, proposal detail pages with split basis and a submitted/approval/change-request/comment timeline, ledger maturity for approved shares, task-generated pending proposals, and event-generated pending proposals. Richer audit/file timeline events remain backlog items.
+Current implemented subset across expense branches: category defaults, dashboard proposal creation, payer/debtor selection, equal/exact/percentage/share-unit split calculation with live preview, receipt upload/attachment with private signed download URLs on local disk or S3-compatible storage, post-submission receipt attachment from proposal detail, proposal submission, debtor-only approve/reject/request-changes actions, disputed/rejected proposal revision/resubmit with supersedes links, proposal comments, proposal detail pages with split basis and a submitted/approval/change-request/receipt/comment timeline, ledger maturity for approved shares, task-generated pending proposals, and event-generated pending proposals.
 
 ## Epic 3 — FX
 

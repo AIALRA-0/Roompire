@@ -404,6 +404,8 @@
     "receipt": "小票",
     "receiptHint": "支持 PNG、JPG、WebP 或 PDF，最大 5 MB。",
     "selectedReceipt": "已选择小票",
+    "attachReceipt": "附加小票",
+    "receiptAttached": "小票已附加",
     "submitProposal": "提交提案",
     "proposalSubmitted": "提案已提交",
     "noProposals": "还没有费用提案",
@@ -448,12 +450,13 @@
     "commentReadOnly": "只读者可以查看提案评论，但不能添加新评论。",
     "noComments": "暂无评论",
     "timeline": "提案时间线",
-    "timelineHint": "提交、批准、拒绝、请求修改和评论活动。",
+    "timelineHint": "提交、批准、拒绝、请求修改、小票和评论活动。",
     "timelineSubmitted": "提交了提案",
     "timelineApproved": "批准了份额",
     "timelineRejected": "拒绝了份额",
     "timelineRequestedChanges": "请求了修改",
     "timelineCommented": "发表了评论",
+    "timelineAttachedReceipt": "附加了小票",
     "errorFallback": "费用操作失败。"
   },
   "Audit": {
