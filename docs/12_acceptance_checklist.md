@@ -78,6 +78,7 @@ Use this checklist before declaring a milestone complete.
 - [x] Audit event API returns cursor pagination metadata, the audit page can load larger result windows, and audit exports keep a full-history query path.
 - [x] Ledger obligation, ledger transaction, and settlement list APIs return cursor pagination metadata; the ledger page can load larger obligation/transaction result windows while balances/actions/exports keep full-history query paths.
 - [x] Calendar event and task list APIs return cursor pagination metadata; the calendar page can load larger event/task windows.
+- [x] Task workspace exposes list, status-board, and due-date calendar views without adding unsafe task data caching.
 - [x] Browser push subscription APIs expose configuration state, register/disable current-user endpoints, and keep notification creation server-owned.
 - [x] PWA install prompt uses the browser `beforeinstallprompt`/`appinstalled` flow without broadening service-worker data caching.
 

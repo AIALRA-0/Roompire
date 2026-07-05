@@ -3,6 +3,7 @@
 import {
   CalendarDays,
   Check,
+  Kanban,
   ListChecks,
   Pencil,
   Plus,
@@ -15,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { SerializedCalendarEvent, SerializedTask } from "@/server/calendar/serializers";
 
 const eventTypeKeys = [
@@ -41,6 +43,7 @@ type PriorityKey = (typeof priorityKeys)[number];
 type RecurrenceKey = (typeof recurrenceKeys)[number];
 type StatusKey = "OPEN" | "COMPLETED";
 type EventViewMode = "LIST" | "DAY" | "WEEK" | "MONTH";
+type TaskViewMode = "LIST" | "BOARD" | "CALENDAR";
 
 type CalendarWorkspaceMember = {
   userId: string;
@@ -126,6 +129,13 @@ type CalendarWorkspaceLabels = {
   eventViewDay: string;
   eventViewWeek: string;
   eventViewMonth: string;
+  taskViewList: string;
+  taskViewBoard: string;
+  taskViewCalendar: string;
+  taskBoardOpen: string;
+  taskBoardCompleted: string;
+  taskCalendarUnscheduled: string;
+  noTasksInView: string;
   eventTypes: Record<EventTypeKey, string>;
   priorities: Record<PriorityKey, string>;
   recurrences: Record<RecurrenceKey, string>;
@@ -297,6 +307,7 @@ export function CalendarWorkspace({
   const [message, setMessage] = useState<string | null>(null);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const [eventViewMode, setEventViewMode] = useState<EventViewMode>("LIST");
+  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>("LIST");
   const [expandedExpenseEventId, setExpandedExpenseEventId] = useState<string | null>(null);
   const [expandedExpenseTaskId, setExpandedExpenseTaskId] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -340,6 +351,69 @@ export function CalendarWorkspace({
   }, [sortedEvents]);
   const dayKey = utcDateKey(startOfUtcDay(referenceDate));
   const dayEvents = eventsByDate.get(dayKey) ?? [];
+  const sortedTasks = useMemo(
+    () =>
+      [...tasks].sort((left, right) => {
+        if (left.status !== right.status) {
+          return left.status === "OPEN" ? -1 : 1;
+        }
+
+        if (left.dueAt && right.dueAt) {
+          return new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime();
+        }
+
+        if (left.dueAt) {
+          return -1;
+        }
+
+        if (right.dueAt) {
+          return 1;
+        }
+
+        return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+      }),
+    [tasks],
+  );
+  const taskReferenceDate = useMemo(() => {
+    const firstDueTask = sortedTasks.find((task) => task.dueAt);
+
+    return firstDueTask?.dueAt ? new Date(firstDueTask.dueAt) : referenceDate;
+  }, [referenceDate, sortedTasks]);
+  const taskMonthDays = useMemo(() => buildMonthDays(taskReferenceDate), [taskReferenceDate]);
+  const tasksByDueDate = useMemo(() => {
+    const groupedTasks = new Map<string, SerializedTask[]>();
+
+    for (const task of sortedTasks) {
+      if (!task.dueAt) {
+        continue;
+      }
+
+      const key = utcDateKey(new Date(task.dueAt));
+      const dayTasks = groupedTasks.get(key) ?? [];
+
+      dayTasks.push(task);
+      groupedTasks.set(key, dayTasks);
+    }
+
+    return groupedTasks;
+  }, [sortedTasks]);
+  const unscheduledTasks = useMemo(() => sortedTasks.filter((task) => !task.dueAt), [sortedTasks]);
+  const taskBoardColumns = useMemo(
+    () =>
+      [
+        {
+          id: "OPEN" as const,
+          label: labels.taskBoardOpen,
+          tasks: sortedTasks.filter((task) => task.status === "OPEN"),
+        },
+        {
+          id: "COMPLETED" as const,
+          label: labels.taskBoardCompleted,
+          tasks: sortedTasks.filter((task) => task.status === "COMPLETED"),
+        },
+      ] satisfies Array<{ id: StatusKey; label: string; tasks: SerializedTask[] }>,
+    [labels.taskBoardCompleted, labels.taskBoardOpen, sortedTasks],
+  );
   const taskAssignmentsByTaskId = useMemo(
     () =>
       new Map(
@@ -352,6 +426,379 @@ export function CalendarWorkspace({
       ),
     [memberNamesByUserId, tasks],
   );
+
+  function renderTaskItem(task: SerializedTask, surface: "list" | "board" = "list") {
+    const assigneeNames = taskAssignmentsByTaskId.get(task.id) ?? [];
+    const taskStatus = task.status as StatusKey;
+    const hasLinkedProposal = task.linkedProposalIds.length > 0;
+    const isExpenseFormOpen = expandedExpenseTaskId === task.id;
+    const isEditingTask = editingTaskId === task.id;
+    const canCreateTaskExpenseProposal =
+      canCreateExpenseProposals && !hasLinkedProposal && expenseDebtorOptions.length > 0;
+    const isTaskExpenseBusy = busyActionId === `task-expense-${task.id}`;
+    const isTaskUpdateBusy = busyActionId === `task-update-${task.id}`;
+    const isTaskDeleteBusy = busyActionId === `task-delete-${task.id}`;
+    const assignedUserIds = new Set(
+      task.assignments.map((assignment) => assignment.assignedUserId),
+    );
+
+    return (
+      <div
+        className={cn(
+          "grid min-w-0 gap-3",
+          surface === "board" ? "rounded-md border border-border bg-background p-3" : "p-4",
+        )}
+        data-testid={surface === "board" ? `task-board-card-${task.id}` : `task-row-${task.id}`}
+        key={task.id}
+      >
+        <div
+          className={cn(
+            "grid min-w-0 gap-3",
+            surface === "list" && "lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center",
+          )}
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="min-w-0 flex-1 break-words text-sm font-medium">{task.title}</p>
+              <Badge variant={statusVariant(task.status)}>
+                {labels.statuses[taskStatus] ?? task.status}
+              </Badge>
+              <Badge variant="neutral">
+                {labels.priorities[(task.priority as PriorityKey) ?? "NORMAL"] ?? task.priority}
+              </Badge>
+              {hasLinkedProposal ? <Badge>{labels.linkedExpenseProposal}</Badge> : null}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {task.dueAt ? formatDateTime(task.dueAt, locale) : labels.noDueDate}
+            </p>
+            {assigneeNames.length > 0 ? (
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {assigneeNames.join(", ")}
+              </p>
+            ) : null}
+            {task.description ? (
+              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{task.description}</p>
+            ) : null}
+          </div>
+          <div
+            className={cn(
+              "flex flex-wrap items-center gap-2",
+              surface === "list" && "lg:justify-end",
+            )}
+          >
+            {task.linkedProposalIds.map((proposalId) => (
+              <Button asChild key={proposalId} size="sm" variant="outline">
+                <Link
+                  data-testid={`task-proposal-link-${task.id}-${proposalId}`}
+                  href={`/${locale}/app/households/${activeHouseholdId}/expenses/proposals/${proposalId}`}
+                >
+                  {labels.openProposal}
+                </Link>
+              </Button>
+            ))}
+            <Button
+              data-testid={`task-expense-toggle-${task.id}`}
+              disabled={!canCreateTaskExpenseProposal || isTaskExpenseBusy || isPending}
+              onClick={() => setExpandedExpenseTaskId(isExpenseFormOpen ? null : task.id)}
+              type="button"
+              variant="outline"
+            >
+              <ReceiptText aria-hidden="true" className="h-4 w-4" />
+              {labels.createExpenseProposal}
+            </Button>
+            <Button
+              data-testid={`task-complete-${task.id}`}
+              disabled={
+                !canCreateWorkItems ||
+                task.status === "COMPLETED" ||
+                busyActionId === `complete-${task.id}` ||
+                isPending
+              }
+              onClick={() => void completeTask(task.id)}
+              type="button"
+              variant="outline"
+            >
+              <Check aria-hidden="true" className="h-4 w-4" />
+              {busyActionId === `complete-${task.id}` ? labels.working : labels.completeTask}
+            </Button>
+            <Button
+              data-testid={`task-edit-${task.id}`}
+              disabled={!canCreateWorkItems || isTaskUpdateBusy || isPending}
+              onClick={() => {
+                setExpandedExpenseTaskId(null);
+                setEditingTaskId(isEditingTask ? null : task.id);
+              }}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {isEditingTask ? (
+                <X aria-hidden="true" className="h-4 w-4" />
+              ) : (
+                <Pencil aria-hidden="true" className="h-4 w-4" />
+              )}
+              {isEditingTask ? labels.cancelEdit : labels.editTask}
+            </Button>
+            <Button
+              data-testid={`task-delete-${task.id}`}
+              disabled={!canCreateWorkItems || hasLinkedProposal || isTaskDeleteBusy || isPending}
+              onClick={() => void deleteTask(task.id)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Trash2 aria-hidden="true" className="h-4 w-4" />
+              {isTaskDeleteBusy ? labels.working : labels.deleteTask}
+            </Button>
+          </div>
+        </div>
+        {isEditingTask ? (
+          <form
+            className="grid gap-3 border-t border-border pt-3"
+            data-testid={`task-edit-form-${task.id}`}
+            onSubmit={(formEvent) => void updateTask(task.id, formEvent)}
+          >
+            <Field label={labels.taskTitle}>
+              <input
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                data-testid={`task-edit-title-${task.id}`}
+                defaultValue={task.title}
+                maxLength={120}
+                name="title"
+                required
+              />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.priority}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-edit-priority-${task.id}`}
+                  defaultValue={task.priority}
+                  name="priority"
+                >
+                  {priorityKeys.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {labels.priorities[priority]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={labels.dueAt}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-edit-due-at-${task.id}`}
+                  defaultValue={dateTimeLocalInputValue(task.dueAt)}
+                  name="dueAt"
+                  type="datetime-local"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-2">
+              <p className="text-sm font-medium">{labels.assignees}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {writableMembers.map((member) => (
+                  <label
+                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                    data-testid={`task-edit-assignee-row-${task.id}-${member.email}`}
+                    key={member.userId}
+                  >
+                    <span className="min-w-0 overflow-hidden">
+                      <span className="block truncate font-medium">{member.displayName}</span>
+                      <span className="block break-all text-xs text-muted-foreground">
+                        {member.email}
+                      </span>
+                    </span>
+                    <input
+                      className="h-4 w-4 rounded border-input focus-ring"
+                      data-testid={`task-edit-assignee-${task.id}-${member.email}`}
+                      defaultChecked={assignedUserIds.has(member.userId)}
+                      name="assignedUserIds"
+                      type="checkbox"
+                      value={member.userId}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+            <Field label={labels.description}>
+              <textarea
+                className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm focus-ring"
+                data-testid={`task-edit-description-${task.id}`}
+                defaultValue={task.description ?? ""}
+                maxLength={1000}
+                name="description"
+              />
+            </Field>
+            <Button
+              data-testid={`task-save-${task.id}`}
+              disabled={isTaskUpdateBusy || isPending}
+              type="submit"
+            >
+              <Check aria-hidden="true" className="h-4 w-4" />
+              {isTaskUpdateBusy ? labels.working : labels.saveTask}
+            </Button>
+          </form>
+        ) : null}
+        {isExpenseFormOpen ? (
+          <form
+            className="grid gap-3 border-t border-border pt-3"
+            data-testid={`task-expense-form-${task.id}`}
+            onSubmit={(event) => void createTaskExpenseProposal(task.id, event)}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.proposalTitle}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-expense-title-${task.id}`}
+                  defaultValue={task.title}
+                  maxLength={120}
+                  name="title"
+                  required
+                />
+              </Field>
+              <Field label={labels.merchant}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-expense-merchant-${task.id}`}
+                  name="merchant"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.category}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-expense-category-${task.id}`}
+                  name="categoryId"
+                >
+                  <option value="">{labels.uncategorized}</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={labels.expenseDate}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-expense-date-${task.id}`}
+                  defaultValue={dateOnly(new Date())}
+                  name="expenseDate"
+                  required
+                  type="date"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.dueDate}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-expense-due-date-${task.id}`}
+                  defaultValue={task.dueAt ? dateOnly(task.dueAt) : ""}
+                  name="dueDate"
+                  type="date"
+                />
+              </Field>
+              <Field label={labels.originalAmount}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-expense-amount-${task.id}`}
+                  min="0.01"
+                  name="originalAmount"
+                  required
+                  step="0.01"
+                  type="number"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label={labels.originalCurrency}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
+                  data-testid={`task-expense-original-currency-${task.id}`}
+                  defaultValue={settlementCurrency ?? "USD"}
+                  maxLength={3}
+                  minLength={3}
+                  name="originalCurrency"
+                  required
+                />
+              </Field>
+              <Field label={labels.settlementCurrency}>
+                <input
+                  className="h-10 rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground"
+                  data-testid={`task-expense-settlement-currency-${task.id}`}
+                  disabled
+                  value={settlementCurrency ?? ""}
+                />
+              </Field>
+              <Field label={labels.fxRate}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid={`task-expense-fx-rate-${task.id}`}
+                  defaultValue="1"
+                  min="0.000001"
+                  name="fxRate"
+                  step="0.000001"
+                  type="number"
+                />
+              </Field>
+            </div>
+            <fieldset className="grid gap-2">
+              <legend className="text-sm font-medium">{labels.debtors}</legend>
+              <p className="text-xs text-muted-foreground">{labels.payerShareIncluded}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {expenseDebtorOptions.map((member) => (
+                  <label className="flex items-center gap-2 text-sm" key={member.userId}>
+                    <input
+                      className="h-4 w-4 rounded border-input"
+                      data-testid={`task-expense-debtor-${task.id}-${member.email}`}
+                      name="participantUserIds"
+                      type="checkbox"
+                      value={member.userId}
+                    />
+                    <span className="min-w-0 truncate">
+                      {member.displayName} · {member.email}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <Button
+              data-testid={`task-expense-submit-${task.id}`}
+              disabled={isTaskExpenseBusy || isPending}
+              type="submit"
+            >
+              <Plus aria-hidden="true" className="h-4 w-4" />
+              {isTaskExpenseBusy ? labels.working : labels.submitProposal}
+            </Button>
+          </form>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderTaskCalendarItem(task: SerializedTask) {
+    const taskStatus = task.status as StatusKey;
+
+    return (
+      <div
+        className="rounded-md border border-border bg-background px-2 py-1.5"
+        data-testid={`task-calendar-item-${task.id}`}
+        key={task.id}
+      >
+        <p className="truncate text-xs font-medium">{task.title}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <Badge variant={statusVariant(task.status)}>
+            {labels.statuses[taskStatus] ?? task.status}
+          </Badge>
+          <Badge variant="neutral">
+            {labels.priorities[(task.priority as PriorityKey) ?? "NORMAL"] ?? task.priority}
+          </Badge>
+        </div>
+      </div>
+    );
+  }
 
   if (!activeHouseholdId) {
     return (
@@ -1530,372 +1977,121 @@ export function CalendarWorkspace({
         </div>
 
         <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
-          <div className="border-b border-border p-5">
-            <h2 className="text-lg font-semibold">{labels.tasks}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{labels.tasksHint}</p>
+          <div className="flex flex-col gap-4 border-b border-border p-5 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold">{labels.tasks}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{labels.tasksHint}</p>
+            </div>
+            <div
+              aria-label={labels.tasks}
+              className="inline-flex w-full rounded-md border border-border bg-background p-1 md:w-auto"
+              role="tablist"
+            >
+              {[
+                { mode: "LIST" as const, label: labels.taskViewList, icon: ListChecks },
+                { mode: "BOARD" as const, label: labels.taskViewBoard, icon: Kanban },
+                { mode: "CALENDAR" as const, label: labels.taskViewCalendar, icon: CalendarDays },
+              ].map(({ icon: Icon, label, mode }) => (
+                <button
+                  aria-selected={taskViewMode === mode}
+                  className={cn(
+                    "focus-ring inline-flex h-9 flex-1 items-center justify-center gap-2 rounded px-3 text-sm font-medium transition-colors md:flex-none",
+                    taskViewMode === mode
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                  data-testid={`task-view-${mode.toLowerCase()}`}
+                  key={mode}
+                  onClick={() => {
+                    setExpandedExpenseTaskId(null);
+                    setEditingTaskId(null);
+                    setTaskViewMode(mode);
+                  }}
+                  role="tab"
+                  type="button"
+                >
+                  <Icon aria-hidden="true" className="h-4 w-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           {tasks.length > 0 ? (
-            <div className="divide-y divide-border">
-              {tasks.map((task) => {
-                const assigneeNames = taskAssignmentsByTaskId.get(task.id) ?? [];
-                const taskStatus = task.status as StatusKey;
-                const hasLinkedProposal = task.linkedProposalIds.length > 0;
-                const isExpenseFormOpen = expandedExpenseTaskId === task.id;
-                const isEditingTask = editingTaskId === task.id;
-                const canCreateTaskExpenseProposal =
-                  canCreateExpenseProposals &&
-                  !hasLinkedProposal &&
-                  expenseDebtorOptions.length > 0;
-                const isTaskExpenseBusy = busyActionId === `task-expense-${task.id}`;
-                const isTaskUpdateBusy = busyActionId === `task-update-${task.id}`;
-                const isTaskDeleteBusy = busyActionId === `task-delete-${task.id}`;
-                const assignedUserIds = new Set(
-                  task.assignments.map((assignment) => assignment.assignedUserId),
-                );
-
-                return (
-                  <div
-                    className="grid min-w-0 gap-3 p-4"
-                    data-testid={`task-row-${task.id}`}
-                    key={task.id}
-                  >
-                    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="min-w-0 flex-1 break-words text-sm font-medium">
-                            {task.title}
-                          </p>
-                          <Badge variant={statusVariant(task.status)}>
-                            {labels.statuses[taskStatus] ?? task.status}
-                          </Badge>
-                          <Badge variant="neutral">
-                            {labels.priorities[(task.priority as PriorityKey) ?? "NORMAL"] ??
-                              task.priority}
-                          </Badge>
-                          {hasLinkedProposal ? <Badge>{labels.linkedExpenseProposal}</Badge> : null}
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {task.dueAt ? formatDateTime(task.dueAt, locale) : labels.noDueDate}
-                        </p>
-                        {assigneeNames.length > 0 ? (
-                          <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {assigneeNames.join(", ")}
-                          </p>
-                        ) : null}
-                        {task.description ? (
-                          <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                            {task.description}
-                          </p>
-                        ) : null}
+            <>
+              {taskViewMode === "LIST" ? (
+                <div className="divide-y divide-border" data-testid="task-list-view">
+                  {sortedTasks.map((task) => renderTaskItem(task))}
+                </div>
+              ) : null}
+              {taskViewMode === "BOARD" ? (
+                <div className="grid gap-px bg-border md:grid-cols-2" data-testid="task-board-view">
+                  {taskBoardColumns.map((column) => (
+                    <section
+                      className="min-h-64 bg-card p-4"
+                      data-testid={`task-board-column-${column.id.toLowerCase()}`}
+                      key={column.id}
+                    >
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold">{column.label}</h3>
+                        <Badge variant={column.id === "COMPLETED" ? "success" : "neutral"}>
+                          {column.tasks.length}
+                        </Badge>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                        {task.linkedProposalIds.map((proposalId) => (
-                          <Button asChild key={proposalId} size="sm" variant="outline">
-                            <Link
-                              data-testid={`task-proposal-link-${task.id}-${proposalId}`}
-                              href={`/${locale}/app/households/${activeHouseholdId}/expenses/proposals/${proposalId}`}
-                            >
-                              {labels.openProposal}
-                            </Link>
-                          </Button>
-                        ))}
-                        <Button
-                          data-testid={`task-expense-toggle-${task.id}`}
-                          disabled={!canCreateTaskExpenseProposal || isTaskExpenseBusy || isPending}
-                          onClick={() =>
-                            setExpandedExpenseTaskId(isExpenseFormOpen ? null : task.id)
-                          }
-                          type="button"
-                          variant="outline"
+                      {column.tasks.length > 0 ? (
+                        <div className="grid gap-3">
+                          {column.tasks.map((task) => renderTaskItem(task, "board"))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">{labels.noTasksInView}</p>
+                      )}
+                    </section>
+                  ))}
+                </div>
+              ) : null}
+              {taskViewMode === "CALENDAR" ? (
+                <div data-testid="task-calendar-view">
+                  <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+                    {formatMonthHeading(taskReferenceDate, locale)}
+                  </div>
+                  <div className="grid gap-px bg-border sm:grid-cols-7">
+                    {taskMonthDays.map((day) => {
+                      const dayKey = utcDateKey(day);
+                      const dayTasks = tasksByDueDate.get(dayKey) ?? [];
+                      const isReferenceMonth =
+                        day.getUTCMonth() === taskReferenceDate.getUTCMonth();
+
+                      return (
+                        <div
+                          className={cn("min-h-28 bg-card p-2", !isReferenceMonth && "opacity-55")}
+                          data-testid={`task-calendar-day-${dayKey}`}
+                          key={dayKey}
                         >
-                          <ReceiptText aria-hidden="true" className="h-4 w-4" />
-                          {labels.createExpenseProposal}
-                        </Button>
-                        <Button
-                          data-testid={`task-complete-${task.id}`}
-                          disabled={
-                            !canCreateWorkItems ||
-                            task.status === "COMPLETED" ||
-                            busyActionId === `complete-${task.id}` ||
-                            isPending
-                          }
-                          onClick={() => void completeTask(task.id)}
-                          type="button"
-                          variant="outline"
-                        >
-                          <Check aria-hidden="true" className="h-4 w-4" />
-                          {busyActionId === `complete-${task.id}`
-                            ? labels.working
-                            : labels.completeTask}
-                        </Button>
-                        <Button
-                          data-testid={`task-edit-${task.id}`}
-                          disabled={!canCreateWorkItems || isTaskUpdateBusy || isPending}
-                          onClick={() => {
-                            setExpandedExpenseTaskId(null);
-                            setEditingTaskId(isEditingTask ? null : task.id);
-                          }}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          {isEditingTask ? (
-                            <X aria-hidden="true" className="h-4 w-4" />
-                          ) : (
-                            <Pencil aria-hidden="true" className="h-4 w-4" />
-                          )}
-                          {isEditingTask ? labels.cancelEdit : labels.editTask}
-                        </Button>
-                        <Button
-                          data-testid={`task-delete-${task.id}`}
-                          disabled={
-                            !canCreateWorkItems ||
-                            hasLinkedProposal ||
-                            isTaskDeleteBusy ||
-                            isPending
-                          }
-                          onClick={() => void deleteTask(task.id)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          <Trash2 aria-hidden="true" className="h-4 w-4" />
-                          {isTaskDeleteBusy ? labels.working : labels.deleteTask}
-                        </Button>
+                          <p className="text-xs font-semibold text-muted-foreground">
+                            {day.getUTCDate()}
+                          </p>
+                          <div className="mt-2 grid gap-1.5">
+                            {dayTasks.length > 0 ? (
+                              dayTasks.map((task) => renderTaskCalendarItem(task))
+                            ) : (
+                              <p className="text-[11px] text-muted-foreground">
+                                {labels.noTasksInView}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {unscheduledTasks.length > 0 ? (
+                    <div className="border-t border-border p-4" data-testid="task-unscheduled-list">
+                      <h3 className="text-sm font-semibold">{labels.taskCalendarUnscheduled}</h3>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {unscheduledTasks.map((task) => renderTaskCalendarItem(task))}
                       </div>
                     </div>
-                    {isEditingTask ? (
-                      <form
-                        className="grid gap-3 border-t border-border pt-3"
-                        data-testid={`task-edit-form-${task.id}`}
-                        onSubmit={(formEvent) => void updateTask(task.id, formEvent)}
-                      >
-                        <Field label={labels.taskTitle}>
-                          <input
-                            className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                            data-testid={`task-edit-title-${task.id}`}
-                            defaultValue={task.title}
-                            maxLength={120}
-                            name="title"
-                            required
-                          />
-                        </Field>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Field label={labels.priority}>
-                            <select
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                              data-testid={`task-edit-priority-${task.id}`}
-                              defaultValue={task.priority}
-                              name="priority"
-                            >
-                              {priorityKeys.map((priority) => (
-                                <option key={priority} value={priority}>
-                                  {labels.priorities[priority]}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                          <Field label={labels.dueAt}>
-                            <input
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                              data-testid={`task-edit-due-at-${task.id}`}
-                              defaultValue={dateTimeLocalInputValue(task.dueAt)}
-                              name="dueAt"
-                              type="datetime-local"
-                            />
-                          </Field>
-                        </div>
-                        <div className="grid gap-2">
-                          <p className="text-sm font-medium">{labels.assignees}</p>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {writableMembers.map((member) => (
-                              <label
-                                className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
-                                data-testid={`task-edit-assignee-row-${task.id}-${member.email}`}
-                                key={member.userId}
-                              >
-                                <span className="min-w-0 overflow-hidden">
-                                  <span className="block truncate font-medium">
-                                    {member.displayName}
-                                  </span>
-                                  <span className="block break-all text-xs text-muted-foreground">
-                                    {member.email}
-                                  </span>
-                                </span>
-                                <input
-                                  className="h-4 w-4 rounded border-input focus-ring"
-                                  data-testid={`task-edit-assignee-${task.id}-${member.email}`}
-                                  defaultChecked={assignedUserIds.has(member.userId)}
-                                  name="assignedUserIds"
-                                  type="checkbox"
-                                  value={member.userId}
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                        <Field label={labels.description}>
-                          <textarea
-                            className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm focus-ring"
-                            data-testid={`task-edit-description-${task.id}`}
-                            defaultValue={task.description ?? ""}
-                            maxLength={1000}
-                            name="description"
-                          />
-                        </Field>
-                        <Button
-                          data-testid={`task-save-${task.id}`}
-                          disabled={isTaskUpdateBusy || isPending}
-                          type="submit"
-                        >
-                          <Check aria-hidden="true" className="h-4 w-4" />
-                          {isTaskUpdateBusy ? labels.working : labels.saveTask}
-                        </Button>
-                      </form>
-                    ) : null}
-                    {isExpenseFormOpen ? (
-                      <form
-                        className="grid gap-3 border-t border-border pt-3"
-                        data-testid={`task-expense-form-${task.id}`}
-                        onSubmit={(event) => void createTaskExpenseProposal(task.id, event)}
-                      >
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Field label={labels.proposalTitle}>
-                            <input
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                              data-testid={`task-expense-title-${task.id}`}
-                              defaultValue={task.title}
-                              maxLength={120}
-                              name="title"
-                              required
-                            />
-                          </Field>
-                          <Field label={labels.merchant}>
-                            <input
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                              data-testid={`task-expense-merchant-${task.id}`}
-                              name="merchant"
-                            />
-                          </Field>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Field label={labels.category}>
-                            <select
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                              data-testid={`task-expense-category-${task.id}`}
-                              name="categoryId"
-                            >
-                              <option value="">{labels.uncategorized}</option>
-                              {categories.map((category) => (
-                                <option key={category.id} value={category.id}>
-                                  {category.name}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                          <Field label={labels.expenseDate}>
-                            <input
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                              data-testid={`task-expense-date-${task.id}`}
-                              defaultValue={dateOnly(new Date())}
-                              name="expenseDate"
-                              required
-                              type="date"
-                            />
-                          </Field>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Field label={labels.dueDate}>
-                            <input
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                              data-testid={`task-expense-due-date-${task.id}`}
-                              defaultValue={task.dueAt ? dateOnly(task.dueAt) : ""}
-                              name="dueDate"
-                              type="date"
-                            />
-                          </Field>
-                          <Field label={labels.originalAmount}>
-                            <input
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                              data-testid={`task-expense-amount-${task.id}`}
-                              min="0.01"
-                              name="originalAmount"
-                              required
-                              step="0.01"
-                              type="number"
-                            />
-                          </Field>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <Field label={labels.originalCurrency}>
-                            <input
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm uppercase focus-ring"
-                              data-testid={`task-expense-original-currency-${task.id}`}
-                              defaultValue={settlementCurrency ?? "USD"}
-                              maxLength={3}
-                              minLength={3}
-                              name="originalCurrency"
-                              required
-                            />
-                          </Field>
-                          <Field label={labels.settlementCurrency}>
-                            <input
-                              className="h-10 rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground"
-                              data-testid={`task-expense-settlement-currency-${task.id}`}
-                              disabled
-                              value={settlementCurrency ?? ""}
-                            />
-                          </Field>
-                          <Field label={labels.fxRate}>
-                            <input
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-                              data-testid={`task-expense-fx-rate-${task.id}`}
-                              defaultValue="1"
-                              min="0.000001"
-                              name="fxRate"
-                              step="0.000001"
-                              type="number"
-                            />
-                          </Field>
-                        </div>
-                        <fieldset className="grid gap-2">
-                          <legend className="text-sm font-medium">{labels.debtors}</legend>
-                          <p className="text-xs text-muted-foreground">
-                            {labels.payerShareIncluded}
-                          </p>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {expenseDebtorOptions.map((member) => (
-                              <label
-                                className="flex items-center gap-2 text-sm"
-                                key={member.userId}
-                              >
-                                <input
-                                  className="h-4 w-4 rounded border-input"
-                                  data-testid={`task-expense-debtor-${task.id}-${member.email}`}
-                                  name="participantUserIds"
-                                  type="checkbox"
-                                  value={member.userId}
-                                />
-                                <span className="min-w-0 truncate">
-                                  {member.displayName} · {member.email}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </fieldset>
-                        <Button
-                          data-testid={`task-expense-submit-${task.id}`}
-                          disabled={isTaskExpenseBusy || isPending}
-                          type="submit"
-                        >
-                          <Plus aria-hidden="true" className="h-4 w-4" />
-                          {isTaskExpenseBusy ? labels.working : labels.submitProposal}
-                        </Button>
-                      </form>
-                    ) : null}
-                  </div>
-                );
-              })}
+                  ) : null}
+                </div>
+              ) : null}
               {taskLoadMoreHref ? (
                 <div className="border-t border-border p-4 text-center">
                   <Button asChild variant="outline">
@@ -1905,7 +2101,7 @@ export function CalendarWorkspace({
                   </Button>
                 </div>
               ) : null}
-            </div>
+            </>
           ) : (
             <p className="p-5 text-sm text-muted-foreground">{labels.noTasks}</p>
           )}

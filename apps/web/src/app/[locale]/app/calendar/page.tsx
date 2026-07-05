@@ -278,6 +278,13 @@ export default async function CalendarPage({ params, searchParams }: PageProps) 
                 eventViewDay: calendar("eventViewDay"),
                 eventViewWeek: calendar("eventViewWeek"),
                 eventViewMonth: calendar("eventViewMonth"),
+                taskViewList: calendar("taskViewList"),
+                taskViewBoard: calendar("taskViewBoard"),
+                taskViewCalendar: calendar("taskViewCalendar"),
+                taskBoardOpen: calendar("taskBoardOpen"),
+                taskBoardCompleted: calendar("taskBoardCompleted"),
+                taskCalendarUnscheduled: calendar("taskCalendarUnscheduled"),
+                noTasksInView: calendar("noTasksInView"),
                 eventTypes: {
                   TASK: calendar("eventTypeTask"),
                   CHORE: calendar("eventTypeChore"),

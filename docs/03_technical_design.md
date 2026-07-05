@@ -251,6 +251,8 @@ Events link to domain records via polymorphic `event_links`:
 
 Task due dates create linked `TASK` calendar events. Updating a task creates, updates, or removes that linked event so the task stays authoritative. Direct calendar edits are allowed for standalone materialized events; task-linked and debt-obligation-linked events are locked and must be changed from their source record.
 
+The task workspace derives list, status-board, and due-date calendar modes from the loaded task window. List and board modes preserve the same task actions, while calendar mode keeps a compact due-date scan without widening the task API.
+
 `RECURRING_EXPENSE_GENERATION` events can own a `RecurringExpenseTemplate` that stores the proposal title, merchant/category, original amount/currency, optional locked FX rate, and debtor participant IDs. Finite recurrence copies the template onto each materialized occurrence. The idempotent `pnpm recurring-expenses:generate` job scans due open template-backed events without an existing expense-proposal link and creates one pending proposal through the same event-to-proposal service path used by manual calendar actions.
 
 ## Notifications

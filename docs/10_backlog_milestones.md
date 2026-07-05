@@ -130,7 +130,7 @@ Current implemented subset for settlements: debtors can submit direct-obligation
 - Complete task.
 - Link proposal/task/event.
 
-Current implemented subset across calendar branches: calendar/task page shell, cursor-paginated event list/create/update/delete, event list/day/week/month views over the loaded event window, cursor-paginated task list/create/update/delete, assignment at creation and update, task completion, task-to-calendar-event linking, repayment due events, finite recurrence, recurring expense templates copied across generated occurrences, scheduled auto-generation of one pending proposal per due recurring expense event, in-app due/overdue task reminders, task-generated pending expense proposals linked back to the task and any linked task event, and event-generated pending expense proposals from bill/chore/group/recurring-expense events.
+Current implemented subset across calendar branches: calendar/task page shell, cursor-paginated event list/create/update/delete, event list/day/week/month views over the loaded event window, cursor-paginated task list/create/update/delete, task list/board/calendar views over loaded tasks, assignment at creation and update, task completion, task-to-calendar-event linking, repayment due events, finite recurrence, recurring expense templates copied across generated occurrences, scheduled auto-generation of one pending proposal per due recurring expense event, in-app due/overdue task reminders, task-generated pending expense proposals linked back to the task and any linked task event, and event-generated pending expense proposals from bill/chore/group/recurring-expense events.
 
 ### P1
 

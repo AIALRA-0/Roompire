@@ -5900,6 +5900,18 @@ test.describe("Roompire real browser smoke", () => {
         `event-proposal-link-${autoRecurringEvents[0]!.id}-${generatedRecurringProposalId}`,
       ),
     ).toBeVisible();
+    await expect(page.getByTestId("task-list-view")).toBeVisible();
+    await expect(page.getByTestId(`task-row-${createdTask!.id}`)).toContainText(taskTitle);
+    await page.getByTestId("task-view-board").click();
+    await expect(page.getByTestId("task-board-view")).toBeVisible();
+    await expect(page.getByTestId("task-board-column-open")).toContainText(taskTitle);
+    await expect(page.getByTestId(`task-board-card-${createdTask!.id}`)).toContainText("High");
+    await page.getByTestId("task-view-calendar").click();
+    await expect(page.getByTestId("task-calendar-view")).toBeVisible();
+    await expect(page.getByTestId("task-calendar-day-2026-07-09")).toContainText(taskTitle);
+    await expect(page.getByTestId(`task-calendar-item-${createdTask!.id}`)).toContainText("High");
+    await page.getByTestId("task-view-list").click();
+    await expect(page.getByTestId("task-list-view")).toBeVisible();
 
     const eventExpenseSource = recurringEvents[0]!;
     await page.getByTestId(`calendar-event-edit-${eventExpenseSource.id}`).click();
