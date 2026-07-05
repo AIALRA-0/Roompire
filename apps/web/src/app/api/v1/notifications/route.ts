@@ -8,7 +8,10 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const user = await requireApiUser(request);
-    const result = await listNotificationsForUser(user.id);
+    const result = await listNotificationsForUser(user.id, {
+      cursor: request.nextUrl.searchParams.get("cursor") ?? undefined,
+      limit: request.nextUrl.searchParams.get("limit") ?? undefined,
+    });
 
     return NextResponse.json(result);
   } catch (error) {

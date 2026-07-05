@@ -956,6 +956,155 @@ test.describe("Roompire real browser smoke", () => {
     expect(allowedResponse.ok()).toBeTruthy();
   });
 
+  test("dashboard proposal and notification lists paginate", async ({ page }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const sessionResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(sessionResponse.ok()).toBeTruthy();
+    const sessionPayload = (await sessionResponse.json()) as {
+      household: { id: string } | null;
+    };
+    const householdId = sessionPayload.household?.id;
+
+    if (!householdId) {
+      throw new Error("Expected active household for pagination test.");
+    }
+
+    const membersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members`,
+    );
+    expect(membersResponse.ok()).toBeTruthy();
+    const membersPayload = (await membersResponse.json()) as {
+      members: Array<{ userId: string; email: string }>;
+    };
+    const bobUserId = membersPayload.members.find(
+      (member) => member.email === "bob@example.test",
+    )?.userId;
+
+    if (!bobUserId) {
+      throw new Error("Expected seeded Bob membership for pagination test.");
+    }
+
+    for (let index = 0; index < 6; index += 1) {
+      const response = await postApiWithRetry(
+        page,
+        `/api/v1/households/${householdId}/expenses/proposals`,
+        {
+          data: {
+            title: `Pagination proposal ${suffix} ${index}`,
+            expenseDate: "2026-07-02",
+            originalAmount: "1.00",
+            originalCurrency: "CNY",
+            participantUserIds: [bobUserId],
+          },
+          headers: {
+            "Idempotency-Key": `pagination-proposal-${suffix}-${index}`,
+          },
+        },
+      );
+
+      expect(response.ok()).toBeTruthy();
+    }
+
+    const firstProposalPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals?limit=1`,
+    );
+    expect(firstProposalPageResponse.ok()).toBeTruthy();
+    const firstProposalPage = (await firstProposalPageResponse.json()) as {
+      proposals: Array<{ id: string; title: string }>;
+      page: { limit: number; nextCursor: string | null; hasMore: boolean };
+    };
+
+    expect(firstProposalPage.proposals).toHaveLength(1);
+    expect(firstProposalPage.page).toMatchObject({ limit: 1, hasMore: true });
+    expect(firstProposalPage.page.nextCursor).toBeTruthy();
+
+    const secondProposalPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals?limit=1&cursor=${firstProposalPage.page.nextCursor}`,
+    );
+    expect(secondProposalPageResponse.ok()).toBeTruthy();
+    const secondProposalPage =
+      (await secondProposalPageResponse.json()) as typeof firstProposalPage;
+
+    expect(secondProposalPage.proposals).toHaveLength(1);
+    expect(secondProposalPage.proposals[0]!.id).not.toBe(firstProposalPage.proposals[0]!.id);
+
+    const invalidCursorResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals?cursor=not-a-cursor`,
+    );
+    expect(invalidCursorResponse.status()).toBe(400);
+
+    await page.goto("/en-US/app");
+    await expect(page.getByTestId("expense-load-more")).toBeVisible();
+    const initialProposalRows = await page.getByTestId("expense-proposal-row").count();
+    expect(initialProposalRows).toBe(5);
+
+    await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/api/v1/households/${householdId}/expenses/proposals?`) &&
+          response.request().method() === "GET",
+      ),
+      page.getByTestId("expense-load-more").click(),
+    ]);
+    await expect
+      .poll(async () => page.getByTestId("expense-proposal-row").count())
+      .toBeGreaterThan(initialProposalRows);
+
+    await setDevSessionWithRetry(page, "bob@example.test", "Bob");
+
+    const firstNotificationPageResponse = await getApiWithRetry(
+      page,
+      "/api/v1/notifications?limit=1",
+    );
+    expect(firstNotificationPageResponse.ok()).toBeTruthy();
+    const firstNotificationPage = (await firstNotificationPageResponse.json()) as {
+      notifications: Array<{ id: string; type: string }>;
+      unreadCount: number;
+      page: { limit: number; nextCursor: string | null; hasMore: boolean };
+    };
+
+    expect(firstNotificationPage.notifications).toHaveLength(1);
+    expect(firstNotificationPage.unreadCount).toBeGreaterThanOrEqual(6);
+    expect(firstNotificationPage.page).toMatchObject({ limit: 1, hasMore: true });
+    expect(firstNotificationPage.page.nextCursor).toBeTruthy();
+
+    const secondNotificationPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/notifications?limit=1&cursor=${firstNotificationPage.page.nextCursor}`,
+    );
+    expect(secondNotificationPageResponse.ok()).toBeTruthy();
+    const secondNotificationPage =
+      (await secondNotificationPageResponse.json()) as typeof firstNotificationPage;
+
+    expect(secondNotificationPage.notifications).toHaveLength(1);
+    expect(secondNotificationPage.notifications[0]!.id).not.toBe(
+      firstNotificationPage.notifications[0]!.id,
+    );
+
+    await page.goto("/en-US/app");
+    await expect(page.getByTestId("notifications-load-more")).toBeVisible();
+    const initialNotificationRows = await page
+      .getByTestId("notification-row-EXPENSE_PROPOSAL_ASSIGNED")
+      .count();
+    expect(initialNotificationRows).toBe(5);
+
+    await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes("/api/v1/notifications?") &&
+          response.request().method() === "GET",
+      ),
+      page.getByTestId("notifications-load-more").click(),
+    ]);
+    await expect
+      .poll(async () => page.getByTestId("notification-row-EXPENSE_PROPOSAL_ASSIGNED").count())
+      .toBeGreaterThan(initialNotificationRows);
+  });
+
   test("desktop user opens landing page and navigates to dashboard", async ({ page }) => {
     await page.goto("/en-US");
 

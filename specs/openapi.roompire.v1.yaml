@@ -502,14 +502,25 @@ components:
           format: date-time
           nullable: true
         createdAt: { type: string, format: date-time }
+    PageInfo:
+      type: object
+      required: [limit, nextCursor, hasMore]
+      properties:
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        nextCursor:
+          type: string
+          format: uuid
+          nullable: true
+        hasMore: { type: boolean }
     NotificationsListResponse:
       type: object
-      required: [notifications, unreadCount]
+      required: [notifications, unreadCount, page]
       properties:
         notifications:
           type: array
           items: { $ref: "#/components/schemas/Notification" }
         unreadCount: { type: integer, minimum: 0 }
+        page: { $ref: "#/components/schemas/PageInfo" }
     UpdateNotificationRequest:
       type: object
       required: [read]
@@ -1041,11 +1052,12 @@ components:
           items: { $ref: "#/components/schemas/ProposalFile" }
     ExpenseProposalListResponse:
       type: object
-      required: [proposals]
+      required: [proposals, page]
       properties:
         proposals:
           type: array
           items: { $ref: "#/components/schemas/ExpenseProposal" }
+        page: { $ref: "#/components/schemas/PageInfo" }
     ExpenseProposalResponse:
       type: object
       required: [proposal]
@@ -2173,7 +2185,14 @@ paths:
   /notifications:
     get:
       summary: List current user's in-app notifications
-      description: Returns notifications for households where the current user is still an active member.
+      description: Returns cursor-paginated notifications for households where the current user is still an active member.
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses:
         "200":
           description: OK
@@ -2516,6 +2535,12 @@ paths:
         - in: query
           name: status
           schema: { $ref: "#/components/schemas/ExpenseProposalStatus" }
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses:
         "200":
           description: OK

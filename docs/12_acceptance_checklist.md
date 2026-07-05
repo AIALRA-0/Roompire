@@ -72,6 +72,7 @@ Use this checklist before declaring a milestone complete.
 - [ ] Validation errors standardized.
 - [ ] Permission errors standardized.
 - [ ] Pagination used for lists.
+- [x] Dashboard proposal and notification lists expose cursor pagination metadata and load-more controls.
 
 ## Deployment/backup
 

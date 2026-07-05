@@ -26,7 +26,7 @@ export async function getDashboardModel() {
   const [householdMemberships, userSettings, notificationResult, cookieStore] = await Promise.all([
     listHouseholdsForUser(user.id),
     getUserSettings(user.id),
-    listNotificationsForUser(user.id),
+    listNotificationsForUser(user.id, { limit: 5 }),
     cookies(),
   ]);
   const activeHouseholdId = cookieStore.get(ACTIVE_HOUSEHOLD_COOKIE_NAME)?.value;
@@ -38,6 +38,7 @@ export async function getDashboardModel() {
       user,
       userSettings,
       notifications: notificationResult.notifications,
+      notificationPage: notificationResult.page,
       unreadNotificationCount: notificationResult.unreadCount,
       householdMemberships,
       activeHousehold: null,
@@ -45,6 +46,11 @@ export async function getDashboardModel() {
       members: [],
       categories: [],
       expenseProposals: [],
+      expenseProposalPage: {
+        limit: 5,
+        nextCursor: null,
+        hasMore: false,
+      },
       debtObligations: [],
       pendingProposalCount: 0,
       maturedObligationCount: 0,
@@ -61,7 +67,7 @@ export async function getDashboardModel() {
   const [
     members,
     categories,
-    expenseProposals,
+    expenseProposalResult,
     debtObligations,
     pendingProposalCount,
     maturedObligationCount,
@@ -77,7 +83,7 @@ export async function getDashboardModel() {
       orderBy: [{ role: "asc" }, { createdAt: "asc" }],
     }),
     listExpenseCategoriesForHousehold(user.id, activeHousehold.id),
-    listExpenseProposalsForHousehold(user.id, activeHousehold.id),
+    listExpenseProposalsForHousehold(user.id, activeHousehold.id, { limit: 5 }),
     prisma.debtObligation.findMany({
       where: {
         householdId: activeHousehold.id,
@@ -118,13 +124,15 @@ export async function getDashboardModel() {
     user,
     userSettings,
     notifications: notificationResult.notifications,
+    notificationPage: notificationResult.page,
     unreadNotificationCount: notificationResult.unreadCount,
     householdMemberships,
     activeHousehold,
     activeMembership,
     members,
     categories,
-    expenseProposals,
+    expenseProposals: expenseProposalResult.items,
+    expenseProposalPage: expenseProposalResult.page,
     debtObligations,
     pendingProposalCount,
     maturedObligationCount,

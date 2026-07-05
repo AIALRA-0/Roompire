@@ -3,6 +3,7 @@
 import Decimal from "decimal.js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,35 @@ type ExpenseProposalSummary = {
   debtorCount: number;
 };
 
+type PageInfo = {
+  limit: number;
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
+type ExpenseProposalApiItem = {
+  id: string;
+  title: string;
+  merchant: string | null;
+  category: {
+    nameEn: string;
+    nameZhCn: string;
+  } | null;
+  expenseDate: string | null;
+  originalAmount: string;
+  originalCurrency: string;
+  settlementAmount: string;
+  settlementCurrency: string;
+  fxRate: string | null;
+  status: ProposalStatus;
+  shares: unknown[];
+};
+
+type ExpenseProposalListResponse = {
+  proposals: ExpenseProposalApiItem[];
+  page: PageInfo;
+};
+
 type ExpenseLabels = {
   title: string;
   hint: string;
@@ -87,6 +117,7 @@ type ExpenseLabels = {
   noProposals: string;
   queueTitle: string;
   queueHint: string;
+  loadMore: string;
   openDetail: string;
   cannotCreate: string;
   noHousehold: string;
@@ -105,6 +136,7 @@ type ExpenseWorkspaceProps = {
   categories: ExpenseCategorySummary[];
   members: ExpenseMemberSummary[];
   proposals: ExpenseProposalSummary[];
+  proposalPage: PageInfo;
   labels: ExpenseLabels;
 };
 
@@ -231,11 +263,15 @@ export function ExpenseWorkspace({
   categories,
   members,
   proposals,
+  proposalPage,
   labels,
 }: ExpenseWorkspaceProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [proposalItems, setProposalItems] = useState(proposals);
+  const [pagination, setPagination] = useState(proposalPage);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [splitMethod, setSplitMethod] = useState<SplitMethod>("EQUAL");
   const [selectedDebtorIds, setSelectedDebtorIds] = useState<string[]>([]);
   const [splitValues, setSplitValues] = useState<Record<string, string>>({});
@@ -253,6 +289,60 @@ export function ExpenseWorkspace({
     originalCurrencyInput.trim().toUpperCase() !== settlementCurrency;
   const isManualFxRateRequired =
     activeHouseholdFxPolicy === "MANUAL_RATE_WITH_APPROVAL" && isCrossCurrency;
+
+  function proposalSummaryFromApi(proposal: ExpenseProposalApiItem): ExpenseProposalSummary {
+    return {
+      id: proposal.id,
+      title: proposal.title,
+      merchant: proposal.merchant,
+      categoryName: proposal.category
+        ? locale === "zh-CN"
+          ? proposal.category.nameZhCn
+          : proposal.category.nameEn
+        : null,
+      expenseDate: proposal.expenseDate,
+      originalAmount: proposal.originalAmount,
+      originalCurrency: proposal.originalCurrency,
+      settlementAmount: proposal.settlementAmount,
+      settlementCurrency: proposal.settlementCurrency,
+      fxRate: proposal.fxRate,
+      status: proposal.status,
+      debtorCount: proposal.shares.length,
+    };
+  }
+
+  async function loadMoreProposals() {
+    if (!activeHouseholdId || !pagination.nextCursor) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+
+    try {
+      const params = new URLSearchParams({
+        cursor: pagination.nextCursor,
+        limit: String(pagination.limit),
+      });
+      const response = await fetch(
+        `/api/v1/households/${activeHouseholdId}/expenses/proposals?${params.toString()}`,
+        { credentials: "same-origin" },
+      );
+      const isJson = response.headers.get("content-type")?.includes("application/json");
+      const payload: unknown = isJson ? await response.json() : null;
+
+      if (!response.ok) {
+        const errorPayload =
+          payload && typeof payload === "object" ? (payload as ApiErrorPayload) : null;
+        throw new Error(errorPayload?.error?.message ?? labels.errorFallback);
+      }
+
+      const result = payload as ExpenseProposalListResponse;
+      setProposalItems((current) => [...current, ...result.proposals.map(proposalSummaryFromApi)]);
+      setPagination(result.page);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
   const splitPreview = useMemo(() => {
     const selectedDebtors = debtorOptions.filter((member) =>
       selectedDebtorIds.includes(member.userId),
@@ -754,8 +844,8 @@ export function ExpenseWorkspace({
           <p className="mt-1 text-sm text-muted-foreground">{labels.queueHint}</p>
         </div>
         <div className="divide-y divide-border">
-          {proposals.map((proposal) => (
-            <div className="grid gap-3 p-4" key={proposal.id}>
+          {proposalItems.map((proposal) => (
+            <div className="grid gap-3 p-4" data-testid="expense-proposal-row" key={proposal.id}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{proposal.title}</p>
@@ -788,10 +878,30 @@ export function ExpenseWorkspace({
               ) : null}
             </div>
           ))}
-          {proposals.length === 0 ? (
+          {proposalItems.length === 0 ? (
             <div className="p-5 text-sm text-muted-foreground">{labels.noProposals}</div>
           ) : null}
         </div>
+        {pagination.hasMore ? (
+          <div className="border-t border-border p-4">
+            <Button
+              className="w-full"
+              data-testid="expense-load-more"
+              disabled={isLoadingMore}
+              onClick={() => {
+                void loadMoreProposals().catch((error: unknown) => {
+                  console.error(error);
+                  setMessage(error instanceof Error ? error.message : labels.errorFallback);
+                });
+              }}
+              type="button"
+              variant="outline"
+            >
+              <ChevronDown aria-hidden="true" className="h-4 w-4" />
+              {isLoadingMore ? labels.working : labels.loadMore}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -72,7 +72,7 @@ Current user settings implementation: `GET /users/me` returns the authenticated 
 - `GET /notifications`
 - `PATCH /notifications/{notificationId}`
 
-Current implementation: `GET /notifications` returns recent in-app notifications for households where the current user is still active, plus an unread count. `PATCH /notifications/{notificationId}` toggles the scoped notification read state. Expense proposal creation emits `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the recipient's in-app and proposal preference switches are enabled. The scheduled server-side jobs run recurring expense proposal generation before `notifications:send-reminders`, which emits task due/overdue, repayment due/overdue, and settlement confirmation reminder notifications; the public notification API remains read/update only.
+Current implementation: `GET /notifications` returns recent in-app notifications for households where the current user is still active, plus an unread count and `page` metadata (`limit`, `nextCursor`, `hasMore`) for cursor pagination. `PATCH /notifications/{notificationId}` toggles the scoped notification read state. Expense proposal creation emits `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the recipient's in-app and proposal preference switches are enabled. The scheduled server-side jobs run recurring expense proposal generation before `notifications:send-reminders`, which emits task due/overdue, repayment due/overdue, and settlement confirmation reminder notifications; the public notification API remains read/update only.
 
 ### Households
 
@@ -109,6 +109,8 @@ Current implementation lets owners and admins manage non-self member roles and r
 - `POST /households/{householdId}/expenses/shares/{shareId}/approve`
 - `POST /households/{householdId}/expenses/shares/{shareId}/reject`
 - `POST /households/{householdId}/expenses/shares/{shareId}/request-changes`
+
+Current proposal listing implementation: `GET /households/{householdId}/expenses/proposals` accepts optional `status`, `cursor`, and `limit` query parameters and returns the existing `proposals` array plus `page` metadata (`limit`, `nextCursor`, `hasMore`). The dashboard proposal queue uses the same API for its load-more control while preserving the proposal/ledger split.
 
 ### FX
 

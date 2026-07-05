@@ -18,6 +18,7 @@ import { assertFilesReadyForProposal } from "@/server/files/service";
 import { resolveFxRateLock } from "@/server/fx/rates";
 import { assertLedgerPeriodOpen } from "@/server/ledger/service";
 import { createExpenseProposalAssignedNotifications } from "@/server/notifications/service";
+import { paginateRows, paginationQueryFields } from "@/server/pagination";
 import { requireActiveMembership, requireExpenseProposalCreator } from "@/server/permissions/rbac";
 
 const currencySchema = z
@@ -165,6 +166,7 @@ export const createEventExpenseProposalSchema = createExpenseProposalBaseSchema
 
 export const listExpenseProposalQuerySchema = z.object({
   status: z.nativeEnum(ExpenseProposalStatus).optional(),
+  ...paginationQueryFields(20),
 });
 
 export const approveExpenseShareSchema = z.object({
@@ -489,7 +491,7 @@ export async function listExpenseProposalsForHousehold(
     throw validationError("Expense proposal query is invalid.", parsed.error.flatten());
   }
 
-  return prisma.expenseProposal.findMany({
+  const proposals = await prisma.expenseProposal.findMany({
     where: {
       householdId,
       status: parsed.data.status,
@@ -504,9 +506,13 @@ export async function listExpenseProposalsForHousehold(
         },
       },
     },
-    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-    take: 20,
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }],
+    cursor: parsed.data.cursor ? { id: parsed.data.cursor } : undefined,
+    skip: parsed.data.cursor ? 1 : undefined,
+    take: parsed.data.limit + 1,
   });
+
+  return paginateRows(proposals, parsed.data.limit);
 }
 
 export async function getExpenseProposalForUser(
@@ -1767,7 +1773,7 @@ export async function reviseExpenseProposalForHousehold(
 
 export type ExpenseProposalWithRelations = Awaited<
   ReturnType<typeof listExpenseProposalsForHousehold>
->[number];
+>["items"][number];
 
 export type ExpenseProposalDetail = Awaited<ReturnType<typeof getExpenseProposalForUser>>;
 export type ExpenseCategorySummary = Awaited<

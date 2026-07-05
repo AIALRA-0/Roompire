@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
 import { listHouseholdsForUser } from "@/server/households/service";
+import { paginateRows, paginationQueryFields } from "@/server/pagination";
 import { defaultNotificationPreferences } from "@/server/users/service";
 
 export type NotificationTopic = "proposal" | "settlement" | "task";
@@ -47,6 +48,10 @@ export type NotificationSummary = {
 
 export const updateNotificationSchema = z.object({
   read: z.boolean(),
+});
+
+const notificationQuerySchema = z.object({
+  ...paginationQueryFields(20),
 });
 
 const defaultTaskLookaheadHours = 24;
@@ -520,7 +525,13 @@ export async function sendReminderNotifications(
   return summary;
 }
 
-export async function listNotificationsForUser(userId: string) {
+export async function listNotificationsForUser(userId: string, query: unknown = {}) {
+  const parsed = notificationQuerySchema.safeParse(query);
+
+  if (!parsed.success) {
+    throw validationError("Notification query is invalid.", parsed.error.flatten());
+  }
+
   const memberships = await listHouseholdsForUser(userId);
   const householdIds = activeHouseholdIdsForMemberships(memberships);
 
@@ -528,10 +539,15 @@ export async function listNotificationsForUser(userId: string) {
     return {
       notifications: [],
       unreadCount: 0,
+      page: {
+        limit: parsed.data.limit,
+        nextCursor: null,
+        hasMore: false,
+      },
     };
   }
 
-  const [notifications, unreadCount] = await Promise.all([
+  const [notificationRows, unreadCount] = await Promise.all([
     prisma.notification.findMany({
       where: {
         userId,
@@ -540,7 +556,9 @@ export async function listNotificationsForUser(userId: string) {
         },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 20,
+      cursor: parsed.data.cursor ? { id: parsed.data.cursor } : undefined,
+      skip: parsed.data.cursor ? 1 : undefined,
+      take: parsed.data.limit + 1,
     }),
     prisma.notification.count({
       where: {
@@ -552,10 +570,12 @@ export async function listNotificationsForUser(userId: string) {
       },
     }),
   ]);
+  const notifications = paginateRows(notificationRows, parsed.data.limit);
 
   return {
-    notifications: notifications.map(serializeNotification),
+    notifications: notifications.items.map(serializeNotification),
     unreadCount,
+    page: notifications.page,
   };
 }
 

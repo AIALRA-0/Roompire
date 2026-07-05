@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Bell, Check } from "lucide-react";
+import { useState } from "react";
+import { Bell, Check, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -21,8 +21,10 @@ type NotificationLabels = {
   hint: string;
   unread: string;
   noNotifications: string;
+  loadMore: string;
   markRead: string;
   read: string;
+  working: string;
   openProposal: string;
   openCalendar: string;
   openLedger: string;
@@ -45,7 +47,21 @@ type NotificationLabels = {
 type NotificationCenterProps = {
   locale: string;
   notifications: NotificationItem[];
+  page: PageInfo;
+  unreadCount: number;
   labels: NotificationLabels;
+};
+
+type PageInfo = {
+  limit: number;
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
+type NotificationsListResponse = {
+  notifications: NotificationItem[];
+  unreadCount: number;
+  page: PageInfo;
 };
 
 type ApiErrorPayload = {
@@ -183,19 +199,61 @@ function notificationText(
   };
 }
 
-export function NotificationCenter({ locale, notifications, labels }: NotificationCenterProps) {
+export function NotificationCenter({
+  locale,
+  notifications,
+  page,
+  unreadCount,
+  labels,
+}: NotificationCenterProps) {
   const [items, setItems] = useState(notifications);
+  const [pagination, setPagination] = useState(page);
+  const [currentUnreadCount, setCurrentUnreadCount] = useState(unreadCount);
   const [pendingNotificationId, setPendingNotificationId] = useState<string | null>(null);
-  const currentUnreadCount = useMemo(
-    () => items.filter((notification) => !notification.readAt).length,
-    [items],
-  );
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const unreadLabel = formatTemplate(labels.unread, {
     count: String(currentUnreadCount),
   });
 
+  async function loadMore() {
+    if (!pagination.nextCursor) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+
+    try {
+      const params = new URLSearchParams({
+        cursor: pagination.nextCursor,
+        limit: String(pagination.limit),
+      });
+      const response = await fetch(`/api/v1/notifications?${params.toString()}`, {
+        credentials: "same-origin",
+      });
+      const payload: unknown = response.headers.get("content-type")?.includes("application/json")
+        ? await response.json()
+        : null;
+
+      if (!response.ok) {
+        const errorPayload =
+          payload && typeof payload === "object" ? (payload as ApiErrorPayload) : null;
+        throw new Error(errorPayload?.error?.message ?? "Notification fetch failed.");
+      }
+
+      const result = payload as NotificationsListResponse;
+      setItems((current) => [...current, ...result.notifications]);
+      setPagination(result.page);
+      setCurrentUnreadCount(result.unreadCount);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
   async function markRead(notificationId: string) {
     setPendingNotificationId(notificationId);
+    const wasUnread = items.some(
+      (notification) => notification.id === notificationId && !notification.readAt,
+    );
 
     try {
       const response = await fetch(`/api/v1/notifications/${notificationId}`, {
@@ -227,6 +285,9 @@ export function NotificationCenter({ locale, notifications, labels }: Notificati
             notification.id === notificationId ? updated : notification,
           ),
         );
+        if (wasUnread && updated.readAt) {
+          setCurrentUnreadCount((count) => Math.max(count - 1, 0));
+        }
       }
     } finally {
       setPendingNotificationId(null);
@@ -246,6 +307,12 @@ export function NotificationCenter({ locale, notifications, labels }: Notificati
             : notification,
         ),
       );
+    });
+  }
+
+  function handleLoadMore() {
+    void loadMore().catch((error: unknown) => {
+      console.error(error);
     });
   }
 
@@ -311,6 +378,21 @@ export function NotificationCenter({ locale, notifications, labels }: Notificati
           })
         )}
       </div>
+      {pagination.hasMore ? (
+        <div className="border-t border-border p-4">
+          <Button
+            className="w-full"
+            data-testid="notifications-load-more"
+            disabled={isLoadingMore}
+            onClick={handleLoadMore}
+            type="button"
+            variant="outline"
+          >
+            <ChevronDown aria-hidden="true" className="h-4 w-4" />
+            {isLoadingMore ? labels.working : labels.loadMore}
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
 }

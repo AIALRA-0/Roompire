@@ -263,7 +263,7 @@ Delivery channels:
 
 Current implemented subset:
 
-- `GET /api/v1/notifications` lists the current user's recent in-app notifications across active household memberships.
+- `GET /api/v1/notifications` lists the current user's in-app notifications across active household memberships with cursor pagination metadata for dashboard load-more behavior.
 - `PATCH /api/v1/notifications/{notificationId}` marks one scoped notification read or unread.
 - Creating an expense proposal writes `EXPENSE_PROPOSAL_ASSIGNED` notifications for debtor shares when the target user's in-app and proposal preferences allow it.
 - `pnpm recurring-expenses:generate` is an idempotent recurring-expense job. It emits one pending proposal per due open template-backed recurring expense event, then leaves debtor approval to the normal expense flow.
@@ -293,6 +293,7 @@ Rules:
 - REST-first with OpenAPI 3.x.
 - Server validates input with zod or equivalent.
 - API responses use consistent envelope for errors.
+- Growing list endpoints should expose cursor pagination metadata while preserving stable array fields for existing clients.
 - All mutation endpoints support idempotency key where duplicate submission is possible.
 - Pagination for list endpoints.
 - Audit event created in same transaction as mutation where possible.

@@ -225,6 +225,7 @@ export default async function AppPage({ params }: PageProps) {
     noProposals: expense("noProposals"),
     queueTitle: expense("queueTitle"),
     queueHint: expense("queueHint"),
+    loadMore: expense("loadMore"),
     openDetail: expense("openDetail"),
     cannotCreate: expense("cannotCreate"),
     noHousehold: identity("noHousehold"),
@@ -247,8 +248,10 @@ export default async function AppPage({ params }: PageProps) {
     hint: notifications("hint"),
     unread: notifications("unread", { count: "{count}" }),
     noNotifications: notifications("noNotifications"),
+    loadMore: notifications("loadMore"),
     markRead: notifications("markRead"),
     read: notifications("read"),
+    working: common("working"),
     openProposal: notifications("openProposal"),
     openCalendar: notifications("openCalendar"),
     openLedger: notifications("openLedger"),
@@ -418,14 +421,22 @@ export default async function AppPage({ params }: PageProps) {
 
             <div className="mt-6">
               <NotificationCenter
+                key={`${model.user.id}:${model.notificationPage.nextCursor ?? "end"}:${model.notifications
+                  .map((notification) => notification.id)
+                  .join(":")}`}
                 labels={notificationLabels}
                 locale={locale}
                 notifications={model.notifications}
+                page={model.notificationPage}
+                unreadCount={model.unreadNotificationCount}
               />
             </div>
 
             <div className="mt-6">
               <ExpenseWorkspace
+                key={`${model.activeHousehold?.id ?? "none"}:${
+                  model.expenseProposalPage.nextCursor ?? "end"
+                }:${model.expenseProposals.map((proposal) => proposal.id).join(":")}`}
                 activeHouseholdId={model.activeHousehold?.id ?? null}
                 canCreateExpenseProposals={model.canCreateExpenseProposals}
                 categories={model.categories.map((category) => ({
@@ -459,6 +470,7 @@ export default async function AppPage({ params }: PageProps) {
                   status: proposal.status,
                   debtorCount: proposal.shares.length,
                 }))}
+                proposalPage={model.expenseProposalPage}
                 settlementCurrency={model.activeHousehold?.settlementCurrency ?? null}
                 activeHouseholdFxPolicy={
                   model.activeHousehold?.fxPolicy === "MANUAL_RATE_WITH_APPROVAL"
