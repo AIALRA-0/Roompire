@@ -224,6 +224,7 @@
     "noEvents": "暂无日程",
     "noEventsInView": "暂无日程",
     "noTasks": "暂无任务",
+    "loadMore": "加载更多",
     "noDueDate": "无截止时间",
     "cannotCreate": "只读者可以查看日历任务，但不能创建或完成事项。",
     "errorFallback": "日历操作失败。",

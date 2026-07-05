@@ -95,6 +95,7 @@ type CalendarWorkspaceLabels = {
   noEvents: string;
   noEventsInView: string;
   noTasks: string;
+  loadMore: string;
   noDueDate: string;
   cannotCreate: string;
   noHousehold: string;
@@ -137,7 +138,9 @@ type CalendarWorkspaceProps = {
   canCreateExpenseProposals: boolean;
   categories: ExpenseCategorySummary[];
   currentUserId: string;
+  eventLoadMoreHref: string | null;
   events: SerializedCalendarEvent[];
+  taskLoadMoreHref: string | null;
   tasks: SerializedTask[];
   members: CalendarWorkspaceMember[];
   labels: CalendarWorkspaceLabels;
@@ -280,7 +283,9 @@ export function CalendarWorkspace({
   canCreateWorkItems,
   categories,
   currentUserId,
+  eventLoadMoreHref,
   events,
+  taskLoadMoreHref,
   tasks,
   members,
   labels,
@@ -1511,6 +1516,15 @@ export function CalendarWorkspace({
                   </div>
                 </div>
               ) : null}
+              {eventLoadMoreHref ? (
+                <div className="border-t border-border p-4 text-center">
+                  <Button asChild variant="outline">
+                    <Link data-testid="calendar-events-load-more" href={eventLoadMoreHref}>
+                      {labels.loadMore}
+                    </Link>
+                  </Button>
+                </div>
+              ) : null}
             </>
           )}
         </div>
@@ -1882,6 +1896,15 @@ export function CalendarWorkspace({
                   </div>
                 );
               })}
+              {taskLoadMoreHref ? (
+                <div className="border-t border-border p-4 text-center">
+                  <Button asChild variant="outline">
+                    <Link data-testid="calendar-tasks-load-more" href={taskLoadMoreHref}>
+                      {labels.loadMore}
+                    </Link>
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <p className="p-5 text-sm text-muted-foreground">{labels.noTasks}</p>

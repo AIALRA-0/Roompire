@@ -224,6 +224,7 @@
     "noEvents": "No calendar events yet",
     "noEventsInView": "No events",
     "noTasks": "No tasks yet",
+    "loadMore": "Load more",
     "noDueDate": "No due date",
     "cannotCreate": "Viewers can browse calendar work but cannot create or complete items.",
     "errorFallback": "Calendar action failed.",

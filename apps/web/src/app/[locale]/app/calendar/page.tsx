@@ -23,10 +23,43 @@ import { getDashboardModel } from "@/server/dashboard/model";
 
 type PageProps = {
   params: Promise<{ locale: Locale }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function CalendarPage({ params }: PageProps) {
+function firstSearchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function calendarLimitHref(
+  locale: Locale,
+  rawSearchParams: Record<string, string | string[] | undefined>,
+  key: "eventLimit" | "taskLimit",
+  limit: number,
+) {
+  const params = new URLSearchParams();
+
+  for (const [paramKey, value] of Object.entries(rawSearchParams)) {
+    if (paramKey === key) {
+      continue;
+    }
+
+    const firstValue = firstSearchValue(value);
+
+    if (firstValue) {
+      params.set(paramKey, firstValue);
+    }
+  }
+
+  params.set(key, String(limit));
+
+  const query = params.toString();
+
+  return `/${locale}/app/calendar${query ? `?${query}` : ""}`;
+}
+
+export default async function CalendarPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
+  const rawSearchParams = await searchParams;
   const nav = await getTranslations({ locale, namespace: "Nav" });
   const common = await getTranslations({ locale, namespace: "Common" });
   const identity = await getTranslations({ locale, namespace: "Identity" });
@@ -46,12 +79,44 @@ export default async function CalendarPage({ params }: PageProps) {
     { label: nav("ops"), icon: ServerCog, href: `/${locale}/app/ops` },
     { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];
-  const [events, tasks] = activeHouseholdId
+  const limitOptions = ["1", "25", "50", "100"];
+  const eventLimit = firstSearchValue(rawSearchParams.eventLimit) ?? "50";
+  const taskLimit = firstSearchValue(rawSearchParams.taskLimit) ?? "50";
+  const selectedEventLimit = limitOptions.includes(eventLimit) ? Number(eventLimit) : 50;
+  const selectedTaskLimit = limitOptions.includes(taskLimit) ? Number(taskLimit) : 50;
+  const [eventResult, taskResult] = activeHouseholdId
     ? await Promise.all([
-        listCalendarEventsForHousehold(model.user.id, activeHouseholdId),
-        listTasksForHousehold(model.user.id, activeHouseholdId),
+        listCalendarEventsForHousehold(model.user.id, activeHouseholdId, {
+          limit: selectedEventLimit,
+        }),
+        listTasksForHousehold(model.user.id, activeHouseholdId, {
+          limit: selectedTaskLimit,
+        }),
       ])
-    : [[], []];
+    : [
+        {
+          items: [],
+          page: {
+            limit: selectedEventLimit,
+            nextCursor: null,
+            hasMore: false,
+          },
+        },
+        {
+          items: [],
+          page: {
+            limit: selectedTaskLimit,
+            nextCursor: null,
+            hasMore: false,
+          },
+        },
+      ];
+  const nextEventLimit = eventResult.page.hasMore
+    ? limitOptions.map(Number).find((limit) => limit > eventResult.page.limit)
+    : undefined;
+  const nextTaskLimit = taskResult.page.hasMore
+    ? limitOptions.map(Number).find((limit) => limit > taskResult.page.limit)
+    : undefined;
 
   return (
     <main className="min-h-svh overflow-x-hidden bg-background text-foreground">
@@ -135,7 +200,12 @@ export default async function CalendarPage({ params }: PageProps) {
                 name: locale === "zh-CN" ? category.nameZhCn : category.nameEn,
               }))}
               currentUserId={model.user.id}
-              events={events.map(serializeCalendarEvent)}
+              eventLoadMoreHref={
+                nextEventLimit
+                  ? calendarLimitHref(locale, rawSearchParams, "eventLimit", nextEventLimit)
+                  : null
+              }
+              events={eventResult.items.map(serializeCalendarEvent)}
               labels={{
                 events: calendar("events"),
                 eventsHint: calendar("eventsHint"),
@@ -177,6 +247,7 @@ export default async function CalendarPage({ params }: PageProps) {
                 noEvents: calendar("noEvents"),
                 noEventsInView: calendar("noEventsInView"),
                 noTasks: calendar("noTasks"),
+                loadMore: calendar("loadMore"),
                 noDueDate: calendar("noDueDate"),
                 cannotCreate: calendar("cannotCreate"),
                 noHousehold: identity("noHousehold"),
@@ -240,7 +311,12 @@ export default async function CalendarPage({ params }: PageProps) {
                 role: member.role,
               }))}
               settlementCurrency={model.activeHousehold?.settlementCurrency ?? null}
-              tasks={tasks.map(serializeTask)}
+              taskLoadMoreHref={
+                nextTaskLimit
+                  ? calendarLimitHref(locale, rawSearchParams, "taskLimit", nextTaskLimit)
+                  : null
+              }
+              tasks={taskResult.items.map(serializeTask)}
             />
           </div>
         </section>

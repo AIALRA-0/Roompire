@@ -5181,6 +5181,7 @@ test.describe("Roompire real browser smoke", () => {
         linkedEventIds: string[];
         linkedProposalIds: string[];
       }>;
+      page: { limit: number; nextCursor: string | null; hasMore: boolean };
     };
     const createdTasks = tasksPayload.tasks.filter((task) => task.title === taskTitle);
     expect(createdTasks).toHaveLength(2);
@@ -5199,6 +5200,49 @@ test.describe("Roompire real browser smoke", () => {
       expect(task.linkedEventIds).toHaveLength(1);
       expect(task.linkedProposalIds).toHaveLength(0);
     }
+
+    const firstTaskPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks?limit=1`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(firstTaskPageResponse.ok()).toBeTruthy();
+    const firstTaskPage = (await firstTaskPageResponse.json()) as typeof tasksPayload;
+    expect(firstTaskPage.tasks).toHaveLength(1);
+    expect(firstTaskPage.page).toEqual({
+      limit: 1,
+      nextCursor: firstTaskPage.tasks[0]!.id,
+      hasMore: true,
+    });
+
+    const secondTaskPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks?limit=1&cursor=${firstTaskPage.page.nextCursor}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(secondTaskPageResponse.ok()).toBeTruthy();
+    const secondTaskPage = (await secondTaskPageResponse.json()) as typeof tasksPayload;
+    expect(secondTaskPage.tasks).toHaveLength(1);
+    expect(secondTaskPage.tasks[0]?.id).not.toBe(firstTaskPage.tasks[0]!.id);
+
+    const invalidTaskCursorResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/tasks?cursor=not-a-cursor`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(invalidTaskCursorResponse.status()).toBe(400);
 
     const eventsResponse = await getApiWithRetry(
       page,
@@ -5224,6 +5268,7 @@ test.describe("Roompire real browser smoke", () => {
           participantUserIds: string[];
         } | null;
       }>;
+      page: { limit: number; nextCursor: string | null; hasMore: boolean };
     };
     const recurringEvents = eventsPayload.events.filter(
       (event) => event.title === eventTitle && event.type === "BILL_DUE",
@@ -5255,6 +5300,49 @@ test.describe("Roompire real browser smoke", () => {
         participantUserIds: [memberUserId],
       });
     }
+
+    const firstEventPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events?limit=1`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(firstEventPageResponse.ok()).toBeTruthy();
+    const firstEventPage = (await firstEventPageResponse.json()) as typeof eventsPayload;
+    expect(firstEventPage.events).toHaveLength(1);
+    expect(firstEventPage.page).toEqual({
+      limit: 1,
+      nextCursor: firstEventPage.events[0]!.id,
+      hasMore: true,
+    });
+
+    const secondEventPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events?limit=1&cursor=${firstEventPage.page.nextCursor}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(secondEventPageResponse.ok()).toBeTruthy();
+    const secondEventPage = (await secondEventPageResponse.json()) as typeof eventsPayload;
+    expect(secondEventPage.events).toHaveLength(1);
+    expect(secondEventPage.events[0]?.id).not.toBe(firstEventPage.events[0]!.id);
+
+    const invalidEventCursorResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/calendar/events?cursor=not-a-cursor`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(invalidEventCursorResponse.status()).toBe(400);
 
     const recurringExpenseEnv = {
       ...process.env,
@@ -5346,6 +5434,16 @@ test.describe("Roompire real browser smoke", () => {
         status: "PENDING",
       }),
     );
+    await page.goto("/en-US/app/calendar?eventLimit=1&taskLimit=1");
+    await expect(page.getByTestId("calendar-events-load-more")).toHaveAttribute(
+      "href",
+      "/en-US/app/calendar?taskLimit=1&eventLimit=25",
+    );
+    await expect(page.getByTestId("calendar-tasks-load-more")).toHaveAttribute(
+      "href",
+      "/en-US/app/calendar?eventLimit=1&taskLimit=25",
+    );
+
     await page.goto("/en-US/app/calendar");
     await expect(
       page.getByTestId(

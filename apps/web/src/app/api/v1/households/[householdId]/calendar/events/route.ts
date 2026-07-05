@@ -26,13 +26,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId } = await context.params;
-    const events = await listCalendarEventsForHousehold(user.id, householdId, {
+    const result = await listCalendarEventsForHousehold(user.id, householdId, {
+      cursor: request.nextUrl.searchParams.get("cursor") ?? undefined,
       start: request.nextUrl.searchParams.get("start") ?? undefined,
       end: request.nextUrl.searchParams.get("end") ?? undefined,
+      limit: request.nextUrl.searchParams.get("limit") ?? undefined,
     });
 
     return NextResponse.json({
-      events: events.map(serializeCalendarEvent),
+      events: result.items.map(serializeCalendarEvent),
+      page: result.page,
     });
   } catch (error) {
     return apiErrorResponse(error);

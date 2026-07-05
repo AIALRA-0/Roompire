@@ -1562,11 +1562,12 @@ components:
         event: { $ref: "#/components/schemas/CalendarEvent" }
     CalendarEventListResponse:
       type: object
-      required: [events]
+      required: [events, page]
       properties:
         events:
           type: array
           items: { $ref: "#/components/schemas/CalendarEvent" }
+        page: { $ref: "#/components/schemas/PageInfo" }
     TaskAssignment:
       type: object
       required: [id, taskId, assignedUserId, role, status]
@@ -1666,11 +1667,12 @@ components:
         task: { $ref: "#/components/schemas/Task" }
     TaskListResponse:
       type: object
-      required: [tasks]
+      required: [tasks, page]
       properties:
         tasks:
           type: array
           items: { $ref: "#/components/schemas/Task" }
+        page: { $ref: "#/components/schemas/PageInfo" }
     DeleteCalendarEventResponse:
       type: object
       required: [eventId, deleted]
@@ -3525,6 +3527,13 @@ paths:
         - in: query
           name: end
           schema: { type: string, format: date-time }
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+          description: Cursor returned from the previous calendar event page.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         "200":
           description: OK
@@ -3738,6 +3747,13 @@ paths:
         - in: query
           name: status
           schema: { $ref: "#/components/schemas/WorkItemStatus" }
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+          description: Cursor returned from the previous task page.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         "200":
           description: OK

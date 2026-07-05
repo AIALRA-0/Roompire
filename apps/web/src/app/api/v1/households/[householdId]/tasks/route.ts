@@ -23,12 +23,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId } = await context.params;
-    const tasks = await listTasksForHousehold(user.id, householdId, {
+    const result = await listTasksForHousehold(user.id, householdId, {
+      cursor: request.nextUrl.searchParams.get("cursor") ?? undefined,
+      limit: request.nextUrl.searchParams.get("limit") ?? undefined,
       status: request.nextUrl.searchParams.get("status") ?? undefined,
     });
 
     return NextResponse.json({
-      tasks: tasks.map(serializeTask),
+      tasks: result.items.map(serializeTask),
+      page: result.page,
     });
   } catch (error) {
     return apiErrorResponse(error);

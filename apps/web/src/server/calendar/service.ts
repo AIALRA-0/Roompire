@@ -2,6 +2,7 @@ import { CalendarEventType, type CalendarEvent, type Prisma, type Task } from "@
 import { z } from "zod";
 import { ApiError, validationError } from "@/server/api/errors";
 import { prisma } from "@/server/db/prisma";
+import { paginateRows, paginationQueryFields } from "@/server/pagination";
 import {
   requireActiveMembership,
   requireHouseholdWorkItemCreator,
@@ -9,21 +10,16 @@ import {
 import type { CalendarEventWithLinks, TaskWithAssignmentsAndLinks } from "./serializers";
 
 type PrismaReader = typeof prisma | Prisma.TransactionClient;
+const emptyToUndefined = (value: unknown) => (value === "" || value === null ? undefined : value);
 
 const optionalDescriptionSchema = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : value),
+  emptyToUndefined,
   z.string().trim().max(1000).optional(),
 );
 
-const optionalDateTimeSchema = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : value),
-  z.string().trim().min(1).optional(),
-);
+const optionalDateTimeSchema = z.preprocess(emptyToUndefined, z.string().trim().min(1).optional());
 
-const nullableUuidSchema = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : value),
-  z.string().uuid().optional(),
-);
+const nullableUuidSchema = z.preprocess(emptyToUndefined, z.string().uuid().optional());
 
 const currencySchema = z
   .string()
@@ -43,18 +39,17 @@ const fxRateStringSchema = z
   .regex(/^\d+(\.\d{1,12})?$/)
   .refine((value) => Number(value) > 0, "FX rate must be greater than zero.");
 
-const optionalFxRateStringSchema = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : value),
-  fxRateStringSchema.optional(),
-);
+const optionalFxRateStringSchema = z.preprocess(emptyToUndefined, fxRateStringSchema.optional());
 
 const eventQuerySchema = z.object({
   start: optionalDateTimeSchema,
   end: optionalDateTimeSchema,
+  ...paginationQueryFields(50),
 });
 
 const taskQuerySchema = z.object({
-  status: z.enum(["OPEN", "COMPLETED"]).optional(),
+  status: z.preprocess(emptyToUndefined, z.enum(["OPEN", "COMPLETED"]).optional()),
+  ...paginationQueryFields(50),
 });
 
 const recurrenceFrequencySchema = z.enum(["NONE", "DAILY", "WEEKLY", "MONTHLY"]);
@@ -74,6 +69,21 @@ const recurringExpenseTemplateSchema = z.object({
   fxRate: optionalFxRateStringSchema,
   participantUserIds: z.array(z.string().uuid()).min(1).max(20),
 });
+
+type TaskQuery = z.infer<typeof taskQuerySchema>;
+
+const calendarEventOrderBy = [
+  { startAt: "asc" as const },
+  { createdAt: "asc" as const },
+  { id: "asc" as const },
+] satisfies Prisma.CalendarEventOrderByWithRelationInput[];
+
+const taskOrderBy = [
+  { status: "desc" as const },
+  { dueAt: { sort: "asc" as const, nulls: "last" as const } },
+  { createdAt: "desc" as const },
+  { id: "asc" as const },
+] satisfies Prisma.TaskOrderByWithRelationInput[];
 
 export const createCalendarEventSchema = z.object({
   title: z.string().trim().min(2).max(120),
@@ -271,24 +281,6 @@ async function attachLinkedEventIdsToTasks(
   }));
 }
 
-function sortTasksForWorkQueue(left: Task, right: Task) {
-  const leftStatusRank = left.status === "OPEN" ? 0 : 1;
-  const rightStatusRank = right.status === "OPEN" ? 0 : 1;
-
-  if (leftStatusRank !== rightStatusRank) {
-    return leftStatusRank - rightStatusRank;
-  }
-
-  const leftDue = left.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
-  const rightDue = right.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
-
-  if (leftDue !== rightDue) {
-    return leftDue - rightDue;
-  }
-
-  return right.createdAt.getTime() - left.createdAt.getTime();
-}
-
 function assertEventCanBeEdited(event: CalendarEvent, links: Array<{ linkedType: string }>) {
   const lockedLink = links.find(
     (link) => link.linkedType === "task" || link.linkedType === "debt_obligation",
@@ -421,6 +413,176 @@ function recurringExpenseTemplateCreateData({
   };
 }
 
+function buildCalendarEventWhere(
+  householdId: string,
+  range: { start?: Date; end?: Date },
+  cursorEvent?: Pick<CalendarEvent, "id" | "startAt" | "createdAt">,
+) {
+  const cursorWindow: Prisma.CalendarEventWhereInput | undefined = cursorEvent
+    ? {
+        OR: [
+          {
+            startAt: {
+              gt: cursorEvent.startAt,
+            },
+          },
+          {
+            startAt: cursorEvent.startAt,
+            createdAt: {
+              gt: cursorEvent.createdAt,
+            },
+          },
+          {
+            startAt: cursorEvent.startAt,
+            createdAt: cursorEvent.createdAt,
+            id: {
+              gt: cursorEvent.id,
+            },
+          },
+        ],
+      }
+    : undefined;
+
+  return {
+    householdId,
+    startAt: {
+      gte: range.start,
+      lte: range.end,
+    },
+    AND: cursorWindow ? [cursorWindow] : undefined,
+  } satisfies Prisma.CalendarEventWhereInput;
+}
+
+function buildTaskDueCursorWindow(cursorTask: Pick<Task, "id" | "dueAt" | "createdAt">) {
+  if (!cursorTask.dueAt) {
+    return {
+      dueAt: null,
+      OR: [
+        {
+          createdAt: {
+            lt: cursorTask.createdAt,
+          },
+        },
+        {
+          createdAt: cursorTask.createdAt,
+          id: {
+            gt: cursorTask.id,
+          },
+        },
+      ],
+    } satisfies Prisma.TaskWhereInput;
+  }
+
+  return {
+    OR: [
+      {
+        dueAt: {
+          gt: cursorTask.dueAt,
+        },
+      },
+      {
+        dueAt: null,
+      },
+      {
+        dueAt: cursorTask.dueAt,
+        createdAt: {
+          lt: cursorTask.createdAt,
+        },
+      },
+      {
+        dueAt: cursorTask.dueAt,
+        createdAt: cursorTask.createdAt,
+        id: {
+          gt: cursorTask.id,
+        },
+      },
+    ],
+  } satisfies Prisma.TaskWhereInput;
+}
+
+function buildTaskWhere(
+  householdId: string,
+  query: Pick<TaskQuery, "status">,
+  cursorTask?: Pick<Task, "id" | "status" | "dueAt" | "createdAt">,
+) {
+  const cursorWindow: Prisma.TaskWhereInput | undefined = cursorTask
+    ? {
+        OR: [
+          ...(cursorTask.status === "OPEN" && !query.status ? [{ status: "COMPLETED" }] : []),
+          {
+            status: cursorTask.status,
+            AND: [buildTaskDueCursorWindow(cursorTask)],
+          },
+        ],
+      }
+    : undefined;
+
+  return {
+    householdId,
+    status: query.status,
+    AND: cursorWindow ? [cursorWindow] : undefined,
+  } satisfies Prisma.TaskWhereInput;
+}
+
+async function resolveCalendarEventCursor(
+  householdId: string,
+  range: { start?: Date; end?: Date },
+  cursor: string | undefined,
+) {
+  if (!cursor) {
+    return undefined;
+  }
+
+  const cursorEvent = await prisma.calendarEvent.findUnique({
+    where: { id: cursor },
+    select: { id: true, householdId: true, startAt: true, createdAt: true },
+  });
+
+  if (
+    !cursorEvent ||
+    cursorEvent.householdId !== householdId ||
+    (range.start && cursorEvent.startAt < range.start) ||
+    (range.end && cursorEvent.startAt > range.end)
+  ) {
+    throw validationError("Calendar event query is invalid.", {
+      fieldErrors: {
+        cursor: ["Invalid cursor."],
+      },
+    });
+  }
+
+  return cursorEvent;
+}
+
+async function resolveTaskCursor(
+  householdId: string,
+  query: Pick<TaskQuery, "status">,
+  cursor: string | undefined,
+) {
+  if (!cursor) {
+    return undefined;
+  }
+
+  const cursorTask = await prisma.task.findUnique({
+    where: { id: cursor },
+    select: { id: true, householdId: true, status: true, dueAt: true, createdAt: true },
+  });
+
+  if (
+    !cursorTask ||
+    cursorTask.householdId !== householdId ||
+    (query.status && cursorTask.status !== query.status)
+  ) {
+    throw validationError("Task query is invalid.", {
+      fieldErrors: {
+        cursor: ["Invalid cursor."],
+      },
+    });
+  }
+
+  return cursorTask;
+}
+
 export async function listCalendarEventsForHousehold(
   userId: string,
   householdId: string,
@@ -435,19 +597,22 @@ export async function listCalendarEventsForHousehold(
 
   const start = parsed.data.start ? dateTimeInputToUtc(parsed.data.start, "start") : undefined;
   const end = parsed.data.end ? dateTimeInputToUtc(parsed.data.end, "end") : undefined;
+  const cursorEvent = await resolveCalendarEventCursor(
+    householdId,
+    { start, end },
+    parsed.data.cursor,
+  );
   const events = await prisma.calendarEvent.findMany({
-    where: {
-      householdId,
-      startAt: {
-        gte: start,
-        lte: end,
-      },
-    },
-    orderBy: [{ startAt: "asc" }, { createdAt: "asc" }],
-    take: 50,
+    where: buildCalendarEventWhere(householdId, { start, end }, cursorEvent),
+    orderBy: calendarEventOrderBy,
+    take: parsed.data.limit + 1,
   });
+  const page = paginateRows(events, parsed.data.limit);
 
-  return attachLinksToEvents(prisma, events);
+  return {
+    items: await attachLinksToEvents(prisma, page.items),
+    page: page.page,
+  };
 }
 
 export async function listTasksForHousehold(
@@ -462,19 +627,21 @@ export async function listTasksForHousehold(
     throw validationError("Task query is invalid.", parsed.error.flatten());
   }
 
+  const cursorTask = await resolveTaskCursor(householdId, parsed.data, parsed.data.cursor);
   const tasks = await prisma.task.findMany({
-    where: {
-      householdId,
-      status: parsed.data.status,
-    },
+    where: buildTaskWhere(householdId, parsed.data, cursorTask),
     include: {
       assignments: true,
     },
-    orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }],
-    take: 50,
+    orderBy: taskOrderBy,
+    take: parsed.data.limit + 1,
   });
+  const page = paginateRows(tasks, parsed.data.limit);
 
-  return attachLinkedEventIdsToTasks(prisma, tasks.sort(sortTasksForWorkQueue));
+  return {
+    items: await attachLinkedEventIdsToTasks(prisma, page.items),
+    page: page.page,
+  };
 }
 
 export async function createCalendarEventForHousehold(
