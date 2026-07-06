@@ -1998,6 +1998,8 @@ components:
               localVolumes,
               buildCache,
               totalReclaimableBytes,
+              safeReclaimableBytes,
+              unsafeReclaimableBytes,
               reclaimableWarningBytes,
               status,
               checkedAt,
@@ -2009,6 +2011,8 @@ components:
             localVolumes: { $ref: "#/components/schemas/OpsDockerStorageCategory" }
             buildCache: { $ref: "#/components/schemas/OpsDockerStorageCategory" }
             totalReclaimableBytes: { type: integer }
+            safeReclaimableBytes: { type: integer }
+            unsafeReclaimableBytes: { type: integer }
             reclaimableWarningBytes: { type: integer }
             status: { $ref: "#/components/schemas/OpsHealthState" }
             checkedAt:
@@ -2020,10 +2024,25 @@ components:
               nullable: true
         dockerImageInventory:
           type: object
-          required: [topLimit, totalImageBytes, images, status, checkedAt, error]
+          required:
+            [
+              topLimit,
+              totalImageBytes,
+              activeImageBytes,
+              inactiveImageBytes,
+              safeReclaimableImageBytes,
+              images,
+              reclaimableCandidates,
+              status,
+              checkedAt,
+              error,
+            ]
           properties:
             topLimit: { type: integer, example: 8 }
             totalImageBytes: { type: integer, example: 32126369792 }
+            activeImageBytes: { type: integer, example: 32126369792 }
+            inactiveImageBytes: { type: integer, example: 0 }
+            safeReclaimableImageBytes: { type: integer, example: 0 }
             images:
               type: array
               items:
@@ -2036,6 +2055,21 @@ components:
                   reference: { type: string, example: aialra/pdf-onlyoffice:local }
                   sizeBytes: { type: integer, example: 6109593600 }
                   containers: { type: integer, example: 1 }
+                  createdAt:
+                    type: string
+                    nullable: true
+            reclaimableCandidates:
+              type: array
+              items:
+                type: object
+                required: [repository, tag, imageId, reference, sizeBytes, containers, createdAt]
+                properties:
+                  repository: { type: string, example: roompire-migrator }
+                  tag: { type: string, example: latest }
+                  imageId: { type: string, example: 057824ccd253 }
+                  reference: { type: string, example: roompire-migrator:latest }
+                  sizeBytes: { type: integer, example: 406847488 }
+                  containers: { type: integer, example: 0 }
                   createdAt:
                     type: string
                     nullable: true

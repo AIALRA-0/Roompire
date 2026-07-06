@@ -260,6 +260,7 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_trend_depleting: ops("warningDiskTrendDepleting"),
     docker_storage_unknown: ops("warningDockerStorageUnknown"),
     docker_image_inventory_unknown: ops("warningDockerImageInventoryUnknown"),
+    docker_safe_reclaimable_high: ops("warningDockerSafeReclaimableHigh"),
     docker_reclaimable_high: ops("warningDockerReclaimableHigh"),
     ops_status_timer_attention: ops("warningOpsStatusTimer"),
     ops_status_service_attention: ops("warningOpsStatusService"),
@@ -602,13 +603,13 @@ export default async function OpsPage({ params }: PageProps) {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-xs uppercase text-muted-foreground">
-                        {ops("totalReclaimable")}
+                        {ops("safeReclaimable")}
                       </p>
                       <p
                         className="mt-1 text-2xl font-semibold"
                         data-testid="ops-docker-reclaimable"
                       >
-                        {formatFileSize(locale, status.dockerStorage.totalReclaimableBytes)}
+                        {formatFileSize(locale, status.dockerStorage.safeReclaimableBytes)}
                       </p>
                     </div>
                     <Badge
@@ -621,6 +622,11 @@ export default async function OpsPage({ params }: PageProps) {
                   <MetricRow
                     label={ops("reclaimableThreshold")}
                     value={formatFileSize(locale, status.dockerStorage.reclaimableWarningBytes)}
+                  />
+                  <MetricRow
+                    label={ops("dockerReportedReclaimable")}
+                    testId="ops-docker-reported-reclaimable"
+                    value={formatFileSize(locale, status.dockerStorage.totalReclaimableBytes)}
                   />
                   <MetricRow
                     label={ops("images")}
@@ -666,6 +672,27 @@ export default async function OpsPage({ params }: PageProps) {
                         label={ops("imageTotalSize")}
                         testId="ops-docker-image-total-size"
                         value={formatFileSize(locale, status.dockerImageInventory.totalImageBytes)}
+                      />
+                      <MetricRow
+                        label={ops("imageActiveSize")}
+                        testId="ops-docker-image-active-size"
+                        value={formatFileSize(locale, status.dockerImageInventory.activeImageBytes)}
+                      />
+                      <MetricRow
+                        label={ops("imageInactiveSize")}
+                        testId="ops-docker-image-inactive-size"
+                        value={formatFileSize(
+                          locale,
+                          status.dockerImageInventory.inactiveImageBytes,
+                        )}
+                      />
+                      <MetricRow
+                        label={ops("imageSafeCandidates")}
+                        testId="ops-docker-image-safe-candidates"
+                        value={formatFileSize(
+                          locale,
+                          status.dockerImageInventory.safeReclaimableImageBytes,
+                        )}
                       />
                       {status.dockerImageInventory.images.length > 0 ? (
                         <div className="grid min-w-0 gap-2">

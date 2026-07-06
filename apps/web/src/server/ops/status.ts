@@ -72,6 +72,8 @@ export type OpsStatusSnapshot = {
     localVolumes: OpsDockerStorageCategory;
     buildCache: OpsDockerStorageCategory;
     totalReclaimableBytes: number;
+    safeReclaimableBytes: number;
+    unsafeReclaimableBytes: number;
     reclaimableWarningBytes: number;
     status: HealthState;
     checkedAt: string | null;
@@ -80,7 +82,11 @@ export type OpsStatusSnapshot = {
   dockerImageInventory: {
     topLimit: number;
     totalImageBytes: number;
+    activeImageBytes: number;
+    inactiveImageBytes: number;
+    safeReclaimableImageBytes: number;
     images: OpsDockerImageInventoryItem[];
+    reclaimableCandidates: OpsDockerImageInventoryItem[];
     status: HealthState;
     checkedAt: string | null;
     error: string | null;
@@ -322,7 +328,11 @@ function normalizeDockerImageInventory(value: unknown): OpsStatusSnapshot["docke
     return {
       topLimit: 8,
       totalImageBytes: 0,
+      activeImageBytes: 0,
+      inactiveImageBytes: 0,
+      safeReclaimableImageBytes: 0,
       images: [],
+      reclaimableCandidates: [],
       status: "unknown",
       checkedAt: null,
       error: "Docker image inventory has not been recorded yet.",
@@ -332,8 +342,16 @@ function normalizeDockerImageInventory(value: unknown): OpsStatusSnapshot["docke
   return {
     topLimit: numberValue(value.topLimit) ?? 8,
     totalImageBytes: numberValue(value.totalImageBytes) ?? 0,
+    activeImageBytes: numberValue(value.activeImageBytes) ?? 0,
+    inactiveImageBytes: numberValue(value.inactiveImageBytes) ?? 0,
+    safeReclaimableImageBytes: numberValue(value.safeReclaimableImageBytes) ?? 0,
     images: Array.isArray(value.images)
       ? value.images.map(normalizeDockerImageInventoryItem).filter((image) => image !== null)
+      : [],
+    reclaimableCandidates: Array.isArray(value.reclaimableCandidates)
+      ? value.reclaimableCandidates
+          .map(normalizeDockerImageInventoryItem)
+          .filter((image) => image !== null)
       : [],
     status: healthStateValue(value.status),
     checkedAt: nullableStringValue(value.checkedAt),
@@ -527,7 +545,7 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
   }
 
   if (status.dockerStorage.status === "warning") {
-    warnings.push("docker_reclaimable_high");
+    warnings.push("docker_safe_reclaimable_high");
   }
 
   if (status.opsStatusTimer.status !== "ok") {
@@ -637,6 +655,16 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const availableBytes = numberValue(rawDisk.availableBytes);
   const usedPercent = numberValue(rawDisk.usedPercent);
   const diskStatus = healthStateValue(rawDisk.status);
+  const dockerImages = normalizeDockerStorageCategory(rawDockerStorage.images);
+  const dockerContainers = normalizeDockerStorageCategory(rawDockerStorage.containers);
+  const dockerLocalVolumes = normalizeDockerStorageCategory(rawDockerStorage.localVolumes);
+  const dockerBuildCache = normalizeDockerStorageCategory(rawDockerStorage.buildCache);
+  const dockerTotalReclaimableBytes = numberValue(rawDockerStorage.totalReclaimableBytes) ?? 0;
+  const dockerSafeReclaimableBytes =
+    numberValue(rawDockerStorage.safeReclaimableBytes) ?? dockerBuildCache.sizeBytes;
+  const dockerUnsafeReclaimableBytes =
+    numberValue(rawDockerStorage.unsafeReclaimableBytes) ??
+    Math.max(dockerTotalReclaimableBytes - dockerSafeReclaimableBytes, 0);
   const partial: Omit<OpsStatusSnapshot, "summary"> = {
     schemaVersion: 1 as const,
     source: "host_status_file" as const,
@@ -659,11 +687,13 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
     },
     diskTrend: normalizeDiskTrend(rawDiskTrend),
     dockerStorage: {
-      images: normalizeDockerStorageCategory(rawDockerStorage.images),
-      containers: normalizeDockerStorageCategory(rawDockerStorage.containers),
-      localVolumes: normalizeDockerStorageCategory(rawDockerStorage.localVolumes),
-      buildCache: normalizeDockerStorageCategory(rawDockerStorage.buildCache),
-      totalReclaimableBytes: numberValue(rawDockerStorage.totalReclaimableBytes) ?? 0,
+      images: dockerImages,
+      containers: dockerContainers,
+      localVolumes: dockerLocalVolumes,
+      buildCache: dockerBuildCache,
+      totalReclaimableBytes: dockerTotalReclaimableBytes,
+      safeReclaimableBytes: dockerSafeReclaimableBytes,
+      unsafeReclaimableBytes: dockerUnsafeReclaimableBytes,
       reclaimableWarningBytes:
         numberValue(rawDockerStorage.reclaimableWarningBytes) ?? dockerReclaimableWarningBytes,
       status: healthStateValue(rawDockerStorage.status),
@@ -947,6 +977,8 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       localVolumes: normalizeDockerStorageCategory(null),
       buildCache: normalizeDockerStorageCategory(null),
       totalReclaimableBytes: 0,
+      safeReclaimableBytes: 0,
+      unsafeReclaimableBytes: 0,
       reclaimableWarningBytes: dockerReclaimableWarningBytes,
       status: "unknown" as const,
       checkedAt: new Date().toISOString(),
@@ -955,7 +987,11 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
     dockerImageInventory: {
       topLimit: 8,
       totalImageBytes: 0,
+      activeImageBytes: 0,
+      inactiveImageBytes: 0,
+      safeReclaimableImageBytes: 0,
       images: [],
+      reclaimableCandidates: [],
       status: "unknown" as const,
       checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",

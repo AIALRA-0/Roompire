@@ -42,6 +42,12 @@ const dockerReclaimableWarningBytes = Number.isFinite(configuredDockerReclaimabl
   ? configuredDockerReclaimableWarningBytes
   : 5 * 1024 * 1024 * 1024;
 const dockerImageInventoryLimit = Number(process.env.ROOMPIRE_DOCKER_IMAGE_INVENTORY_LIMIT || 8);
+const ephemeralImageRepositories = String(
+  process.env.ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES ||
+    "roompire-migrator",
+)
+  .split(/\s+/)
+  .filter(Boolean);
 
 function command(commandName, args) {
   const result = spawnSync(commandName, args, {
@@ -818,7 +824,7 @@ function collectDiskTrend(disk) {
   };
 }
 
-function collectDockerStorage() {
+function collectDockerStorage(dockerImageInventory) {
   const result = command("docker", ["system", "df", "--format", "{{json .}}"]);
 
   if (!result.ok) {
@@ -828,6 +834,8 @@ function collectDockerStorage() {
       localVolumes: emptyDockerStorageCategory(),
       buildCache: emptyDockerStorageCategory(),
       totalReclaimableBytes: 0,
+      safeReclaimableBytes: 0,
+      unsafeReclaimableBytes: 0,
       reclaimableWarningBytes: dockerReclaimableWarningBytes,
       status: "unknown",
       checkedAt: generatedAt,
@@ -872,6 +880,8 @@ function collectDockerStorage() {
       localVolumes: emptyDockerStorageCategory(),
       buildCache: emptyDockerStorageCategory(),
       totalReclaimableBytes: 0,
+      safeReclaimableBytes: 0,
+      unsafeReclaimableBytes: 0,
       reclaimableWarningBytes: dockerReclaimableWarningBytes,
       status: "unknown",
       checkedAt: generatedAt,
@@ -884,15 +894,36 @@ function collectDockerStorage() {
     categories.containers.reclaimableBytes +
     categories.localVolumes.reclaimableBytes +
     categories.buildCache.reclaimableBytes;
+  const safeImageReclaimableBytes =
+    dockerImageInventory.status === "ok" ? dockerImageInventory.safeReclaimableImageBytes : 0;
+  const safeReclaimableBytes = categories.buildCache.sizeBytes + safeImageReclaimableBytes;
+  const unsafeReclaimableBytes = Math.max(totalReclaimableBytes - safeReclaimableBytes, 0);
 
   return {
     ...categories,
     totalReclaimableBytes,
+    safeReclaimableBytes,
+    unsafeReclaimableBytes,
     reclaimableWarningBytes: dockerReclaimableWarningBytes,
-    status: totalReclaimableBytes >= dockerReclaimableWarningBytes ? "warning" : "ok",
+    status: safeReclaimableBytes >= dockerReclaimableWarningBytes ? "warning" : "ok",
     checkedAt: generatedAt,
     error: null,
   };
+}
+
+function isDanglingDockerImage(image) {
+  return image.repository === "<none>" || image.tag === "<none>";
+}
+
+function isEphemeralImageCandidate(image) {
+  return ephemeralImageRepositories.includes(image.repository);
+}
+
+function isSafeImageReclaimableCandidate(image) {
+  return (
+    image.containers === 0 &&
+    (isDanglingDockerImage(image) || isEphemeralImageCandidate(image))
+  );
 }
 
 function collectDockerImageInventory() {
@@ -904,6 +935,10 @@ function collectDockerImageInventory() {
       topLimit,
       totalImageBytes: 0,
       images: [],
+      activeImageBytes: 0,
+      inactiveImageBytes: 0,
+      safeReclaimableImageBytes: 0,
+      reclaimableCandidates: [],
       status: "unknown",
       checkedAt: generatedAt,
       error: result.error,
@@ -933,13 +968,31 @@ function collectDockerImageInventory() {
         };
       });
     const totalImageBytes = images.reduce((total, image) => total + image.sizeBytes, 0);
+    const activeImageBytes = images
+      .filter((image) => image.containers > 0)
+      .reduce((total, image) => total + image.sizeBytes, 0);
+    const inactiveImageBytes = images
+      .filter((image) => image.containers === 0)
+      .reduce((total, image) => total + image.sizeBytes, 0);
+    const allReclaimableCandidates = images
+      .filter(isSafeImageReclaimableCandidate)
+      .sort((left, right) => right.sizeBytes - left.sizeBytes);
+    const reclaimableCandidates = allReclaimableCandidates.slice(0, topLimit);
+    const safeReclaimableImageBytes = allReclaimableCandidates.reduce(
+      (total, image) => total + image.sizeBytes,
+      0,
+    );
 
     return {
       topLimit,
       totalImageBytes,
+      activeImageBytes,
+      inactiveImageBytes,
+      safeReclaimableImageBytes,
       images: images
         .sort((left, right) => right.sizeBytes - left.sizeBytes)
         .slice(0, topLimit),
+      reclaimableCandidates,
       status: "ok",
       checkedAt: generatedAt,
       error: null,
@@ -949,6 +1002,10 @@ function collectDockerImageInventory() {
       topLimit,
       totalImageBytes: 0,
       images: [],
+      activeImageBytes: 0,
+      inactiveImageBytes: 0,
+      safeReclaimableImageBytes: 0,
+      reclaimableCandidates: [],
       status: "unknown",
       checkedAt: generatedAt,
       error: error instanceof Error ? error.message : String(error),
@@ -996,14 +1053,15 @@ function readLatestSmoke() {
 }
 
 const disk = collectDisk();
+const dockerImageInventory = collectDockerImageInventory();
 const snapshot = {
   schemaVersion: 1,
   source: "host_status_file",
   generatedAt,
   disk,
   diskTrend: collectDiskTrend(disk),
-  dockerStorage: collectDockerStorage(),
-  dockerImageInventory: collectDockerImageInventory(),
+  dockerStorage: collectDockerStorage(dockerImageInventory),
+  dockerImageInventory,
   opsStatusTimer: collectOpsStatusTimer(),
   opsStatusService: collectOpsStatusService(),
   backupTimer: collectBackupTimer(),

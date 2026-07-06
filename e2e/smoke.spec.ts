@@ -259,14 +259,19 @@ async function writeOpsStatusFixture() {
             reclaimablePercent: null,
           },
           totalReclaimableBytes: 832 * 1024 * 1024,
+          safeReclaimableBytes: 192 * 1024 * 1024,
+          unsafeReclaimableBytes: 640 * 1024 * 1024,
           reclaimableWarningBytes: 5 * 1024 * 1024 * 1024,
           status: "ok",
           checkedAt: generatedAt,
           error: null,
         },
         dockerImageInventory: {
-          topLimit: 3,
-          totalImageBytes: 8_640 * 1024 * 1024,
+          topLimit: 4,
+          totalImageBytes: 8_704 * 1024 * 1024,
+          activeImageBytes: 8_640 * 1024 * 1024,
+          inactiveImageBytes: 64 * 1024 * 1024,
+          safeReclaimableImageBytes: 64 * 1024 * 1024,
           images: [
             {
               repository: "aialra/pdf-onlyoffice",
@@ -293,6 +298,26 @@ async function writeOpsStatusFixture() {
               reference: "roompire-web:latest",
               sizeBytes: 950 * 1024 * 1024,
               containers: 1,
+              createdAt: generatedAt,
+            },
+            {
+              repository: "roompire-migrator",
+              tag: "latest",
+              imageId: "057824ccd253",
+              reference: "roompire-migrator:latest",
+              sizeBytes: 64 * 1024 * 1024,
+              containers: 0,
+              createdAt: generatedAt,
+            },
+          ],
+          reclaimableCandidates: [
+            {
+              repository: "roompire-migrator",
+              tag: "latest",
+              imageId: "057824ccd253",
+              reference: "roompire-migrator:latest",
+              sizeBytes: 64 * 1024 * 1024,
+              containers: 0,
               createdAt: generatedAt,
             },
           ],
@@ -1917,11 +1942,15 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-disk-trend-used-per-day")).toContainText("-1 GB/day");
     await expect(page.getByTestId("ops-disk-trend-eta")).toContainText("No current growth");
     await expect(page.getByTestId("ops-docker-status")).toContainText("OK");
-    await expect(page.getByTestId("ops-docker-reclaimable")).toContainText("832 MB");
+    await expect(page.getByTestId("ops-docker-reclaimable")).toContainText("192 MB");
+    await expect(page.getByTestId("ops-docker-reported-reclaimable")).toContainText("832 MB");
     await expect(page.getByTestId("ops-docker-images")).toContainText("3/4 active");
     await expect(page.getByTestId("ops-docker-images-reclaimable")).toContainText("512 MB");
     await expect(page.getByTestId("ops-docker-image-inventory-status")).toContainText("OK");
-    await expect(page.getByTestId("ops-docker-image-total-size")).toContainText("8.4 GB");
+    await expect(page.getByTestId("ops-docker-image-total-size")).toContainText("8.5 GB");
+    await expect(page.getByTestId("ops-docker-image-active-size")).toContainText("8.4 GB");
+    await expect(page.getByTestId("ops-docker-image-inactive-size")).toContainText("64 MB");
+    await expect(page.getByTestId("ops-docker-image-safe-candidates")).toContainText("64 MB");
     await expect(page.getByTestId("ops-docker-image-row").first()).toContainText(
       "aialra/pdf-onlyoffice:local",
     );
@@ -1953,13 +1982,19 @@ test.describe("Roompire real browser smoke", () => {
         };
         dockerStorage: {
           totalReclaimableBytes: number;
+          safeReclaimableBytes: number;
+          unsafeReclaimableBytes: number;
           status: string;
           images: { totalCount: number; activeCount: number };
         };
         dockerImageInventory: {
           topLimit: number;
           totalImageBytes: number;
+          activeImageBytes: number;
+          inactiveImageBytes: number;
+          safeReclaimableImageBytes: number;
           images: Array<{ reference: string; sizeBytes: number }>;
+          reclaimableCandidates: Array<{ reference: string; sizeBytes: number }>;
           status: string;
         };
         opsStatusTimer: { activeState: string; enabledState: string };
@@ -1997,17 +2032,25 @@ test.describe("Roompire real browser smoke", () => {
     expect(opsPayload.status.dockerStorage).toEqual(
       expect.objectContaining({
         totalReclaimableBytes: 832 * 1024 * 1024,
+        safeReclaimableBytes: 192 * 1024 * 1024,
+        unsafeReclaimableBytes: 640 * 1024 * 1024,
         status: "ok",
         images: expect.objectContaining({ totalCount: 4, activeCount: 3 }),
       }),
     );
     expect(opsPayload.status.dockerImageInventory).toEqual(
       expect.objectContaining({
-        topLimit: 3,
-        totalImageBytes: 8_640 * 1024 * 1024,
+        topLimit: 4,
+        totalImageBytes: 8_704 * 1024 * 1024,
+        activeImageBytes: 8_640 * 1024 * 1024,
+        inactiveImageBytes: 64 * 1024 * 1024,
+        safeReclaimableImageBytes: 64 * 1024 * 1024,
         status: "ok",
         images: expect.arrayContaining([
           expect.objectContaining({ reference: "aialra/pdf-onlyoffice:local" }),
+        ]),
+        reclaimableCandidates: expect.arrayContaining([
+          expect.objectContaining({ reference: "roompire-migrator:latest" }),
         ]),
       }),
     );
