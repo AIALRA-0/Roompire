@@ -352,24 +352,24 @@ function retentionDaysInputValue(value: FormDataEntryValue | null) {
   return Number.isFinite(numericValue) ? numericValue : trimmed;
 }
 
-function formatDate(value: string | null, fallback: string) {
+function formatDate(value: string | null, fallback: string, locale: string) {
   if (!value) {
     return fallback;
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
   }).format(new Date(value));
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+function formatDateTime(value: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
 }
 
-function formatBytes(value: number) {
+function formatBytes(value: number, locale: string) {
   if (value <= 0) {
     return "0 B";
   }
@@ -378,7 +378,7 @@ function formatBytes(value: number) {
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
   const scaled = value / 1024 ** index;
 
-  return `${scaled.toLocaleString(undefined, {
+  return `${scaled.toLocaleString(locale, {
     maximumFractionDigits: scaled >= 10 || index === 0 ? 0 : 1,
   })} ${units[index]}`;
 }
@@ -1177,6 +1177,7 @@ export function IdentityWorkspace({
                         {formatDate(
                           retentionReview.operational.cutoffDate,
                           labels.retentionNoCutoff,
+                          locale,
                         )}
                       </p>
                     </div>
@@ -1200,6 +1201,7 @@ export function IdentityWorkspace({
                         {formatDate(
                           retentionReview.attachments.cutoffDate,
                           labels.retentionNoCutoff,
+                          locale,
                         )}
                       </p>
                     </div>
@@ -1218,7 +1220,7 @@ export function IdentityWorkspace({
                         className="mt-1 text-sm font-semibold"
                         data-testid="settings-retention-due-bytes"
                       >
-                        {formatBytes(retentionReview.attachments.affectedBytes)}
+                        {formatBytes(retentionReview.attachments.affectedBytes, locale)}
                       </p>
                     </div>
                   </div>
@@ -1244,7 +1246,8 @@ export function IdentityWorkspace({
                     className="mt-3 text-xs text-muted-foreground"
                     data-testid="settings-retention-generated-at"
                   >
-                    {labels.retentionGeneratedAt}: {formatDateTime(retentionReview.generatedAt)}
+                    {labels.retentionGeneratedAt}:{" "}
+                    {formatDateTime(retentionReview.generatedAt, locale)}
                   </p>
                 </div>
               ) : null}
