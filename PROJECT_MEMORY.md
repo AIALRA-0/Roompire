@@ -224,6 +224,11 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 ## Last session verification
 
+- 2026-07-06 Production site-gate default alignment:
+  - Corrected the deployment assumption: the live `roompire.aialra.online` service is managed directly on this self-hosted server, without SSH to a separate VPS.
+  - Updated the ignored local `.env.production` on the production host so `ROOMPIRE_SITE_GATE_USERNAME`, `ROOMPIRE_SITE_GATE_PASSWORD`, and `ROOMPIRE_SITE_GATE_SESSION_EMAIL` match the user-requested default gate identity. The credential values remain outside git and were not written to tracked docs.
+  - Recreated only `roompire-web-1` with Docker Compose so the new gate settings were loaded, confirmed the web container reached `healthy`, and verified the container env matches the requested default without printing secrets.
+  - Real-domain verification passed with the updated gate: `./scripts/smoke_production.sh` returned OK for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`; unauthenticated `/api/v1/health` returned `401`, authenticated `/api/v1/health` returned `200`, and authenticated `/api/v1/ops/status` showed container health/latest smoke/backup freshness OK with expected warnings for high disk use, depleting disk trend, missing passphrase escrow, and disabled offsite backup.
 - 2026-07-06 Household data retention settings:
   - Branch: `feat/data-retention-settings`.
   - Added `Household.operationalRetentionDays` and `Household.attachmentRetentionDays` plus migration `20260706030000_add_household_data_retention_settings`; both fields accept `NULL` for indefinite retention or 30-3650 day values enforced by PostgreSQL CHECK constraints.
