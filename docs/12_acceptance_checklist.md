@@ -62,8 +62,8 @@ Use this checklist before declaring a milestone complete.
 
 - [ ] Migration is forward-safe.
 - [ ] Destructive migration avoided or explicitly documented.
-- [ ] Indexes added for new list/filter queries.
-- [ ] Constraints added for ledger invariants where possible.
+- [x] Indexes added for new list/filter queries.
+- [x] Constraints added for ledger invariants where possible.
 
 ## API
 

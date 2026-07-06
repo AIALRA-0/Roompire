@@ -103,6 +103,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Ledger month close slice implemented on branch `feat/month-close-lock`: owner/admin users can close or reopen a ledger month through persisted-idempotent API/UI actions, closed months block new formal ledger writes by posting date across approvals, adjustments, reversals, and settlements, and the ledger page displays recent period status with bilingual copy.
 - Dashboard list pagination slice implemented on branch `feat/list-pagination`: `/notifications` and `/expenses/proposals` now accept `cursor`/`limit`, return `page` metadata alongside existing arrays, and the dashboard notification center plus proposal queue expose load-more controls backed by the real APIs.
 - Expense proposal filter indexes slice implemented on branch `feat/proposal-filter-indexes`: migration `20260706010000_add_expense_proposal_filter_indexes` adds queue-order, status/category/date/amount, tag, payer, and share participant indexes for the dashboard proposal filter and cursor-pagination read paths.
+- Financial check constraints slice implemented and deployed on branch `db/financial-ledger-constraints`: migration `20260706020000_add_financial_check_constraints` adds database CHECK constraints for positive proposal/payer/share/obligation/settlement/allocation/recurring-template amounts, positive FX rates, positive proposal revisions, bounded remaining debt, positive split bases, and distinct debtor/creditor or payer/payee participants.
 - Audit pagination slice implemented on branch `feat/audit-pagination`: `/audit-events` now returns `page` metadata with cursor support, the localized audit page can expand loaded result windows, and audit exports use a full-history query separate from the paginated page API.
 - Ledger list pagination slice implemented on branch `feat/ledger-list-pagination`: ledger obligation, ledger transaction, and settlement list APIs return `page` metadata with cursor support, the ledger page can expand obligation/transaction result windows, and balance/action/export paths use full-history queries instead of paginated display slices.
 - Calendar/task pagination slice implemented on branch `feat/calendar-task-pagination`: calendar event and task list APIs return `page` metadata with cursor support while the calendar page can expand loaded event/task windows without changing create/update/delete/complete workflows.
@@ -203,11 +204,19 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 1. Select the long-term production auth provider and replace the private site-gate bridge when multi-user public access is needed.
 2. Design and implement the remaining FX policies (`ORIGINAL_CURRENCY_DEBT` and `FX_DIFFERENCE_ADJUSTMENT`) only after their ledger, settlement, and reporting semantics are explicit.
-3. Continue root-disk capacity planning; unused migrator-image and build-cache cleanup raised the current server to about 9.8GB free / 95% used, but shared Docker images still keep the host near the high-usage warning threshold.
+3. Continue root-disk capacity planning; unused migrator-image and build-cache cleanup raised the current server to about 9.1-9.2GB free / 96% used after the latest migration-only deploy, but shared Docker images still keep the host near the high-usage warning threshold.
 4. Configure a real off-host backup copy target plus passphrase escrow once private production data grows beyond the initial household; the sync/status mechanism now exists and intentionally warns while disabled.
 
 ## Last session verification
 
+- 2026-07-06 Financial check constraints:
+  - Branch: `db/financial-ledger-constraints`.
+  - Added migration `20260706020000_add_financial_check_constraints` with 16 database CHECK constraints for ledger-critical amounts, FX rates, revision numbers, participant distinction, remaining debt bounds, and split basis ranges.
+  - Production preflight found zero existing rows violating the proposed constraints across `ExpenseProposal`, `ExpensePayer`, `ExpenseShare`, `DebtObligation`, `Settlement`, `SettlementAllocation`, and `RecurringExpenseTemplate`.
+  - Local verification passed: `pnpm db:validate`, `pnpm db:migrate`, a PostgreSQL constraint-count query returning 16 constraints, and a transaction-rolled-back bad `ExpenseProposal` insert that raised `check_violation` as expected.
+  - Production deployment from the self-hosted server used Docker Compose only, without SSH: built `roompire-migrator:latest`, applied migration `20260706020000_add_financial_check_constraints` to `roompire_prod`, confirmed all 16 constraints exist in PostgreSQL, and ran a transaction-rolled-back bad `ExpenseProposal` insert that raised `ExpenseProposal_positive_amounts_check` as expected.
+  - Real-domain smoke passed for `https://roompire.aialra.online`: `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`.
+  - Post-deploy housekeeping removed unused `roompire-migrator:latest`, reclaimed 2.124GB of Docker build cache, refreshed ops status, and left Postgres/Redis/web healthy with Docker build cache at `0B` and root disk around 9.1-9.2GB free / 96% used. Expected remaining warnings are `disk_high_usage`, `docker_reclaimable_high`, and `backup_offsite_disabled`.
 - 2026-07-06 Database branch CI triggers:
   - Branch: `chore/ci-db-branch-triggers`.
   - Added `db/**` to the GitHub Actions push branch allowlists for both CI and E2E after `db/proposal-filter-indexes` did not trigger checks.
