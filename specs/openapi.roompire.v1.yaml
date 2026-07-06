@@ -694,6 +694,132 @@ components:
           nullable: true
           minimum: 30
           maximum: 3650
+    RetentionRecordSample:
+      type: object
+      required: [type, id, label, referenceDate]
+      properties:
+        type:
+          type: string
+          enum:
+            [
+              expense_proposal,
+              proposal_comment,
+              proposal_approval,
+              settlement,
+              calendar_event,
+              task,
+              notification,
+              audit_event,
+            ]
+        id: { type: string, format: uuid }
+        label: { type: string }
+        referenceDate: { type: string, format: date-time }
+    RetentionFileSample:
+      type: object
+      required: [id, originalFilename, storageProvider, sizeBytes, sha256, createdAt, linkedType]
+      properties:
+        id: { type: string, format: uuid }
+        originalFilename: { type: string }
+        storageProvider: { type: string }
+        sizeBytes: { type: integer, minimum: 0 }
+        sha256:
+          type: string
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        linkedType:
+          type: string
+          enum: [proposal, settlement, unattached]
+    RetentionOperationalReview:
+      type: object
+      required:
+        [
+          retentionDays,
+          cutoffDate,
+          affectedRecordCount,
+          proposalCount,
+          commentCount,
+          approvalCount,
+          settlementCount,
+          calendarEventCount,
+          taskCount,
+          notificationCount,
+          auditEventCount,
+          samples,
+        ]
+      properties:
+        retentionDays:
+          type: integer
+          nullable: true
+          minimum: 30
+          maximum: 3650
+        cutoffDate:
+          type: string
+          format: date-time
+          nullable: true
+        affectedRecordCount: { type: integer, minimum: 0 }
+        proposalCount: { type: integer, minimum: 0 }
+        commentCount: { type: integer, minimum: 0 }
+        approvalCount: { type: integer, minimum: 0 }
+        settlementCount: { type: integer, minimum: 0 }
+        calendarEventCount: { type: integer, minimum: 0 }
+        taskCount: { type: integer, minimum: 0 }
+        notificationCount: { type: integer, minimum: 0 }
+        auditEventCount: { type: integer, minimum: 0 }
+        samples:
+          type: array
+          maxItems: 5
+          items: { $ref: "#/components/schemas/RetentionRecordSample" }
+    RetentionAttachmentReview:
+      type: object
+      required:
+        [
+          retentionDays,
+          cutoffDate,
+          affectedFileCount,
+          affectedBytes,
+          completedFileCount,
+          pendingUploadCount,
+          proposalFileCount,
+          settlementFileCount,
+          samples,
+        ]
+      properties:
+        retentionDays:
+          type: integer
+          nullable: true
+          minimum: 30
+          maximum: 3650
+        cutoffDate:
+          type: string
+          format: date-time
+          nullable: true
+        affectedFileCount: { type: integer, minimum: 0 }
+        affectedBytes: { type: integer, minimum: 0 }
+        completedFileCount: { type: integer, minimum: 0 }
+        pendingUploadCount: { type: integer, minimum: 0 }
+        proposalFileCount: { type: integer, minimum: 0 }
+        settlementFileCount: { type: integer, minimum: 0 }
+        samples:
+          type: array
+          maxItems: 5
+          items: { $ref: "#/components/schemas/RetentionFileSample" }
+    RetentionReview:
+      type: object
+      description: Review-only household retention evidence. It does not delete or mark records for deletion.
+      required: [householdId, generatedAt, deletionEnabled, operational, attachments]
+      properties:
+        householdId: { type: string, format: uuid }
+        generatedAt: { type: string, format: date-time }
+        deletionEnabled:
+          type: boolean
+          enum: [false]
+        operational: { $ref: "#/components/schemas/RetentionOperationalReview" }
+        attachments: { $ref: "#/components/schemas/RetentionAttachmentReview" }
+    RetentionReviewResponse:
+      type: object
+      required: [retentionReview]
+      properties:
+        retentionReview: { $ref: "#/components/schemas/RetentionReview" }
     ExpenseCategory:
       type: object
       required: [id, key, nameEn, nameZhCn, icon, colorToken, sortOrder, isActive]
@@ -3125,6 +3251,31 @@ paths:
                 required: [household]
                 properties:
                   household: { $ref: "#/components/schemas/Household" }
+        "403":
+          description: Caller is not owner/admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or inaccessible household
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /households/{householdId}/retention-review:
+    get:
+      summary: Review household retention impact
+      description: Owners and admins can review the records and receipt/evidence files that are older than the configured retention policies. This endpoint is read-only and does not delete data.
+      parameters:
+        - in: path
+          name: householdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RetentionReviewResponse" }
         "403":
           description: Caller is not owner/admin
           content:

@@ -69,6 +69,27 @@ type NotificationPreferences = {
   taskRemindersEnabled: boolean;
 };
 
+type RetentionReviewSummary = {
+  generatedAt: string;
+  deletionEnabled: false;
+  operational: {
+    retentionDays: number | null;
+    cutoffDate: string | null;
+    affectedRecordCount: number;
+    proposalCount: number;
+    settlementCount: number;
+    auditEventCount: number;
+  };
+  attachments: {
+    retentionDays: number | null;
+    cutoffDate: string | null;
+    affectedFileCount: number;
+    affectedBytes: number;
+    completedFileCount: number;
+    pendingUploadCount: number;
+  };
+};
+
 type IdentityLabels = {
   profileSettings: string;
   profileSettingsHint: string;
@@ -102,6 +123,19 @@ type IdentityLabels = {
   operationalRetentionDays: string;
   attachmentRetentionDays: string;
   retentionIndefinite: string;
+  retentionReview: string;
+  retentionReviewHint: string;
+  retentionReviewOnly: string;
+  retentionGeneratedAt: string;
+  retentionOperationalCutoff: string;
+  retentionAttachmentCutoff: string;
+  retentionDueRecords: string;
+  retentionDueFiles: string;
+  retentionDueBytes: string;
+  retentionCompletedFiles: string;
+  retentionPendingUploads: string;
+  retentionPolicyDays: string;
+  retentionNoCutoff: string;
   approvalEachDebtor: string;
   approvalAllParticipants: string;
   approvalPayerOnly: string;
@@ -193,6 +227,7 @@ type IdentityWorkspaceProps = {
   activeHouseholdId: string | null;
   canInviteMembers: boolean;
   canManageMembers: boolean;
+  retentionReview: RetentionReviewSummary | null;
   households: HouseholdSummary[];
   members: MemberSummary[];
   categories: CategorySummary[];
@@ -317,12 +352,44 @@ function retentionDaysInputValue(value: FormDataEntryValue | null) {
   return Number.isFinite(numericValue) ? numericValue : trimmed;
 }
 
+function formatDate(value: string | null, fallback: string) {
+  if (!value) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatBytes(value: number) {
+  if (value <= 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const scaled = value / 1024 ** index;
+
+  return `${scaled.toLocaleString(undefined, {
+    maximumFractionDigits: scaled >= 10 || index === 0 ? 0 : 1,
+  })} ${units[index]}`;
+}
+
 export function IdentityWorkspace({
   locale,
   currentUserEmail,
   currentUserDisplayName,
   currentUserPreferredLocale,
   notificationPreferences,
+  retentionReview,
   activeHouseholdId,
   canInviteMembers,
   canManageMembers,
@@ -1073,6 +1140,114 @@ export function IdentityWorkspace({
                   />
                 </Field>
               </div>
+              {retentionReview ? (
+                <div
+                  className="mt-4 rounded-lg border border-border bg-background p-4"
+                  data-testid="settings-retention-review"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{labels.retentionReview}</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {labels.retentionReviewHint}
+                      </p>
+                    </div>
+                    <Badge data-testid="settings-retention-review-status" variant="neutral">
+                      {labels.retentionReviewOnly}
+                    </Badge>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="rounded-md border border-border px-3 py-2">
+                      <p className="text-xs text-muted-foreground">{labels.retentionPolicyDays}</p>
+                      <p
+                        className="mt-1 text-sm font-semibold"
+                        data-testid="settings-retention-operational-days"
+                      >
+                        {retentionReview.operational.retentionDays ?? labels.retentionIndefinite}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-border px-3 py-2">
+                      <p className="text-xs text-muted-foreground">
+                        {labels.retentionOperationalCutoff}
+                      </p>
+                      <p
+                        className="mt-1 text-sm font-semibold"
+                        data-testid="settings-retention-operational-cutoff"
+                      >
+                        {formatDate(
+                          retentionReview.operational.cutoffDate,
+                          labels.retentionNoCutoff,
+                        )}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-border px-3 py-2">
+                      <p className="text-xs text-muted-foreground">{labels.retentionDueRecords}</p>
+                      <p
+                        className="mt-1 text-sm font-semibold"
+                        data-testid="settings-retention-due-records"
+                      >
+                        {retentionReview.operational.affectedRecordCount.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-border px-3 py-2">
+                      <p className="text-xs text-muted-foreground">
+                        {labels.retentionAttachmentCutoff}
+                      </p>
+                      <p
+                        className="mt-1 text-sm font-semibold"
+                        data-testid="settings-retention-attachment-cutoff"
+                      >
+                        {formatDate(
+                          retentionReview.attachments.cutoffDate,
+                          labels.retentionNoCutoff,
+                        )}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-border px-3 py-2">
+                      <p className="text-xs text-muted-foreground">{labels.retentionDueFiles}</p>
+                      <p
+                        className="mt-1 text-sm font-semibold"
+                        data-testid="settings-retention-due-files"
+                      >
+                        {retentionReview.attachments.affectedFileCount.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-border px-3 py-2">
+                      <p className="text-xs text-muted-foreground">{labels.retentionDueBytes}</p>
+                      <p
+                        className="mt-1 text-sm font-semibold"
+                        data-testid="settings-retention-due-bytes"
+                      >
+                        {formatBytes(retentionReview.attachments.affectedBytes)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
+                    <p data-testid="settings-retention-proposal-count">
+                      {labels.retentionDueRecords}:{" "}
+                      {retentionReview.operational.proposalCount.toLocaleString()}
+                    </p>
+                    <p data-testid="settings-retention-attachment-days">
+                      {labels.attachmentRetentionDays}:{" "}
+                      {retentionReview.attachments.retentionDays ?? labels.retentionIndefinite}
+                    </p>
+                    <p data-testid="settings-retention-completed-files">
+                      {labels.retentionCompletedFiles}:{" "}
+                      {retentionReview.attachments.completedFileCount.toLocaleString()}
+                    </p>
+                    <p data-testid="settings-retention-pending-uploads">
+                      {labels.retentionPendingUploads}:{" "}
+                      {retentionReview.attachments.pendingUploadCount.toLocaleString()}
+                    </p>
+                  </div>
+                  <p
+                    className="mt-3 text-xs text-muted-foreground"
+                    data-testid="settings-retention-generated-at"
+                  >
+                    {labels.retentionGeneratedAt}: {formatDateTime(retentionReview.generatedAt)}
+                  </p>
+                </div>
+              ) : null}
             </div>
             <Button disabled={isPending || settingsDisabled} type="submit">
               {isPending ? labels.working : labels.saveSettings}

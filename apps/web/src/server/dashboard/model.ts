@@ -7,6 +7,7 @@ import {
   ACTIVE_HOUSEHOLD_COOKIE_NAME,
   selectActiveHouseholdMembership,
 } from "@/server/households/active-household";
+import { getRetentionReviewForHousehold } from "@/server/households/retention";
 import {
   listExpenseCategoriesForHousehold,
   listExpenseProposalsForHousehold,
@@ -84,6 +85,7 @@ export async function getDashboardModel(options: DashboardModelOptions = {}) {
       canCreateExpenseProposals: false,
       canCreateWorkItems: false,
       canCorrectLedger: false,
+      retentionReview: null,
     };
   }
 
@@ -97,6 +99,7 @@ export async function getDashboardModel(options: DashboardModelOptions = {}) {
     maturedObligationCount,
     upcomingTaskCount,
     auditItems,
+    retentionReview,
   ] = await Promise.all([
     prisma.householdMembership.findMany({
       where: {
@@ -143,6 +146,9 @@ export async function getDashboardModel(options: DashboardModelOptions = {}) {
       },
     }),
     listAuditEventsForHousehold(user.id, activeHousehold.id, { limit: 4 }),
+    canManageMembers(activeMembership.role)
+      ? getRetentionReviewForHousehold(user.id, activeHousehold.id)
+      : Promise.resolve(null),
   ]);
 
   return {
@@ -169,5 +175,6 @@ export async function getDashboardModel(options: DashboardModelOptions = {}) {
     canCreateExpenseProposals: canCreateExpenseProposal(activeMembership.role),
     canCreateWorkItems: canCreateHouseholdWorkItem(activeMembership.role),
     canCorrectLedger: canCorrectLedger(activeMembership.role),
+    retentionReview,
   };
 }

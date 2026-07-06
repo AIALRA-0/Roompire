@@ -3089,6 +3089,40 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("settings-household-attachment-retention-days")).toHaveValue(
       "1095",
     );
+    await expect(page.getByTestId("settings-retention-review")).toBeVisible();
+    await expect(page.getByTestId("settings-retention-review-status")).toContainText("Review only");
+    await expect(page.getByTestId("settings-retention-operational-days")).toContainText("365");
+    await expect(page.getByTestId("settings-retention-attachment-days")).toContainText("1095");
+    await expect(page.getByTestId("settings-retention-due-records")).toContainText("0");
+    await expect(page.getByTestId("settings-retention-due-files")).toContainText("0");
+
+    const retentionReviewResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/retention-review`,
+    );
+    expect(retentionReviewResponse.ok()).toBeTruthy();
+    const retentionReviewPayload = (await retentionReviewResponse.json()) as {
+      retentionReview: {
+        deletionEnabled: false;
+        operational: {
+          retentionDays: number | null;
+          cutoffDate: string | null;
+          affectedRecordCount: number;
+        };
+        attachments: {
+          retentionDays: number | null;
+          cutoffDate: string | null;
+          affectedFileCount: number;
+        };
+      };
+    };
+    expect(retentionReviewPayload.retentionReview.deletionEnabled).toBe(false);
+    expect(retentionReviewPayload.retentionReview.operational.retentionDays).toBe(365);
+    expect(retentionReviewPayload.retentionReview.operational.cutoffDate).toBeTruthy();
+    expect(retentionReviewPayload.retentionReview.operational.affectedRecordCount).toBe(0);
+    expect(retentionReviewPayload.retentionReview.attachments.retentionDays).toBe(1095);
+    expect(retentionReviewPayload.retentionReview.attachments.cutoffDate).toBeTruthy();
+    expect(retentionReviewPayload.retentionReview.attachments.affectedFileCount).toBe(0);
 
     const invalidRetentionResponse = await page.request.patch(`/api/v1/households/${householdId}`, {
       data: {

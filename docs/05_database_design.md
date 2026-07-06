@@ -66,7 +66,7 @@ PostgreSQL.
 
 ### Household data retention settings
 
-`Household.operationalRetentionDays` and `Household.attachmentRetentionDays` are optional integer policy fields. `NULL` means indefinite retention; non-null values must be between 30 and 3650 days. These fields are governance metadata and are audited on settings update. They do not delete formal ledger rows, audit hash-chain events, receipt files, or settlement evidence by themselves.
+`Household.operationalRetentionDays` and `Household.attachmentRetentionDays` are optional integer policy fields. `NULL` means indefinite retention; non-null values must be between 30 and 3650 days. These fields are governance metadata and are audited on settings update. They do not delete formal ledger rows, audit hash-chain events, receipt files, or settlement evidence by themselves. The retention review report derives read-only counts and samples from existing timestamps on proposals, comments, approvals, settlements, calendar events, tasks, notifications, audit events, and files; it does not introduce deletion markers or a retention-job table.
 
 ### SplitMethod
 

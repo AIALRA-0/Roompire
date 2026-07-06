@@ -208,6 +208,19 @@ export default async function AppPage({ params, searchParams }: PageProps) {
     operationalRetentionDays: identity("operationalRetentionDays"),
     attachmentRetentionDays: identity("attachmentRetentionDays"),
     retentionIndefinite: identity("retentionIndefinite"),
+    retentionReview: identity("retentionReview"),
+    retentionReviewHint: identity("retentionReviewHint"),
+    retentionReviewOnly: identity("retentionReviewOnly"),
+    retentionGeneratedAt: identity("retentionGeneratedAt"),
+    retentionOperationalCutoff: identity("retentionOperationalCutoff"),
+    retentionAttachmentCutoff: identity("retentionAttachmentCutoff"),
+    retentionDueRecords: identity("retentionDueRecords"),
+    retentionDueFiles: identity("retentionDueFiles"),
+    retentionDueBytes: identity("retentionDueBytes"),
+    retentionCompletedFiles: identity("retentionCompletedFiles"),
+    retentionPendingUploads: identity("retentionPendingUploads"),
+    retentionPolicyDays: identity("retentionPolicyDays"),
+    retentionNoCutoff: identity("retentionNoCutoff"),
     approvalEachDebtor: identity("approvalEachDebtor"),
     approvalAllParticipants: identity("approvalAllParticipants"),
     approvalPayerOnly: identity("approvalPayerOnly"),
@@ -706,6 +719,7 @@ export default async function AppPage({ params, searchParams }: PageProps) {
                   role: member.role,
                 }))}
                 notificationPreferences={model.userSettings.notificationPreferences}
+                retentionReview={model.retentionReview}
               />
             </div>
 

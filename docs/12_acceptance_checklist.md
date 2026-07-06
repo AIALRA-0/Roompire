@@ -82,6 +82,7 @@ Use this checklist before declaring a milestone complete.
 - [x] Task workspace exposes list, status-board, and due-date calendar views without adding unsafe task data caching.
 - [x] Browser push subscription APIs expose configuration state, register/disable current-user endpoints, and keep notification creation server-owned.
 - [x] PWA install prompt uses the browser `beforeinstallprompt`/`appinstalled` flow without broadening service-worker data caching.
+- [x] Household data-retention settings include owner/admin read-only impact review before any future deletion workflow.
 
 ## Deployment/backup
 
