@@ -30,17 +30,90 @@ import { getDashboardModel } from "@/server/dashboard/model";
 
 type PageProps = {
   params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function AppPage({ params }: PageProps) {
+const proposalStatusFilterValues = [
+  "DRAFT",
+  "SUBMITTED",
+  "PARTIALLY_APPROVED",
+  "APPROVED",
+  "PARTIALLY_MATURED",
+  "MATURED_TO_LEDGER",
+  "REJECTED",
+  "DISPUTED",
+  "CANCELLED",
+] as const;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+const amountPattern = /^\d+(\.\d{1,6})?$/;
+
+function firstSearchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function allowedSearchValue<const T extends readonly string[]>(
+  value: string | string[] | undefined,
+  allowed: T,
+): T[number] | undefined {
+  const firstValue = firstSearchValue(value);
+
+  return firstValue && allowed.includes(firstValue) ? firstValue : undefined;
+}
+
+function trimmedSearchValue(value: string | string[] | undefined, maxLength: number) {
+  const firstValue = firstSearchValue(value)?.trim();
+
+  return firstValue && firstValue.length <= maxLength ? firstValue : undefined;
+}
+
+function uuidSearchValue(value: string | string[] | undefined) {
+  const firstValue = firstSearchValue(value);
+
+  return firstValue && uuidPattern.test(firstValue) ? firstValue : undefined;
+}
+
+function dateSearchValue(value: string | string[] | undefined) {
+  const firstValue = firstSearchValue(value);
+
+  return firstValue && dateOnlyPattern.test(firstValue) ? firstValue : undefined;
+}
+
+function amountSearchValue(value: string | string[] | undefined) {
+  const firstValue = firstSearchValue(value);
+
+  return firstValue && amountPattern.test(firstValue) ? firstValue : undefined;
+}
+
+export default async function AppPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
+  const rawSearchParams = (await searchParams) ?? {};
   const nav = await getTranslations({ locale, namespace: "Nav" });
   const t = await getTranslations({ locale, namespace: "Dashboard" });
   const common = await getTranslations({ locale, namespace: "Common" });
   const identity = await getTranslations({ locale, namespace: "Identity" });
   const expense = await getTranslations({ locale, namespace: "Expense" });
   const notifications = await getTranslations({ locale, namespace: "Notifications" });
-  const model = await getDashboardModel();
+  const proposalLimitOptions = ["1", "5", "10", "20"];
+  const proposalLimit = firstSearchValue(rawSearchParams.proposalLimit) ?? "5";
+  const selectedProposalLimit = proposalLimitOptions.includes(proposalLimit)
+    ? Number(proposalLimit)
+    : 5;
+  const proposalFilters = {
+    q: trimmedSearchValue(rawSearchParams.proposalQ, 120),
+    status: allowedSearchValue(rawSearchParams.proposalStatus, proposalStatusFilterValues),
+    categoryId: uuidSearchValue(rawSearchParams.proposalCategoryId),
+    tagId: uuidSearchValue(rawSearchParams.proposalTagId),
+    memberUserId: uuidSearchValue(rawSearchParams.proposalMemberUserId),
+    from: dateSearchValue(rawSearchParams.proposalFrom),
+    to: dateSearchValue(rawSearchParams.proposalTo),
+    minAmount: amountSearchValue(rawSearchParams.proposalMinAmount),
+    maxAmount: amountSearchValue(rawSearchParams.proposalMaxAmount),
+    limit: selectedProposalLimit,
+  };
+  const model = await getDashboardModel({
+    expenseProposalQuery: proposalFilters,
+  });
   const activeHouseholdName = model.activeHousehold?.name ?? t("title");
   const pwaInstallLabels = {
     install: t("installApp"),
@@ -260,6 +333,21 @@ export default async function AppPage({ params }: PageProps) {
     noProposals: expense("noProposals"),
     queueTitle: expense("queueTitle"),
     queueHint: expense("queueHint"),
+    filters: expense("filters"),
+    filtersHint: expense("filtersHint"),
+    search: expense("search"),
+    status: common("status"),
+    member: expense("member"),
+    anyStatus: expense("anyStatus"),
+    anyCategory: expense("anyCategory"),
+    anyTag: expense("anyTag"),
+    anyMember: expense("anyMember"),
+    fromDate: expense("fromDate"),
+    toDate: expense("toDate"),
+    minAmount: expense("minAmount"),
+    maxAmount: expense("maxAmount"),
+    applyFilters: expense("applyFilters"),
+    clearFilters: expense("clearFilters"),
     loadMore: expense("loadMore"),
     openDetail: expense("openDetail"),
     cannotCreate: expense("cannotCreate"),
@@ -482,7 +570,18 @@ export default async function AppPage({ params }: PageProps) {
               <ExpenseWorkspace
                 key={`${model.activeHousehold?.id ?? "none"}:${
                   model.expenseProposalPage.nextCursor ?? "end"
-                }:${model.expenseProposals.map((proposal) => proposal.id).join(":")}`}
+                }:${[
+                  proposalFilters.q,
+                  proposalFilters.status,
+                  proposalFilters.categoryId,
+                  proposalFilters.tagId,
+                  proposalFilters.memberUserId,
+                  proposalFilters.from,
+                  proposalFilters.to,
+                  proposalFilters.minAmount,
+                  proposalFilters.maxAmount,
+                  selectedProposalLimit,
+                ].join(":")}:${model.expenseProposals.map((proposal) => proposal.id).join(":")}`}
                 activeHouseholdId={model.activeHousehold?.id ?? null}
                 canCreateExpenseProposals={model.canCreateExpenseProposals}
                 categories={model.categories.map((category) => ({
@@ -497,6 +596,18 @@ export default async function AppPage({ params }: PageProps) {
                 currentUserEmail={model.user.email}
                 labels={expenseLabels}
                 locale={locale}
+                filterValues={{
+                  q: proposalFilters.q ?? "",
+                  status: proposalFilters.status ?? "",
+                  categoryId: proposalFilters.categoryId ?? "",
+                  tagId: proposalFilters.tagId ?? "",
+                  memberUserId: proposalFilters.memberUserId ?? "",
+                  from: proposalFilters.from ?? "",
+                  to: proposalFilters.to ?? "",
+                  minAmount: proposalFilters.minAmount ?? "",
+                  maxAmount: proposalFilters.maxAmount ?? "",
+                  limit: selectedProposalLimit,
+                }}
                 members={model.members.map((member) => ({
                   userId: member.userId,
                   displayName: member.displayNameOverride ?? member.user.displayName,

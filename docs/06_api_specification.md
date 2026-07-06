@@ -118,7 +118,7 @@ Current category/tag implementation: active household members can list active ex
 - `POST /households/{householdId}/expenses/shares/{shareId}/reject`
 - `POST /households/{householdId}/expenses/shares/{shareId}/request-changes`
 
-Current proposal listing implementation: `GET /households/{householdId}/expenses/proposals` accepts optional `status`, `cursor`, and `limit` query parameters and returns the existing `proposals` array plus `page` metadata (`limit`, `nextCursor`, `hasMore`). The dashboard proposal queue uses the same API for its load-more control while preserving the proposal/ledger split.
+Current proposal listing implementation: `GET /households/{householdId}/expenses/proposals` accepts optional `q`, `status`, `categoryId`, `tagId`, `memberUserId`, `from`, `to`, `minAmount`, `maxAmount`, `cursor`, and `limit` query parameters and returns the existing `proposals` array plus `page` metadata (`limit`, `nextCursor`, `hasMore`). `q` searches title, merchant, and description case-insensitively; `memberUserId` matches creator, payer, debtor, or creditor participation for an active household member; the amount bounds match either visible original or settlement amount. The dashboard proposal queue uses the same API for URL-backed filters and its load-more control while preserving the proposal/ledger split.
 
 ### FX
 

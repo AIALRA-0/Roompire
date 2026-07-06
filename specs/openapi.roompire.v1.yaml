@@ -3030,8 +3030,38 @@ paths:
           required: true
           schema: { type: string, format: uuid }
         - in: query
+          name: q
+          description: Case-insensitive search across proposal title, merchant, and description.
+          schema: { type: string, minLength: 1, maxLength: 120 }
+        - in: query
           name: status
           schema: { $ref: "#/components/schemas/ExpenseProposalStatus" }
+        - in: query
+          name: categoryId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: tagId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: memberUserId
+          description: Matches proposals created by, paid by, owed by, or owed to this active household member.
+          schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          description: Inclusive expense date lower bound.
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          description: Inclusive expense date upper bound.
+          schema: { type: string, format: date }
+        - in: query
+          name: minAmount
+          description: Inclusive visible amount lower bound; matches either originalAmount or settlementAmount.
+          schema: { $ref: "#/components/schemas/DecimalString" }
+        - in: query
+          name: maxAmount
+          description: Inclusive visible amount upper bound; matches either originalAmount or settlementAmount.
+          schema: { $ref: "#/components/schemas/DecimalString" }
         - in: query
           name: cursor
           schema: { type: string, format: uuid }

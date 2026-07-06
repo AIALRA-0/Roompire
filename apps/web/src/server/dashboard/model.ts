@@ -22,8 +22,29 @@ import {
 } from "@/server/permissions/rbac";
 import { getUserSettings } from "@/server/users/service";
 
-export async function getDashboardModel() {
+type DashboardExpenseProposalQuery = {
+  q?: string;
+  status?: string;
+  categoryId?: string;
+  tagId?: string;
+  memberUserId?: string;
+  from?: string;
+  to?: string;
+  minAmount?: string;
+  maxAmount?: string;
+  limit?: number;
+};
+
+type DashboardModelOptions = {
+  expenseProposalQuery?: DashboardExpenseProposalQuery;
+};
+
+export async function getDashboardModel(options: DashboardModelOptions = {}) {
   const user = await requirePageUser();
+  const expenseProposalQuery = {
+    limit: 5,
+    ...options.expenseProposalQuery,
+  };
   const [householdMemberships, userSettings, notificationResult, cookieStore] = await Promise.all([
     listHouseholdsForUser(user.id),
     getUserSettings(user.id),
@@ -49,7 +70,7 @@ export async function getDashboardModel() {
       tags: [],
       expenseProposals: [],
       expenseProposalPage: {
-        limit: 5,
+        limit: expenseProposalQuery.limit,
         nextCursor: null,
         hasMore: false,
       },
@@ -87,7 +108,7 @@ export async function getDashboardModel() {
     }),
     listExpenseCategoriesForHousehold(user.id, activeHousehold.id),
     listExpenseTagsForHousehold(user.id, activeHousehold.id),
-    listExpenseProposalsForHousehold(user.id, activeHousehold.id, { limit: 5 }),
+    listExpenseProposalsForHousehold(user.id, activeHousehold.id, expenseProposalQuery),
     prisma.debtObligation.findMany({
       where: {
         householdId: activeHousehold.id,

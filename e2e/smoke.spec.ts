@@ -1049,15 +1049,20 @@ test.describe("Roompire real browser smoke", () => {
       throw new Error("Expected seeded Bob membership for pagination test.");
     }
 
+    const filteredProposalTitle = `Pagination proposal ${suffix} filtered`;
+
     for (let index = 0; index < 6; index += 1) {
+      const isFilteredProposal = index === 3;
       const response = await postApiWithRetry(
         page,
         `/api/v1/households/${householdId}/expenses/proposals`,
         {
           data: {
-            title: `Pagination proposal ${suffix} ${index}`,
+            title: isFilteredProposal
+              ? filteredProposalTitle
+              : `Pagination proposal ${suffix} ${index}`,
             expenseDate: "2026-07-02",
-            originalAmount: "1.00",
+            originalAmount: isFilteredProposal ? "9.00" : "1.00",
             originalCurrency: "CNY",
             participantUserIds: [bobUserId],
           },
@@ -1101,6 +1106,33 @@ test.describe("Roompire real browser smoke", () => {
     );
     expect(invalidCursorResponse.status()).toBe(400);
 
+    const proposalFilterParams = new URLSearchParams({
+      limit: "5",
+      q: filteredProposalTitle,
+      status: "SUBMITTED",
+      memberUserId: bobUserId,
+      from: "2026-07-02",
+      to: "2026-07-02",
+      minAmount: "9",
+      maxAmount: "9",
+    });
+    const filteredProposalPageResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals?${proposalFilterParams.toString()}`,
+    );
+    expect(filteredProposalPageResponse.ok()).toBeTruthy();
+    const filteredProposalPage =
+      (await filteredProposalPageResponse.json()) as typeof firstProposalPage;
+    expect(filteredProposalPage.proposals).toHaveLength(1);
+    expect(filteredProposalPage.proposals[0]!.title).toBe(filteredProposalTitle);
+    expect(filteredProposalPage.page).toMatchObject({ limit: 5, hasMore: false });
+
+    const invalidAmountRangeResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals?minAmount=10&maxAmount=1`,
+    );
+    expect(invalidAmountRangeResponse.status()).toBe(400);
+
     await page.goto("/en-US/app");
     await expect(page.getByTestId("expense-load-more")).toBeVisible();
     const initialProposalRows = await page.getByTestId("expense-proposal-row").count();
@@ -1117,6 +1149,21 @@ test.describe("Roompire real browser smoke", () => {
     await expect
       .poll(async () => page.getByTestId("expense-proposal-row").count())
       .toBeGreaterThan(initialProposalRows);
+
+    await page.getByTestId("expense-filter-q").fill(filteredProposalTitle);
+    await page.getByTestId("expense-filter-status").selectOption("SUBMITTED");
+    await page.getByTestId("expense-filter-member").selectOption(bobUserId);
+    await page.getByTestId("expense-filter-from").fill("2026-07-02");
+    await page.getByTestId("expense-filter-to").fill("2026-07-02");
+    await page.getByTestId("expense-filter-min-amount").fill("9");
+    await page.getByTestId("expense-filter-max-amount").fill("9");
+    await page.getByTestId("expense-filter-submit").click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("proposalQ"))
+      .toBe(filteredProposalTitle);
+    await expect(page.getByTestId("expense-proposal-row")).toHaveCount(1);
+    await expect(page.getByTestId("expense-proposal-row")).toContainText(filteredProposalTitle);
+    await expect(page.getByTestId("expense-load-more")).toHaveCount(0);
 
     await setDevSessionWithRetry(page, "bob@example.test", "Bob");
 

@@ -2,6 +2,7 @@ import Decimal from "decimal.js";
 import {
   ApprovalDecision,
   CalendarEventType,
+  type ExpenseProposal,
   ExpenseProposalStatus,
   FxPolicy,
   LedgerTransactionType,
@@ -53,20 +54,39 @@ const expenseProposalEventTypes = new Set<CalendarEventType>([
 ]);
 
 const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const emptyToUndefined = (value: unknown) =>
+  value === "" || value === null || value === undefined ? undefined : value;
+const emptyTrimmedToUndefined = (value: unknown) =>
+  typeof value === "string" ? (value.trim() === "" ? undefined : value) : emptyToUndefined(value);
 
-const nullableUuidSchema = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : value),
-  z.string().uuid().optional(),
-);
+const nullableUuidSchema = z.preprocess(emptyToUndefined, z.string().uuid().optional());
 
 const optionalCategoryTextSchema = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : value),
+  emptyTrimmedToUndefined,
   z.string().trim().max(80).optional(),
 );
 
 const optionalDecimalStringSchema = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : value),
+  emptyTrimmedToUndefined,
   decimalStringSchema.optional(),
+);
+
+const nonNegativeDecimalStringSchema = z
+  .string()
+  .trim()
+  .regex(/^\d+(\.\d{1,6})?$/)
+  .refine((value) => new Decimal(value).gte(0), "Amount must be zero or greater.");
+
+const optionalAmountFilterSchema = z.preprocess(
+  emptyTrimmedToUndefined,
+  nonNegativeDecimalStringSchema.optional(),
+);
+
+const optionalDateOnlySchema = z.preprocess(emptyToUndefined, dateOnlySchema.optional());
+
+const optionalQueryTextSchema = z.preprocess(
+  emptyTrimmedToUndefined,
+  z.string().trim().min(1).max(120).optional(),
 );
 
 const participantShareSchema = z.object({
@@ -177,10 +197,38 @@ export const createEventExpenseProposalSchema = createExpenseProposalBaseSchema
   })
   .superRefine(validateSplitInputs);
 
-export const listExpenseProposalQuerySchema = z.object({
-  status: z.nativeEnum(ExpenseProposalStatus).optional(),
-  ...paginationQueryFields(20),
-});
+export const listExpenseProposalQuerySchema = z
+  .object({
+    q: optionalQueryTextSchema,
+    status: z.preprocess(emptyToUndefined, z.nativeEnum(ExpenseProposalStatus).optional()),
+    categoryId: nullableUuidSchema,
+    tagId: nullableUuidSchema,
+    memberUserId: nullableUuidSchema,
+    from: optionalDateOnlySchema,
+    to: optionalDateOnlySchema,
+    minAmount: optionalAmountFilterSchema,
+    maxAmount: optionalAmountFilterSchema,
+    ...paginationQueryFields(20),
+  })
+  .superRefine((data, context) => {
+    if (data.from && data.to && data.from > data.to) {
+      context.addIssue({
+        code: "custom",
+        message: "from must be on or before to.",
+        path: ["from"],
+      });
+    }
+
+    if (data.minAmount && data.maxAmount && new Decimal(data.minAmount).gt(data.maxAmount)) {
+      context.addIssue({
+        code: "custom",
+        message: "minAmount must be less than or equal to maxAmount.",
+        path: ["minAmount"],
+      });
+    }
+  });
+
+type ListExpenseProposalQuery = z.infer<typeof listExpenseProposalQuerySchema>;
 
 const expenseCategoryInputSchema = z.object({
   nameEn: z.string().trim().min(2).max(80),
@@ -297,6 +345,193 @@ const expenseProposalDetailInclude = {
 
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
+}
+
+const expenseProposalOrderBy = [
+  { updatedAt: "desc" as const },
+  { createdAt: "desc" as const },
+  { id: "asc" as const },
+] satisfies Prisma.ExpenseProposalOrderByWithRelationInput[];
+
+async function assertExpenseFilterMemberBelongsToHousehold(userId: string, householdId: string) {
+  const membership = await prisma.householdMembership.findFirst({
+    where: {
+      householdId,
+      userId,
+      status: "ACTIVE",
+    },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    throw validationError("Expense proposal query is invalid.", {
+      fieldErrors: {
+        memberUserId: ["Member must be active in this household."],
+      },
+    });
+  }
+}
+
+function buildAmountRangeFilter(query: Pick<ListExpenseProposalQuery, "minAmount" | "maxAmount">) {
+  if (!query.minAmount && !query.maxAmount) {
+    return undefined;
+  }
+
+  return {
+    gte: query.minAmount,
+    lte: query.maxAmount,
+  } satisfies Prisma.DecimalFilter<"ExpenseProposal">;
+}
+
+function buildExpenseProposalBaseWhere(
+  householdId: string,
+  query: Pick<
+    ListExpenseProposalQuery,
+    | "q"
+    | "status"
+    | "categoryId"
+    | "tagId"
+    | "memberUserId"
+    | "from"
+    | "to"
+    | "minAmount"
+    | "maxAmount"
+  >,
+) {
+  const andFilters: Prisma.ExpenseProposalWhereInput[] = [];
+  const amountFilter = buildAmountRangeFilter(query);
+
+  if (query.q) {
+    andFilters.push({
+      OR: [
+        { title: { contains: query.q, mode: "insensitive" } },
+        { merchant: { contains: query.q, mode: "insensitive" } },
+        { description: { contains: query.q, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  if (query.tagId) {
+    andFilters.push({
+      tagLinks: {
+        some: {
+          tagId: query.tagId,
+        },
+      },
+    });
+  }
+
+  if (query.memberUserId) {
+    andFilters.push({
+      OR: [
+        { createdByUserId: query.memberUserId },
+        {
+          payers: {
+            some: {
+              userId: query.memberUserId,
+            },
+          },
+        },
+        {
+          shares: {
+            some: {
+              OR: [{ debtorUserId: query.memberUserId }, { creditorUserId: query.memberUserId }],
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  if (amountFilter) {
+    andFilters.push({
+      OR: [{ originalAmount: amountFilter }, { settlementAmount: amountFilter }],
+    });
+  }
+
+  return {
+    householdId,
+    status: query.status,
+    categoryId: query.categoryId,
+    expenseDate:
+      query.from || query.to
+        ? {
+            gte: query.from ? dateOnlyToUtc(query.from) : undefined,
+            lte: query.to ? dateOnlyToUtc(query.to) : undefined,
+          }
+        : undefined,
+    AND: andFilters.length > 0 ? andFilters : undefined,
+  } satisfies Prisma.ExpenseProposalWhereInput;
+}
+
+function buildExpenseProposalWhere(
+  householdId: string,
+  query: Parameters<typeof buildExpenseProposalBaseWhere>[1],
+  cursorProposal?: Pick<ExpenseProposal, "id" | "updatedAt" | "createdAt">,
+) {
+  const cursorWindow: Prisma.ExpenseProposalWhereInput | undefined = cursorProposal
+    ? {
+        OR: [
+          {
+            updatedAt: {
+              lt: cursorProposal.updatedAt,
+            },
+          },
+          {
+            updatedAt: cursorProposal.updatedAt,
+            createdAt: {
+              lt: cursorProposal.createdAt,
+            },
+          },
+          {
+            updatedAt: cursorProposal.updatedAt,
+            createdAt: cursorProposal.createdAt,
+            id: {
+              gt: cursorProposal.id,
+            },
+          },
+        ],
+      }
+    : undefined;
+  const baseWhere = buildExpenseProposalBaseWhere(householdId, query);
+  const baseAnd = Array.isArray(baseWhere.AND)
+    ? baseWhere.AND
+    : baseWhere.AND
+      ? [baseWhere.AND]
+      : [];
+
+  return {
+    ...baseWhere,
+    AND: cursorWindow ? [...baseAnd, cursorWindow] : baseWhere.AND,
+  } satisfies Prisma.ExpenseProposalWhereInput;
+}
+
+async function resolveExpenseProposalCursor(
+  householdId: string,
+  query: Parameters<typeof buildExpenseProposalBaseWhere>[1],
+  cursor: string | undefined,
+) {
+  if (!cursor) {
+    return undefined;
+  }
+
+  const cursorProposal = await prisma.expenseProposal.findFirst({
+    where: {
+      ...buildExpenseProposalBaseWhere(householdId, query),
+      id: cursor,
+    },
+    select: { id: true, householdId: true, updatedAt: true, createdAt: true },
+  });
+
+  if (!cursorProposal) {
+    throw validationError("Expense proposal query is invalid.", {
+      fieldErrors: {
+        cursor: ["Invalid cursor."],
+      },
+    });
+  }
+
+  return cursorProposal;
 }
 
 function decimalToFixed6(value: Decimal.Value) {
@@ -962,11 +1197,17 @@ export async function listExpenseProposalsForHousehold(
     throw validationError("Expense proposal query is invalid.", parsed.error.flatten());
   }
 
+  if (parsed.data.memberUserId) {
+    await assertExpenseFilterMemberBelongsToHousehold(parsed.data.memberUserId, householdId);
+  }
+
+  const cursorProposal = await resolveExpenseProposalCursor(
+    householdId,
+    parsed.data,
+    parsed.data.cursor,
+  );
   const proposals = await prisma.expenseProposal.findMany({
-    where: {
-      householdId,
-      status: parsed.data.status,
-    },
+    where: buildExpenseProposalWhere(householdId, parsed.data, cursorProposal),
     include: {
       category: true,
       tagLinks: {
@@ -985,9 +1226,7 @@ export async function listExpenseProposalsForHousehold(
         },
       },
     },
-    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }],
-    cursor: parsed.data.cursor ? { id: parsed.data.cursor } : undefined,
-    skip: parsed.data.cursor ? 1 : undefined,
+    orderBy: expenseProposalOrderBy,
     take: parsed.data.limit + 1,
   });
 

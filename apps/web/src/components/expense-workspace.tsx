@@ -3,7 +3,7 @@
 import Decimal from "decimal.js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,18 @@ type ExpenseProposalSummary = {
   debtorCount: number;
 };
 
+const proposalStatusKeys: ProposalStatus[] = [
+  "DRAFT",
+  "SUBMITTED",
+  "PARTIALLY_APPROVED",
+  "APPROVED",
+  "PARTIALLY_MATURED",
+  "MATURED_TO_LEDGER",
+  "REJECTED",
+  "DISPUTED",
+  "CANCELLED",
+];
+
 type PageInfo = {
   limit: number;
   nextCursor: string | null;
@@ -85,6 +97,19 @@ type ExpenseProposalApiItem = {
 type ExpenseProposalListResponse = {
   proposals: ExpenseProposalApiItem[];
   page: PageInfo;
+};
+
+type ExpenseProposalFilterValues = {
+  q: string;
+  status: string;
+  categoryId: string;
+  tagId: string;
+  memberUserId: string;
+  from: string;
+  to: string;
+  minAmount: string;
+  maxAmount: string;
+  limit: number;
 };
 
 type ExpenseLabels = {
@@ -126,6 +151,21 @@ type ExpenseLabels = {
   noProposals: string;
   queueTitle: string;
   queueHint: string;
+  filters: string;
+  filtersHint: string;
+  search: string;
+  status: string;
+  member: string;
+  anyStatus: string;
+  anyCategory: string;
+  anyTag: string;
+  anyMember: string;
+  fromDate: string;
+  toDate: string;
+  minAmount: string;
+  maxAmount: string;
+  applyFilters: string;
+  clearFilters: string;
   loadMore: string;
   openDetail: string;
   cannotCreate: string;
@@ -147,6 +187,7 @@ type ExpenseWorkspaceProps = {
   members: ExpenseMemberSummary[];
   proposals: ExpenseProposalSummary[];
   proposalPage: PageInfo;
+  filterValues: ExpenseProposalFilterValues;
   labels: ExpenseLabels;
 };
 
@@ -275,6 +316,7 @@ export function ExpenseWorkspace({
   members,
   proposals,
   proposalPage,
+  filterValues,
   labels,
 }: ExpenseWorkspaceProps) {
   const router = useRouter();
@@ -301,6 +343,7 @@ export function ExpenseWorkspace({
     originalCurrencyInput.trim().toUpperCase() !== settlementCurrency;
   const isManualFxRateRequired =
     activeHouseholdFxPolicy === "MANUAL_RATE_WITH_APPROVAL" && isCrossCurrency;
+  const filterResetHref = `/${locale}/app?proposalLimit=${filterValues.limit}`;
 
   function proposalSummaryFromApi(proposal: ExpenseProposalApiItem): ExpenseProposalSummary {
     return {
@@ -324,6 +367,26 @@ export function ExpenseWorkspace({
     };
   }
 
+  function appendProposalFilterParams(params: URLSearchParams) {
+    const filterParams = [
+      ["q", filterValues.q],
+      ["status", filterValues.status],
+      ["categoryId", filterValues.categoryId],
+      ["tagId", filterValues.tagId],
+      ["memberUserId", filterValues.memberUserId],
+      ["from", filterValues.from],
+      ["to", filterValues.to],
+      ["minAmount", filterValues.minAmount],
+      ["maxAmount", filterValues.maxAmount],
+    ] as const;
+
+    for (const [key, value] of filterParams) {
+      if (value) {
+        params.set(key, value);
+      }
+    }
+  }
+
   async function loadMoreProposals() {
     if (!activeHouseholdId || !pagination.nextCursor) {
       return;
@@ -336,6 +399,7 @@ export function ExpenseWorkspace({
         cursor: pagination.nextCursor,
         limit: String(pagination.limit),
       });
+      appendProposalFilterParams(params);
       const response = await fetch(
         `/api/v1/households/${activeHouseholdId}/expenses/proposals?${params.toString()}`,
         { credentials: "same-origin" },
@@ -884,79 +948,221 @@ export function ExpenseWorkspace({
         </div>
       </form>
 
-      <div className="rounded-lg border border-border bg-card">
-        <div className="border-b border-border p-5">
-          <h2 className="text-lg font-semibold">{labels.queueTitle}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{labels.queueHint}</p>
-        </div>
-        <div className="divide-y divide-border">
-          {proposalItems.map((proposal) => (
-            <div className="grid gap-3 p-4" data-testid="expense-proposal-row" key={proposal.id}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{proposal.title}</p>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">
-                    {proposal.merchant ?? proposal.categoryName ?? labels.uncategorized}
-                  </p>
-                </div>
-                <Badge variant={statusVariant(proposal.status)}>
-                  {labels.statuses[proposal.status]}
-                </Badge>
-              </div>
-              <div className="grid gap-1 text-xs text-muted-foreground">
-                <span>
-                  {proposal.originalCurrency} {proposal.originalAmount} ·{" "}
-                  {proposal.settlementCurrency} {proposal.settlementAmount}
-                </span>
-                <span>
-                  {proposal.expenseDate} · {proposal.debtorCount} {labels.debtors}
-                </span>
-              </div>
-              {proposal.tags.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5" data-testid="expense-proposal-tags">
-                  {proposal.tags.map((tag) => (
-                    <Badge key={tag.id} variant="neutral">
-                      {tag.name}
-                    </Badge>
+      <div className="grid content-start gap-4">
+        <form
+          action={`/${locale}/app`}
+          className="rounded-lg border border-border bg-card"
+          data-testid="expense-proposal-filters"
+        >
+          <input name="proposalLimit" type="hidden" value={filterValues.limit} />
+          <div className="border-b border-border p-5">
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <SlidersHorizontal aria-hidden="true" className="h-5 w-5 text-primary" />
+              {labels.filters}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{labels.filtersHint}</p>
+          </div>
+          <div className="grid gap-3 p-5">
+            <Field label={labels.search}>
+              <input
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                data-testid="expense-filter-q"
+                defaultValue={filterValues.q}
+                maxLength={120}
+                name="proposalQ"
+              />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={labels.status}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="expense-filter-status"
+                  defaultValue={filterValues.status}
+                  name="proposalStatus"
+                >
+                  <option value="">{labels.anyStatus}</option>
+                  {proposalStatusKeys.map((status) => (
+                    <option key={status} value={status}>
+                      {labels.statuses[status]}
+                    </option>
                   ))}
-                </div>
-              ) : null}
-              {activeHouseholdId ? (
-                <Button asChild size="sm" variant="outline">
-                  <Link
-                    aria-label={`${labels.openDetail}: ${proposal.title}`}
-                    href={`/${locale}/app/households/${activeHouseholdId}/expenses/proposals/${proposal.id}`}
-                  >
-                    {labels.openDetail}
-                  </Link>
-                </Button>
-              ) : null}
+                </select>
+              </Field>
+              <Field label={labels.member}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="expense-filter-member"
+                  defaultValue={filterValues.memberUserId}
+                  name="proposalMemberUserId"
+                >
+                  <option value="">{labels.anyMember}</option>
+                  {members.map((member) => (
+                    <option key={member.userId} value={member.userId}>
+                      {member.displayName}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={labels.category}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="expense-filter-category"
+                  defaultValue={filterValues.categoryId}
+                  name="proposalCategoryId"
+                >
+                  <option value="">{labels.anyCategory}</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={labels.tags}>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="expense-filter-tag"
+                  defaultValue={filterValues.tagId}
+                  name="proposalTagId"
+                >
+                  <option value="">{labels.anyTag}</option>
+                  {tags.map((tag) => (
+                    <option key={tag.id} value={tag.id}>
+                      {tag.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={labels.fromDate}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="expense-filter-from"
+                  defaultValue={filterValues.from}
+                  name="proposalFrom"
+                  type="date"
+                />
+              </Field>
+              <Field label={labels.toDate}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="expense-filter-to"
+                  defaultValue={filterValues.to}
+                  name="proposalTo"
+                  type="date"
+                />
+              </Field>
+              <Field label={labels.minAmount}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="expense-filter-min-amount"
+                  defaultValue={filterValues.minAmount}
+                  min="0"
+                  name="proposalMinAmount"
+                  step="0.01"
+                  type="number"
+                />
+              </Field>
+              <Field label={labels.maxAmount}>
+                <input
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                  data-testid="expense-filter-max-amount"
+                  defaultValue={filterValues.maxAmount}
+                  min="0"
+                  name="proposalMaxAmount"
+                  step="0.01"
+                  type="number"
+                />
+              </Field>
             </div>
-          ))}
-          {proposalItems.length === 0 ? (
-            <div className="p-5 text-sm text-muted-foreground">{labels.noProposals}</div>
-          ) : null}
-        </div>
-        {pagination.hasMore ? (
-          <div className="border-t border-border p-4">
-            <Button
-              className="w-full"
-              data-testid="expense-load-more"
-              disabled={isLoadingMore}
-              onClick={() => {
-                void loadMoreProposals().catch((error: unknown) => {
-                  console.error(error);
-                  setMessage(error instanceof Error ? error.message : labels.errorFallback);
-                });
-              }}
-              type="button"
-              variant="outline"
-            >
-              <ChevronDown aria-hidden="true" className="h-4 w-4" />
-              {isLoadingMore ? labels.working : labels.loadMore}
+          </div>
+          <div className="grid gap-2 border-t border-border px-5 py-4 sm:grid-cols-2">
+            <Button asChild className="w-full" variant="outline">
+              <Link data-testid="expense-filter-clear" href={filterResetHref}>
+                <X aria-hidden="true" className="h-4 w-4" />
+                {labels.clearFilters}
+              </Link>
+            </Button>
+            <Button className="w-full" data-testid="expense-filter-submit" type="submit">
+              <Search aria-hidden="true" className="h-4 w-4" />
+              {labels.applyFilters}
             </Button>
           </div>
-        ) : null}
+        </form>
+
+        <div className="rounded-lg border border-border bg-card">
+          <div className="border-b border-border p-5">
+            <h2 className="text-lg font-semibold">{labels.queueTitle}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{labels.queueHint}</p>
+          </div>
+          <div className="divide-y divide-border">
+            {proposalItems.map((proposal) => (
+              <div className="grid gap-3 p-4" data-testid="expense-proposal-row" key={proposal.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{proposal.title}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {proposal.merchant ?? proposal.categoryName ?? labels.uncategorized}
+                    </p>
+                  </div>
+                  <Badge variant={statusVariant(proposal.status)}>
+                    {labels.statuses[proposal.status]}
+                  </Badge>
+                </div>
+                <div className="grid gap-1 text-xs text-muted-foreground">
+                  <span>
+                    {proposal.originalCurrency} {proposal.originalAmount} ·{" "}
+                    {proposal.settlementCurrency} {proposal.settlementAmount}
+                  </span>
+                  <span>
+                    {proposal.expenseDate} · {proposal.debtorCount} {labels.debtors}
+                  </span>
+                </div>
+                {proposal.tags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5" data-testid="expense-proposal-tags">
+                    {proposal.tags.map((tag) => (
+                      <Badge key={tag.id} variant="neutral">
+                        {tag.name}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+                {activeHouseholdId ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link
+                      aria-label={`${labels.openDetail}: ${proposal.title}`}
+                      href={`/${locale}/app/households/${activeHouseholdId}/expenses/proposals/${proposal.id}`}
+                    >
+                      {labels.openDetail}
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+            {proposalItems.length === 0 ? (
+              <div className="p-5 text-sm text-muted-foreground">{labels.noProposals}</div>
+            ) : null}
+          </div>
+          {pagination.hasMore ? (
+            <div className="border-t border-border p-4">
+              <Button
+                className="w-full"
+                data-testid="expense-load-more"
+                disabled={isLoadingMore}
+                onClick={() => {
+                  void loadMoreProposals().catch((error: unknown) => {
+                    console.error(error);
+                    setMessage(error instanceof Error ? error.message : labels.errorFallback);
+                  });
+                }}
+                type="button"
+                variant="outline"
+              >
+                <ChevronDown aria-hidden="true" className="h-4 w-4" />
+                {isLoadingMore ? labels.working : labels.loadMore}
+              </Button>
+            </div>
+          ) : null}
+        </div>
       </div>
     </section>
   );

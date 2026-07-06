@@ -26,10 +26,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireApiUser(request);
     const { householdId } = await context.params;
+    const searchParams = request.nextUrl.searchParams;
     const result = await listExpenseProposalsForHousehold(user.id, householdId, {
-      cursor: request.nextUrl.searchParams.get("cursor") ?? undefined,
-      limit: request.nextUrl.searchParams.get("limit") ?? undefined,
-      status: request.nextUrl.searchParams.get("status") ?? undefined,
+      q: searchParams.get("q") ?? undefined,
+      cursor: searchParams.get("cursor") ?? undefined,
+      limit: searchParams.get("limit") ?? undefined,
+      status: searchParams.get("status") ?? undefined,
+      categoryId: searchParams.get("categoryId") ?? undefined,
+      tagId: searchParams.get("tagId") ?? undefined,
+      memberUserId: searchParams.get("memberUserId") ?? undefined,
+      from: searchParams.get("from") ?? undefined,
+      to: searchParams.get("to") ?? undefined,
+      minAmount: searchParams.get("minAmount") ?? undefined,
+      maxAmount: searchParams.get("maxAmount") ?? undefined,
     });
 
     return NextResponse.json({
