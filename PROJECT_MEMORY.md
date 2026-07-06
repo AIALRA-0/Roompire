@@ -227,6 +227,17 @@ Phase 2/3 combined MVP: expense proposals, formal ledger, FX locks, audit log, s
 
 ## Last session verification
 
+- 2026-07-06 Original-currency debt FX policy:
+  - Branch: `feat/data-retention-settings`; commit `e89ac0b feat: support original-currency debt policy`.
+  - Household settings/API now accept `ORIGINAL_CURRENCY_DEBT`; proposal, revision, task-expense, and event-expense creation paths share `prepareExpenseProposalCreate`, set settlement currency to the entered original currency under this policy, store `fxRate=1`, and record `fxProvider=original-currency-debt`.
+  - Dashboard settings expose the new FX policy in en-US/zh-CN; the expense form shows original currency as the effective settlement currency and disables the FX-rate input with an original-currency hint.
+  - Docs/OpenAPI/backlog now describe original-currency debt as implemented and leave only FX-difference adjustment in the FX-policy backlog.
+  - Local verification passed: `git diff --check`, en-US/zh-CN JSON parse, OpenAPI YAML parse with `python3`, `pnpm format:check`, `pnpm --dir apps/web run typecheck`, `pnpm --dir apps/web exec eslint .`, `pnpm test` (12 files, 50 tests), `pnpm build`, and targeted `ROOMPIRE_E2E_PORT=3131 pnpm e2e --grep "original-currency debt policy keeps cross-currency obligations in original currency"` on desktop/mobile.
+  - GitHub Actions for `e89ac0b` passed: CI `https://github.com/AIALRA-0/Roompire/actions/runs/28809367621` and E2E `https://github.com/AIALRA-0/Roompire/actions/runs/28809367574`.
+  - Production deployment was performed directly on the self-hosted server without SSH: deploy headroom was checked, the production `web` image was rebuilt, `roompire-web-1` was recreated, and the new container reached `healthy`.
+  - Disk pressure required safe cleanup before and after deploy: local generated artifacts, Node/pnpm caches, the local dev-only `2026-07-04-roompire` Compose Postgres/Redis stack and volume, an unused one-shot `roompire-migrator:latest` image, and Docker builder cache were removed. Production `roompire-postgres-1`, `roompire-redis-1`, and `roompire-web-1` remained separate and healthy. Local `node_modules` was removed and must be restored with `pnpm install` before future local Node commands.
+  - Production smoke passed for `/en-US`, `/api/v1/health`, and `/manifest.webmanifest`. Authenticated live browser validation on desktop and mobile opened `https://roompire.aialra.online/en-US/app`, confirmed the `ORIGINAL_CURRENCY_DEBT` option rendered as `Original-currency debt`, observed zero console/page errors, and saved screenshots under `output/playwright/roompire-original-currency-debt-live-*.png`.
+  - Live ops status after deploy: deployment headroom `ok` with `missingBytes=0`, latest smoke `passed`, latest housekeeping `ok`, container health `ok`, backup freshness `ok`, restore drill `passed`, smoke/ops/reminder automation `ok`; expected remaining warnings are `disk_high_usage`, `disk_trend_depleting`, `backup_passphrase_escrow_missing`, and `backup_offsite_disabled`.
 - 2026-07-06 Production deploy headroom gate:
   - Branch: `feat/data-retention-settings`.
   - Added `scripts/check_deploy_headroom.sh` with a default 6 GiB `ROOMPIRE_DEPLOY_MIN_AVAILABLE_BYTES` gate for production image builds. The script reads the same env threshold used by ops snapshots and exits non-zero when root free space is below the gate.
