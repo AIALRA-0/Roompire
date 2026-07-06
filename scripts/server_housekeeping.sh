@@ -8,6 +8,7 @@ JOURNAL_VACUUM_SIZE=${ROOMPIRE_JOURNAL_VACUUM_SIZE:-200M}
 CLEAN_UV_CACHE=${ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE:-false}
 MANAGE_REPO_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS:-true}
 REPO_ARTIFACT_MIN_AVAILABLE_BYTES=${ROOMPIRE_HOUSEKEEPING_REPO_ARTIFACT_MIN_AVAILABLE_BYTES:-6442450944}
+WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES=${ROOMPIRE_HOUSEKEEPING_WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES:-10737418240}
 MANAGE_TMP_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_TMP:-true}
 MANAGE_DOCKER_PRUNE=${ROOMPIRE_HOUSEKEEPING_DOCKER_PRUNE:-true}
 MANAGE_ROOMPIRE_EPHEMERAL_IMAGES=${ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGES:-true}
@@ -176,14 +177,50 @@ remove_workspace_path() {
       ;;
   esac
 
+  if [ "$DRY_RUN" = true ]; then
+    echo "Would remove generated workspace artifact: $candidate"
+  else
+    echo "Removing generated workspace artifact: $candidate"
+  fi
+
   run_or_print rm -rf "$candidate"
 }
 
 clean_browser_workspace_artifacts() {
   section "old browser workspace artifacts"
 
-  if [ "$CLEAN_BROWSER_WORKSPACES" != "true" ]; then
-    echo "Skipping browser workspaces; set ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=true to remove generated artifacts outside this checkout."
+  if [ "$CLEAN_BROWSER_WORKSPACES" = "false" ]; then
+    echo "Skipping browser workspaces; set ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=true or auto to remove generated artifacts outside this checkout."
+    return
+  fi
+
+  if [ "$CLEAN_BROWSER_WORKSPACES" = "auto" ]; then
+    local available
+    local active_processes
+
+    available=$(available_bytes)
+
+    if ! [[ "$available" =~ ^[0-9]+$ ]]; then
+      echo "Skipping browser workspaces; could not read available bytes."
+      return
+    fi
+
+    if [ "$available" -ge "$WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES" ]; then
+      echo "Skipping browser workspaces; available bytes $available is above threshold $WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES."
+      return
+    fi
+
+    active_processes=$(repo_artifact_activity)
+
+    if [ -n "$active_processes" ]; then
+      echo "Skipping browser workspaces; active build/test processes were detected:"
+      printf '%s\n' "$active_processes"
+      return
+    fi
+
+    echo "Available bytes $available is below threshold $WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES; cleaning generated browser workspace artifacts."
+  elif [ "$CLEAN_BROWSER_WORKSPACES" != "true" ]; then
+    echo "Skipping browser workspaces; unsupported ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=$CLEAN_BROWSER_WORKSPACES."
     return
   fi
 

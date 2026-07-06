@@ -135,9 +135,9 @@ For unattended runs, set `ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=auto` so th
 
 To also clear Python `uv` package caches, add `ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE=true`. The housekeeping script intentionally avoids Docker volumes, running-container data, production backups, and images that any current or stopped container still references. `ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGES=true` removes only configured one-shot Roompire image repositories, defaulting to `roompire-migrator`; the next deploy rebuilds that image before running migrations.
 
-When the server root disk pressure comes from old Codex browser workspaces, add `ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=true` to remove generated dependency/build/test-output directories outside the current checkout while preserving source files and git history.
+When the server root disk pressure comes from old Codex browser workspaces, add `ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=true` to remove generated dependency/build/test-output directories outside the current checkout while preserving source files and git history. For routine unattended cleanup, use `ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=auto`; this removes only generated workspace artifacts when root free bytes fall below `ROOMPIRE_HOUSEKEEPING_WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES` and no active Next/Playwright/Turbo/pnpm build or test process is detected.
 
-For routine unattended cleanup, install the conservative housekeeping timer. It prunes targeted `/tmp` leftovers, unused Roompire one-shot images, dangling Docker/build cache, and excess journal archives, auto-cleans current-checkout build/test artifacts only under low-disk conditions, then refreshes the ops snapshot:
+For routine unattended cleanup, install the conservative housekeeping timer. It prunes targeted `/tmp` leftovers, unused Roompire one-shot images, dangling Docker/build cache, and excess journal archives, auto-cleans current-checkout build/test artifacts and old browser-workspace generated artifacts only under low-disk conditions, then refreshes the ops snapshot:
 
 ```bash
 cp ops/systemd/roompire-housekeeping.service /etc/systemd/system/
