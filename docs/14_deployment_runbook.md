@@ -155,10 +155,8 @@ When the server root disk pressure comes from old Codex browser workspaces, add 
 For routine unattended cleanup, install the conservative housekeeping timer. It prunes targeted `/tmp` leftovers, unused Roompire one-shot images, dangling Docker/build cache, and excess journal archives, auto-cleans current-checkout build/test artifacts and old browser-workspace generated artifacts only under low-disk conditions, then refreshes the ops snapshot:
 
 ```bash
-cp ops/systemd/roompire-housekeeping.service /etc/systemd/system/
-cp ops/systemd/roompire-housekeeping.timer /etc/systemd/system/
-systemd-analyze verify /etc/systemd/system/roompire-housekeeping.service /etc/systemd/system/roompire-housekeeping.timer
-systemctl daemon-reload
+ROOMPIRE_SYSTEMD_INSTALL_UNITS="roompire-housekeeping.service roompire-housekeeping.timer" ./scripts/install_systemd_units.sh
+ROOMPIRE_SYSTEMD_INSTALL_CONFIRM=install ROOMPIRE_SYSTEMD_INSTALL_UNITS="roompire-housekeeping.service roompire-housekeeping.timer" ./scripts/install_systemd_units.sh
 systemctl enable --now roompire-housekeeping.timer
 systemctl start roompire-housekeeping.service
 systemctl list-timers 'roompire-*'
@@ -188,17 +186,8 @@ Use `ROOMPIRE_WEB_PUSH_DELIVERY_MODE=dry-run` only for E2E or deployment validat
 Install the hourly recurring expense and reminder timer on the self-hosted server:
 
 ```bash
-cp ops/systemd/roompire-reminders.service /etc/systemd/system/
-cp ops/systemd/roompire-reminders.timer /etc/systemd/system/
-cp ops/systemd/roompire-shared-app-storage.service /etc/systemd/system/
-cp ops/systemd/roompire-shared-app-storage.timer /etc/systemd/system/
-```
-
-Adjust the copied service `WorkingDirectory` and `EnvironmentFile` to the live checkout path, then verify and enable:
-
-```bash
-systemd-analyze verify /etc/systemd/system/roompire-reminders.service /etc/systemd/system/roompire-reminders.timer
-systemctl daemon-reload
+ROOMPIRE_SYSTEMD_INSTALL_UNITS="roompire-reminders.service roompire-reminders.timer roompire-shared-app-storage.service roompire-shared-app-storage.timer" ./scripts/install_systemd_units.sh
+ROOMPIRE_SYSTEMD_INSTALL_CONFIRM=install ROOMPIRE_SYSTEMD_INSTALL_UNITS="roompire-reminders.service roompire-reminders.timer roompire-shared-app-storage.service roompire-shared-app-storage.timer" ./scripts/install_systemd_units.sh
 systemctl enable --now roompire-reminders.timer
 systemctl start roompire-reminders.service
 systemctl list-timers 'roompire-*'
@@ -276,15 +265,16 @@ ROOMPIRE_RESTORE_CONFIRM=restore \
   ./scripts/restore_postgres.sh /srv/aialra/backups/roompire/postgres/<backup>.dump.enc
 ```
 
-To schedule daily backups on a systemd host, copy `ops/systemd/roompire-backup.service` and `ops/systemd/roompire-backup.timer` to `/etc/systemd/system/`, adjust `WorkingDirectory` to the live checkout path, then run:
+To schedule daily backups on a systemd host, render and install the backup units from the live checkout, then enable the timer:
 
 ```bash
-systemctl daemon-reload
+ROOMPIRE_SYSTEMD_INSTALL_UNITS="roompire-backup.service roompire-backup.timer" ./scripts/install_systemd_units.sh
+ROOMPIRE_SYSTEMD_INSTALL_CONFIRM=install ROOMPIRE_SYSTEMD_INSTALL_UNITS="roompire-backup.service roompire-backup.timer" ./scripts/install_systemd_units.sh
 systemctl enable --now roompire-backup.timer
 systemctl list-timers roompire-backup.timer
 ```
 
-To enable encrypted scheduled backups, also add these environment lines to the copied `/etc/systemd/system/roompire-backup.service`:
+The tracked Roompire backup service template enables encrypted scheduled backups for the current self-hosted deployment. For another deployment, ensure these environment lines are present in the rendered `/etc/systemd/system/roompire-backup.service`:
 
 ```ini
 Environment=ROOMPIRE_BACKUP_ENCRYPTION=enabled
@@ -316,24 +306,18 @@ Leave `ROOMPIRE_BACKUP_OFFSITE_MODE=disabled` until the target is truly off the 
 
 ## Ops Automation
 
-The ops dashboard reads generated JSON snapshots from `ops/status/`. Install the timer units to keep those snapshots fresh without running host commands from the web request path:
+The ops dashboard reads generated JSON snapshots from `ops/status/`. Install the timer units from the live checkout so `WorkingDirectory` and `EnvironmentFile` point at this server's current path without manual editing:
 
 ```bash
-cp ops/systemd/roompire-ops-status.service /etc/systemd/system/
-cp ops/systemd/roompire-ops-status.timer /etc/systemd/system/
-cp ops/systemd/roompire-smoke.service /etc/systemd/system/
-cp ops/systemd/roompire-smoke.timer /etc/systemd/system/
-cp ops/systemd/roompire-reminders.service /etc/systemd/system/
-cp ops/systemd/roompire-reminders.timer /etc/systemd/system/
+./scripts/install_systemd_units.sh
+ROOMPIRE_SYSTEMD_INSTALL_CONFIRM=install ./scripts/install_systemd_units.sh
 ```
 
-Adjust each copied service `WorkingDirectory` to the live checkout path, then verify and enable:
+The first command is a dry-run. The confirmed command renders every `ops/systemd/roompire-*` unit with this server's current checkout path, verifies the rendered units with `systemd-analyze verify`, copies them to `/etc/systemd/system/`, and runs `systemctl daemon-reload`. Then enable the timers and start the low-risk validation services:
 
 ```bash
-systemd-analyze verify /etc/systemd/system/roompire-ops-status.service /etc/systemd/system/roompire-ops-status.timer /etc/systemd/system/roompire-smoke.service /etc/systemd/system/roompire-smoke.timer /etc/systemd/system/roompire-reminders.service /etc/systemd/system/roompire-reminders.timer /etc/systemd/system/roompire-shared-app-storage.service /etc/systemd/system/roompire-shared-app-storage.timer
-systemctl daemon-reload
-systemctl enable --now roompire-ops-status.timer roompire-smoke.timer roompire-reminders.timer roompire-shared-app-storage.timer
-systemctl start roompire-ops-status.service roompire-smoke.service roompire-reminders.service roompire-shared-app-storage.service
+systemctl enable --now roompire-ops-status.timer roompire-smoke.timer roompire-reminders.timer roompire-shared-app-storage.timer roompire-housekeeping.timer roompire-backup.timer
+systemctl start roompire-ops-status.service roompire-smoke.service
 systemctl list-timers 'roompire-*'
 ```
 
