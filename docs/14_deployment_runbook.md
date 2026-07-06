@@ -89,13 +89,14 @@ For deeper shared-server capacity evidence, run the slower shared app storage co
 
 ```bash
 ROOMPIRE_SHARED_APP_STORAGE_ROOTS=/srv/aialra/apps \
+  ROOMPIRE_SHARED_APP_STORAGE_SKIP_PATHS=/srv/aialra/apps/opencode-turn-engine \
   ROOMPIRE_SHARED_APP_STORAGE_TOTAL_TIMEOUT_MS=240000 \
   ROOMPIRE_SHARED_APP_STORAGE_PATH_TIMEOUT_MS=45000 \
   ./scripts/collect_shared_app_storage.sh
 ./scripts/collect_ops_status.sh
 ```
 
-The dashboard treats a recorded shared app storage inventory as stale after `ROOMPIRE_SHARED_APP_STORAGE_STATUS_STALE_MS`, defaulting to 48 hours. Missing shared-app inventory is not a warning because this collector is optional, but a partial or stale recorded inventory is surfaced.
+Use `ROOMPIRE_SHARED_APP_STORAGE_SKIP_PATHS` only for known shared-server directories that are not managed by Roompire and consistently exceed the per-path scan budget. Skipped paths are not counted in the recorded total, but they are written to `ops/status/shared-app-storage.json` and displayed on the ops dashboard so capacity exceptions stay visible. The dashboard treats a recorded shared app storage inventory as stale after `ROOMPIRE_SHARED_APP_STORAGE_STATUS_STALE_MS`, defaulting to 48 hours. Missing shared-app inventory is not a warning because this collector is optional, but unexpected timeouts, errors, or stale recorded inventory are surfaced.
 
 The same host snapshot checks the production Compose containers named by `ROOMPIRE_CONTAINER_HEALTH_CONTAINERS`, defaulting to `roompire-web-1 roompire-postgres-1 roompire-redis-1`. It records each container's running state, Docker health-check status, restart count, image, and start/finish timestamps so `/en-US/app/ops` can flag a stopped, unhealthy, starting, or unreadable service without giving the web app Docker socket access.
 

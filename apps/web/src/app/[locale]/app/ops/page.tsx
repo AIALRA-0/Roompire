@@ -743,6 +743,14 @@ export default async function OpsPage({ params }: PageProps) {
                           status.sharedAppStorageInventory.timedOutPaths.length,
                         )}
                       />
+                      <MetricRow
+                        label={ops("sharedAppStorageSkipped")}
+                        testId="ops-shared-app-storage-skips"
+                        value={formatInteger(
+                          locale,
+                          status.sharedAppStorageInventory.skippedPaths.length,
+                        )}
+                      />
                       {status.sharedAppStorageInventory.paths.length > 0 ? (
                         <div className="grid min-w-0 gap-2">
                           {status.sharedAppStorageInventory.paths.map((item) => (
@@ -770,6 +778,29 @@ export default async function OpsPage({ params }: PageProps) {
                           {ops("noSharedAppStoragePaths")}
                         </p>
                       )}
+                      {status.sharedAppStorageInventory.skippedPaths.length > 0 ? (
+                        <div className="grid min-w-0 gap-2">
+                          {status.sharedAppStorageInventory.skippedPaths.map((itemPath) => (
+                            <div
+                              className="min-w-0 rounded-md border border-dashed border-border bg-background/40 px-3 py-2"
+                              data-testid="ops-shared-app-storage-skipped-row"
+                              key={itemPath}
+                            >
+                              <div className="flex min-w-0 items-start justify-between gap-3">
+                                <p
+                                  className="min-w-0 truncate text-sm font-medium"
+                                  title={itemPath}
+                                >
+                                  {itemPath}
+                                </p>
+                                <span className="shrink-0 text-xs font-semibold text-muted-foreground">
+                                  {ops("sharedAppStorageSkipped")}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                     {status.sharedAppStorageInventory.error ? (
                       <p className="mt-3 text-sm text-muted-foreground">

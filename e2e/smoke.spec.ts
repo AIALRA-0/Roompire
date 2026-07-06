@@ -267,6 +267,7 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
               sizeBytes: 14_184 * 1024 * 1024,
             },
           ],
+          skippedPaths: ["/srv/aialra/apps/opencode-turn-engine-cache"],
           timedOutPaths: [],
           errors: [],
           checkedAt: generatedAt,
@@ -2068,8 +2069,12 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-shared-app-storage-total")).toContainText("47.3 GB");
     await expect(page.getByTestId("ops-shared-app-storage-path-count")).toContainText("3");
     await expect(page.getByTestId("ops-shared-app-storage-timeouts")).toContainText("0");
+    await expect(page.getByTestId("ops-shared-app-storage-skips")).toContainText("1");
     await expect(page.getByTestId("ops-shared-app-storage-row").first()).toContainText(
       "/srv/aialra/apps/opencode-turn-engine",
+    );
+    await expect(page.getByTestId("ops-shared-app-storage-skipped-row")).toContainText(
+      "/srv/aialra/apps/opencode-turn-engine-cache",
     );
     await expect(page.getByTestId("ops-docker-status")).toContainText("OK");
     await expect(page.getByTestId("ops-docker-reclaimable")).toContainText("192 MB");
@@ -2133,6 +2138,7 @@ test.describe("Roompire real browser smoke", () => {
           topLimit: number;
           totalBytes: number;
           paths: Array<{ path: string; sizeBytes: number }>;
+          skippedPaths: string[];
           timedOutPaths: string[];
           status: string;
         };
@@ -2210,6 +2216,7 @@ test.describe("Roompire real browser smoke", () => {
         topLimit: 3,
         totalBytes: 48_384 * 1024 * 1024,
         status: "ok",
+        skippedPaths: ["/srv/aialra/apps/opencode-turn-engine-cache"],
         timedOutPaths: [],
         paths: expect.arrayContaining([
           expect.objectContaining({ path: "/srv/aialra/apps/opencode-turn-engine" }),

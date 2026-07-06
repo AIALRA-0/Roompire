@@ -80,6 +80,7 @@ export type OpsStatusSnapshot = {
     pathTimeoutMs: number;
     totalBytes: number;
     paths: OpsRootStorageInventoryItem[];
+    skippedPaths: string[];
     timedOutPaths: string[];
     errors: Array<{ path: string; message: string }>;
     checkedAt: string | null;
@@ -565,6 +566,7 @@ function normalizeSharedAppStorageInventory(
       pathTimeoutMs: 45000,
       totalBytes: 0,
       paths: [],
+      skippedPaths: [],
       timedOutPaths: [],
       errors: [],
       checkedAt: null,
@@ -585,6 +587,9 @@ function normalizeSharedAppStorageInventory(
     totalBytes: numberValue(value.totalBytes) ?? 0,
     paths: Array.isArray(value.paths)
       ? value.paths.map(normalizeRootStorageInventoryItem).filter((item) => item !== null)
+      : [],
+    skippedPaths: Array.isArray(value.skippedPaths)
+      ? value.skippedPaths.filter((item): item is string => typeof item === "string")
       : [],
     timedOutPaths: Array.isArray(value.timedOutPaths)
       ? value.timedOutPaths.filter((item): item is string => typeof item === "string")
@@ -1246,6 +1251,7 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       pathTimeoutMs: 45000,
       totalBytes: 0,
       paths: [],
+      skippedPaths: [],
       timedOutPaths: [],
       errors: [],
       checkedAt: new Date().toISOString(),

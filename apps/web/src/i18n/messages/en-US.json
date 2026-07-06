@@ -720,6 +720,7 @@
     "sharedAppStorageRecorded": "Recorded size",
     "sharedAppStoragePaths": "Recorded paths",
     "sharedAppStorageTimedOut": "Timed out paths",
+    "sharedAppStorageSkipped": "Skipped paths",
     "noSharedAppStoragePaths": "No shared app storage paths were recorded.",
     "dockerStorage": "Docker storage",
     "dockerStorageHint": "Image, volume, and build-cache usage from the host.",

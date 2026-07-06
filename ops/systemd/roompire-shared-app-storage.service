@@ -9,6 +9,7 @@ Environment=ROOMPIRE_SHARED_APP_STORAGE_ROOTS=/srv/aialra/apps
 Environment=ROOMPIRE_SHARED_APP_STORAGE_TOP_LIMIT=12
 Environment=ROOMPIRE_SHARED_APP_STORAGE_TOTAL_TIMEOUT_MS=240000
 Environment=ROOMPIRE_SHARED_APP_STORAGE_PATH_TIMEOUT_MS=45000
+Environment=ROOMPIRE_SHARED_APP_STORAGE_SKIP_PATHS=/srv/aialra/apps/opencode-turn-engine
 Environment=ROOMPIRE_OPS_STATUS_FILE_HOST=ops/status/ops-status.json
 Environment=ROOMPIRE_SMOKE_STATUS_FILE=ops/status/latest-smoke.json
 Environment=ROOMPIRE_RESTORE_DRILL_STATUS_FILE=ops/status/latest-restore-drill.json

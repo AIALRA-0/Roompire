@@ -13,6 +13,12 @@ const roots = String(process.env.ROOMPIRE_SHARED_APP_STORAGE_ROOTS || "/srv/aial
   .split(/\s+/)
   .map((value) => value.trim())
   .filter(Boolean);
+const skipPaths = String(process.env.ROOMPIRE_SHARED_APP_STORAGE_SKIP_PATHS || "")
+  .split(/\s+/)
+  .map((value) => value.trim())
+  .filter(Boolean)
+  .filter((value) => path.isAbsolute(value))
+  .map((value) => path.resolve(value));
 const topLimit = positiveInteger(process.env.ROOMPIRE_SHARED_APP_STORAGE_TOP_LIMIT, 12);
 const totalTimeoutMs = positiveInteger(
   process.env.ROOMPIRE_SHARED_APP_STORAGE_TOTAL_TIMEOUT_MS,
@@ -72,8 +78,17 @@ function listChildren(root) {
   }
 }
 
+function shouldSkip(targetPath) {
+  const absoluteTarget = path.resolve(targetPath);
+
+  return skipPaths.some(
+    (skipPath) => absoluteTarget === skipPath || absoluteTarget.startsWith(`${skipPath}${path.sep}`),
+  );
+}
+
 const absoluteRoots = roots.filter((root) => path.isAbsolute(root));
 const rows = [];
+const skippedPaths = [];
 const timedOutPaths = [];
 const errors = [];
 const startedAtMs = Date.now();
@@ -98,6 +113,11 @@ for (const root of absoluteRoots) {
       break;
     }
 
+    if (shouldSkip(child)) {
+      skippedPaths.push(child);
+      continue;
+    }
+
     const result = duPath(child);
 
     if (result.ok) {
@@ -113,7 +133,10 @@ for (const root of absoluteRoots) {
 const sortedRows = rows.sort((left, right) => right.sizeBytes - left.sizeBytes);
 const totalBytes = rows.reduce((total, row) => total + row.sizeBytes, 0);
 const status =
-  absoluteRoots.length === 0 || (rows.length === 0 && (timedOutPaths.length > 0 || errors.length > 0))
+  absoluteRoots.length === 0 ||
+  (rows.length === 0 &&
+    skippedPaths.length === 0 &&
+    (timedOutPaths.length > 0 || errors.length > 0))
     ? "unknown"
     : timedOutPaths.length > 0 || errors.length > 0 || stoppedEarly
       ? "warning"
@@ -134,6 +157,7 @@ const snapshot = {
   pathTimeoutMs,
   totalBytes,
   paths: sortedRows.slice(0, topLimit),
+  skippedPaths,
   timedOutPaths,
   errors,
   status,

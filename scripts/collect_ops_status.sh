@@ -772,6 +772,7 @@ function readSharedAppStorageInventory() {
         pathTimeoutMs: 45000,
         totalBytes: 0,
         paths: [],
+        skippedPaths: [],
         timedOutPaths: [],
         errors: [],
         checkedAt: null,
@@ -788,6 +789,9 @@ function readSharedAppStorageInventory() {
       : [];
     const timedOutPaths = Array.isArray(parsed.timedOutPaths)
       ? parsed.timedOutPaths.filter((value) => typeof value === "string")
+      : [];
+    const skippedPaths = Array.isArray(parsed.skippedPaths)
+      ? parsed.skippedPaths.filter((value) => typeof value === "string")
       : [];
     const errors = Array.isArray(parsed.errors)
       ? parsed.errors.map(normalizeSharedAppStorageError).filter((value) => value !== null)
@@ -807,6 +811,7 @@ function readSharedAppStorageInventory() {
       pathTimeoutMs: Number.isFinite(pathTimeoutMs) ? pathTimeoutMs : 45000,
       totalBytes: Number.isFinite(totalBytes) ? totalBytes : 0,
       paths,
+      skippedPaths,
       timedOutPaths,
       errors,
       checkedAt: typeof parsed.checkedAt === "string" ? parsed.checkedAt : null,
@@ -823,6 +828,7 @@ function readSharedAppStorageInventory() {
       pathTimeoutMs: 45000,
       totalBytes: 0,
       paths: [],
+      skippedPaths: [],
       timedOutPaths: [],
       errors: [],
       checkedAt: null,

@@ -1973,6 +1973,7 @@ components:
               pathTimeoutMs,
               totalBytes,
               paths,
+              skippedPaths,
               timedOutPaths,
               errors,
               checkedAt,
@@ -2004,6 +2005,10 @@ components:
             timedOutPaths:
               type: array
               items: { type: string }
+            skippedPaths:
+              type: array
+              items: { type: string }
+              description: Explicitly configured shared app paths skipped from size scanning.
             errors:
               type: array
               items:

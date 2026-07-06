@@ -720,6 +720,7 @@
     "sharedAppStorageRecorded": "已记录大小",
     "sharedAppStoragePaths": "已记录路径",
     "sharedAppStorageTimedOut": "超时路径",
+    "sharedAppStorageSkipped": "跳过路径",
     "noSharedAppStoragePaths": "尚未记录共享应用存储路径。",
     "dockerStorage": "Docker 存储",
     "dockerStorageHint": "来自主机的镜像、卷与 build cache 使用情况。",
