@@ -9,6 +9,7 @@ import {
   CalendarDays,
   CheckCircle2,
   FileJson,
+  FolderTree,
   HardDrive,
   Home,
   LineChart,
@@ -40,6 +41,7 @@ type BackupEncryptionMode = OpsStatusSnapshot["backupEncryption"]["configured"];
 type BackupOffsiteMode = OpsStatusSnapshot["backupOffsite"]["mode"];
 type DockerStorageCategory = OpsStatusSnapshot["dockerStorage"]["images"];
 type DockerImageInventoryItem = OpsStatusSnapshot["dockerImageInventory"]["images"][number];
+type RootStorageInventoryItem = OpsStatusSnapshot["rootStorageInventory"]["paths"][number];
 
 function formatBytes(locale: Locale, bytes: number | null) {
   if (bytes === null) {
@@ -151,6 +153,10 @@ function formatImageReference(image: DockerImageInventoryItem) {
   return image.reference || `${image.repository}:${image.tag}`;
 }
 
+function formatStoragePath(item: RootStorageInventoryItem) {
+  return item.path;
+}
+
 function formatDateTime(locale: Locale, value: string | null) {
   if (!value) {
     return "—";
@@ -258,6 +264,7 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_high_usage: ops("warningDiskHighUsage"),
     disk_unknown: ops("warningDiskUnknown"),
     disk_trend_depleting: ops("warningDiskTrendDepleting"),
+    root_storage_inventory_unknown: ops("warningRootStorageInventoryUnknown"),
     docker_storage_unknown: ops("warningDockerStorageUnknown"),
     docker_image_inventory_unknown: ops("warningDockerImageInventoryUnknown"),
     docker_safe_reclaimable_high: ops("warningDockerSafeReclaimableHigh"),
@@ -580,6 +587,65 @@ export default async function OpsPage({ params }: PageProps) {
                     </div>
                     {status.diskTrend.error ? (
                       <p className="mt-3 text-sm text-muted-foreground">{status.diskTrend.error}</p>
+                    ) : null}
+                  </div>
+                  <div
+                    className="mt-2 min-w-0 border-t border-border pt-3"
+                    data-testid="ops-root-storage-inventory"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                        <FolderTree aria-hidden="true" className="h-4 w-4" />
+                        {ops("rootStorageInventory")}
+                      </span>
+                      <Badge
+                        data-testid="ops-root-storage-status"
+                        variant={healthVariant(status.rootStorageInventory.status)}
+                      >
+                        {healthLabel(ops, status.rootStorageInventory.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("rootStorageRecorded")}
+                        testId="ops-root-storage-total"
+                        value={formatFileSize(locale, status.rootStorageInventory.totalBytes)}
+                      />
+                      <MetricRow
+                        label={ops("rootStoragePaths")}
+                        testId="ops-root-storage-path-count"
+                        value={formatInteger(locale, status.rootStorageInventory.paths.length)}
+                      />
+                      {status.rootStorageInventory.paths.length > 0 ? (
+                        <div className="grid min-w-0 gap-2">
+                          {status.rootStorageInventory.paths.map((item) => (
+                            <div
+                              className="min-w-0 rounded-md border border-border bg-background/60 px-3 py-2"
+                              data-testid="ops-root-storage-row"
+                              key={item.path}
+                            >
+                              <div className="flex min-w-0 items-start justify-between gap-3">
+                                <p
+                                  className="min-w-0 truncate text-sm font-medium"
+                                  title={formatStoragePath(item)}
+                                >
+                                  {formatStoragePath(item)}
+                                </p>
+                                <span className="shrink-0 text-sm font-semibold">
+                                  {formatFileSize(locale, item.sizeBytes)}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">{ops("noRootStoragePaths")}</p>
+                      )}
+                    </div>
+                    {status.rootStorageInventory.error ? (
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        {status.rootStorageInventory.error}
+                      </p>
                     ) : null}
                   </div>
                   {status.disk.error ? (

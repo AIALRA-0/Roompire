@@ -49,6 +49,15 @@ export type OpsStatusSnapshot = {
     checkedAt: string | null;
     error: string | null;
   };
+  rootStorageInventory: {
+    topLimit: number;
+    timeoutMs: number;
+    totalBytes: number;
+    paths: OpsRootStorageInventoryItem[];
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
   diskTrend: {
     status: HealthState;
     historyFile: string;
@@ -234,6 +243,11 @@ export type OpsDockerImageInventoryItem = {
   createdAt: string | null;
 };
 
+export type OpsRootStorageInventoryItem = {
+  path: string;
+  sizeBytes: number;
+};
+
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
 const dockerReclaimableWarningBytes = 5 * 1024 * 1024 * 1024;
 const staleStatusMs = 36 * 60 * 60 * 1000;
@@ -352,6 +366,49 @@ function normalizeDockerImageInventory(value: unknown): OpsStatusSnapshot["docke
       ? value.reclaimableCandidates
           .map(normalizeDockerImageInventoryItem)
           .filter((image) => image !== null)
+      : [],
+    status: healthStateValue(value.status),
+    checkedAt: nullableStringValue(value.checkedAt),
+    error: nullableStringValue(value.error),
+  };
+}
+
+function normalizeRootStorageInventoryItem(value: unknown): OpsRootStorageInventoryItem | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const itemPath = stringValue(value.path);
+
+  if (!itemPath) {
+    return null;
+  }
+
+  return {
+    path: itemPath,
+    sizeBytes: numberValue(value.sizeBytes) ?? 0,
+  };
+}
+
+function normalizeRootStorageInventory(value: unknown): OpsStatusSnapshot["rootStorageInventory"] {
+  if (!isRecord(value)) {
+    return {
+      topLimit: 8,
+      timeoutMs: 60000,
+      totalBytes: 0,
+      paths: [],
+      status: "unknown",
+      checkedAt: null,
+      error: "Root storage inventory has not been recorded yet.",
+    };
+  }
+
+  return {
+    topLimit: numberValue(value.topLimit) ?? 8,
+    timeoutMs: numberValue(value.timeoutMs) ?? 60000,
+    totalBytes: numberValue(value.totalBytes) ?? 0,
+    paths: Array.isArray(value.paths)
+      ? value.paths.map(normalizeRootStorageInventoryItem).filter((item) => item !== null)
       : [],
     status: healthStateValue(value.status),
     checkedAt: nullableStringValue(value.checkedAt),
@@ -536,6 +593,10 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("disk_trend_depleting");
   }
 
+  if (status.rootStorageInventory.status === "unknown") {
+    warnings.push("root_storage_inventory_unknown");
+  }
+
   if (status.dockerStorage.status === "unknown") {
     warnings.push("docker_storage_unknown");
   }
@@ -636,6 +697,9 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const raw = isRecord(parsed) ? parsed : {};
   const rawDisk = isRecord(raw.disk) ? raw.disk : {};
   const rawDiskTrend = isRecord(raw.diskTrend) ? raw.diskTrend : {};
+  const rawRootStorageInventory = isRecord(raw.rootStorageInventory)
+    ? raw.rootStorageInventory
+    : {};
   const rawBackupTimer = isRecord(raw.backupTimer) ? raw.backupTimer : {};
   const rawBackupService = isRecord(raw.backupService) ? raw.backupService : {};
   const rawDockerStorage = isRecord(raw.dockerStorage) ? raw.dockerStorage : {};
@@ -685,6 +749,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       checkedAt: nullableStringValue(rawDisk.checkedAt),
       error: nullableStringValue(rawDisk.error),
     },
+    rootStorageInventory: normalizeRootStorageInventory(rawRootStorageInventory),
     diskTrend: normalizeDiskTrend(rawDiskTrend),
     dockerStorage: {
       images: dockerImages,
@@ -880,6 +945,15 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       error,
     },
     disk,
+    rootStorageInventory: {
+      topLimit: 8,
+      timeoutMs: 60000,
+      totalBytes: 0,
+      paths: [],
+      status: "unknown" as const,
+      checkedAt: new Date().toISOString(),
+      error: "Host status file has not been generated.",
+    },
     diskTrend: {
       status: "unknown" as const,
       historyFile:

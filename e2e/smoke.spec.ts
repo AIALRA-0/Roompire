@@ -212,6 +212,32 @@ async function writeOpsStatusFixture() {
           checkedAt: generatedAt,
           error: null,
         },
+        rootStorageInventory: {
+          topLimit: 4,
+          timeoutMs: 60000,
+          totalBytes: 34_656 * 1024 * 1024,
+          paths: [
+            {
+              path: "/var/lib/containerd",
+              sizeBytes: 28_000 * 1024 * 1024,
+            },
+            {
+              path: "/srv/aialra/apps/codexapp/state",
+              sizeBytes: 2_500 * 1024 * 1024,
+            },
+            {
+              path: "/home",
+              sizeBytes: 2_500 * 1024 * 1024,
+            },
+            {
+              path: "/var/lib/docker",
+              sizeBytes: 1_656 * 1024 * 1024,
+            },
+          ],
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
         diskTrend: {
           status: "ok",
           historyFile: "ops/status/disk-history.json",
@@ -1941,6 +1967,12 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-disk-trend-available-change")).toContainText("+4 GB");
     await expect(page.getByTestId("ops-disk-trend-used-per-day")).toContainText("-1 GB/day");
     await expect(page.getByTestId("ops-disk-trend-eta")).toContainText("No current growth");
+    await expect(page.getByTestId("ops-root-storage-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-root-storage-total")).toContainText("33.8 GB");
+    await expect(page.getByTestId("ops-root-storage-path-count")).toContainText("4");
+    await expect(page.getByTestId("ops-root-storage-row").first()).toContainText(
+      "/var/lib/containerd",
+    );
     await expect(page.getByTestId("ops-docker-status")).toContainText("OK");
     await expect(page.getByTestId("ops-docker-reclaimable")).toContainText("192 MB");
     await expect(page.getByTestId("ops-docker-reported-reclaimable")).toContainText("832 MB");
@@ -1979,6 +2011,12 @@ test.describe("Roompire real browser smoke", () => {
           sampleCount: number;
           availableChangeBytes: number | null;
           estimatedDaysUntilFull: number | null;
+        };
+        rootStorageInventory: {
+          topLimit: number;
+          totalBytes: number;
+          paths: Array<{ path: string; sizeBytes: number }>;
+          status: string;
         };
         dockerStorage: {
           totalReclaimableBytes: number;
@@ -2027,6 +2065,14 @@ test.describe("Roompire real browser smoke", () => {
         sampleCount: 4,
         availableChangeBytes: 4 * 1024 * 1024 * 1024,
         estimatedDaysUntilFull: null,
+      }),
+    );
+    expect(opsPayload.status.rootStorageInventory).toEqual(
+      expect.objectContaining({
+        topLimit: 4,
+        totalBytes: 34_656 * 1024 * 1024,
+        status: "ok",
+        paths: expect.arrayContaining([expect.objectContaining({ path: "/var/lib/containerd" })]),
       }),
     );
     expect(opsPayload.status.dockerStorage).toEqual(

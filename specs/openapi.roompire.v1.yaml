@@ -1870,6 +1870,7 @@ components:
           summary,
           statusFile,
           disk,
+          rootStorageInventory,
           diskTrend,
           dockerStorage,
           dockerImageInventory,
@@ -1922,6 +1923,29 @@ components:
             usedBytes: { type: integer, nullable: true }
             availableBytes: { type: integer, nullable: true }
             usedPercent: { type: number, nullable: true }
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        rootStorageInventory:
+          type: object
+          required: [topLimit, timeoutMs, totalBytes, paths, status, checkedAt, error]
+          properties:
+            topLimit: { type: integer, example: 8 }
+            timeoutMs: { type: integer, example: 60000 }
+            totalBytes: { type: integer, example: 36378447872 }
+            paths:
+              type: array
+              items:
+                type: object
+                required: [path, sizeBytes]
+                properties:
+                  path: { type: string, example: /var/lib/containerd }
+                  sizeBytes: { type: integer, example: 30064771072 }
             status: { $ref: "#/components/schemas/OpsHealthState" }
             checkedAt:
               type: string

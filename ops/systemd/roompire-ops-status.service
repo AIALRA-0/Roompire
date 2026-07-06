@@ -6,4 +6,6 @@ Type=oneshot
 WorkingDirectory=/srv/roompire/current
 Environment=ROOMPIRE_OPS_STATUS_FILE_HOST=ops/status/ops-status.json
 Environment=ROOMPIRE_SMOKE_STATUS_FILE=ops/status/latest-smoke.json
+Environment=ROOMPIRE_ROOT_STORAGE_INVENTORY_LIMIT=8
+Environment=ROOMPIRE_ROOT_STORAGE_INVENTORY_TIMEOUT_MS=60000
 ExecStart=/usr/bin/env bash ./scripts/collect_ops_status.sh

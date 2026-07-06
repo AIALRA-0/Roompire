@@ -42,6 +42,26 @@ const dockerReclaimableWarningBytes = Number.isFinite(configuredDockerReclaimabl
   ? configuredDockerReclaimableWarningBytes
   : 5 * 1024 * 1024 * 1024;
 const dockerImageInventoryLimit = Number(process.env.ROOMPIRE_DOCKER_IMAGE_INVENTORY_LIMIT || 8);
+const rootStorageInventoryLimit = Number(process.env.ROOMPIRE_ROOT_STORAGE_INVENTORY_LIMIT || 8);
+const rootStorageInventoryTimeoutMs = Number(
+  process.env.ROOMPIRE_ROOT_STORAGE_INVENTORY_TIMEOUT_MS || 60000,
+);
+const rootStorageInventoryPaths = String(
+  process.env.ROOMPIRE_ROOT_STORAGE_INVENTORY_PATHS ||
+    [
+      "/var/lib/containerd",
+      "/var/lib/docker",
+      "/var/lib/snapd",
+      "/var/log",
+      "/var/cache",
+      "/srv/aialra/apps/codexapp/state",
+      "/srv/aialra/backups",
+      "/home",
+    ].join(" "),
+)
+  .split(/\s+/)
+  .map((value) => value.trim())
+  .filter(Boolean);
 const ephemeralImageRepositories = String(
   process.env.ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES ||
     "roompire-migrator",
@@ -49,14 +69,15 @@ const ephemeralImageRepositories = String(
   .split(/\s+/)
   .filter(Boolean);
 
-function command(commandName, args) {
+function command(commandName, args, options = {}) {
   const result = spawnSync(commandName, args, {
     encoding: "utf8",
     env: process.env,
+    timeout: options.timeoutMs,
   });
 
   if (result.error) {
-    return { ok: false, stdout: "", error: result.error.message };
+    return { ok: false, stdout: result.stdout || "", error: result.error.message };
   }
 
   if (result.status !== 0) {
@@ -603,6 +624,63 @@ function collectDisk() {
   };
 }
 
+function collectRootStorageInventory() {
+  const topLimit = positiveIntegerValue(rootStorageInventoryLimit, 8);
+  const timeoutMs = positiveIntegerValue(rootStorageInventoryTimeoutMs, 30000);
+  const paths = [...new Set(rootStorageInventoryPaths)].filter((inventoryPath) =>
+    path.isAbsolute(inventoryPath),
+  );
+
+  if (paths.length === 0) {
+    return {
+      topLimit,
+      timeoutMs,
+      totalBytes: 0,
+      paths: [],
+      status: "unknown",
+      checkedAt: generatedAt,
+      error: "No absolute root storage inventory paths are configured.",
+    };
+  }
+
+  const result = command("du", ["-x", "-s", "-B1", "--", ...paths], { timeoutMs });
+  const items = result.stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const separator = line.indexOf("\t");
+      const sizeText = separator === -1 ? line.trim().split(/\s+/)[0] : line.slice(0, separator);
+      const itemPath =
+        separator === -1
+          ? line.trim().split(/\s+/).slice(1).join(" ")
+          : line.slice(separator + 1).trim();
+      const sizeBytes = Number(sizeText);
+
+      if (!Number.isFinite(sizeBytes) || !itemPath) {
+        return null;
+      }
+
+      return {
+        path: itemPath,
+        sizeBytes,
+      };
+    })
+    .filter((item) => item !== null)
+    .sort((left, right) => right.sizeBytes - left.sizeBytes);
+  const totalBytes = items.reduce((total, item) => total + item.sizeBytes, 0);
+
+  return {
+    topLimit,
+    timeoutMs,
+    totalBytes,
+    paths: items.slice(0, topLimit),
+    status: result.ok ? "ok" : items.length > 0 ? "warning" : "unknown",
+    checkedAt: generatedAt,
+    error: result.ok ? null : result.error,
+  };
+}
+
 function diskHistorySampleFromDisk(disk) {
   if (
     disk.sizeBytes === null ||
@@ -1059,6 +1137,7 @@ const snapshot = {
   source: "host_status_file",
   generatedAt,
   disk,
+  rootStorageInventory: collectRootStorageInventory(),
   diskTrend: collectDiskTrend(disk),
   dockerStorage: collectDockerStorage(dockerImageInventory),
   dockerImageInventory,
