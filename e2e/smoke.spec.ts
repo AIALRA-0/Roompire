@@ -3579,6 +3579,17 @@ test.describe("Roompire real browser smoke", () => {
     });
     await expect(page.getByText("Proposal submitted")).toBeVisible();
     await expect(page.getByText(proposalTitle)).toBeVisible();
+    const manualFxProposalRow = page
+      .getByTestId("expense-proposal-row")
+      .filter({ hasText: proposalTitle });
+    await expect(manualFxProposalRow).toContainText("FX source: Manual entry");
+    await Promise.all([
+      page.waitForURL("**/expenses/proposals/**"),
+      manualFxProposalRow.getByRole("link", { name: `Open detail: ${proposalTitle}` }).click(),
+    ]);
+    await expect(page.getByTestId("proposal-fx-source")).toContainText("Manual entry");
+    await expect(page.getByTestId("proposal-fx-policy")).toContainText("Manual rate with approval");
+    await expect(page.getByTestId("proposal-fx-provider")).toContainText("manual-entry");
   });
 
   test("original-currency debt policy keeps cross-currency obligations in original currency", async ({

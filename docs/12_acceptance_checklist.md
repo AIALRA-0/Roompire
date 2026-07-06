@@ -49,6 +49,7 @@ Use this checklist before declaring a milestone complete.
 - [x] FX locks store provider/rate/rate date/locked timestamp.
 - [x] FX-difference corrections use append-only `FX_ADJUSTMENT` ledger transactions.
 - [x] FX provider lookup supports configured endpoint failover after cache misses.
+- [x] Proposal queue/detail UI distinguishes manual, provider/cache, same-currency, and original-currency FX sources.
 - [ ] Audit event emitted for critical mutation.
 
 ## Security

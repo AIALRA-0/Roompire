@@ -8,6 +8,7 @@ import { ProposalReceiptUpload } from "@/components/proposal-receipt-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/routing";
+import { fxPolicyLabel, fxSourceLabel } from "@/lib/fx-display";
 import { requirePageUser } from "@/server/auth/session";
 import { getExpenseProposalForUser, listExpenseTagsForHousehold } from "@/server/expenses/service";
 import { serializeExpenseProposal } from "@/server/expenses/serializers";
@@ -151,6 +152,58 @@ function formatTimestamp(locale: Locale, value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function fxLockRows(
+  proposal: SerializedProposal,
+  locale: Locale,
+  expense: Awaited<ReturnType<typeof getTranslations>>,
+) {
+  return [
+    {
+      label: expense("fxRate"),
+      value: `${proposal.originalCurrency}/${proposal.settlementCurrency} · ${
+        proposal.fxRate ?? "-"
+      }`,
+      testId: "proposal-fx-rate",
+    },
+    {
+      label: expense("fxSource"),
+      value: fxSourceLabel(proposal, {
+        fxSourceManual: expense("fxSourceManual"),
+        fxSourceProvider: expense("fxSourceProvider"),
+        fxSourceSameCurrency: expense("fxSourceSameCurrency"),
+        fxSourceOriginalCurrencyDebt: expense("fxSourceOriginalCurrencyDebt"),
+        fxSourceUnknown: expense("fxSourceUnknown"),
+      }),
+      testId: "proposal-fx-source",
+    },
+    {
+      label: expense("fxPolicy"),
+      value: fxPolicyLabel(proposal.fxPolicy, {
+        fxPolicyLockAtExpenseDate: expense("fxPolicyLockAtExpenseDate"),
+        fxPolicyOriginalCurrencyDebt: expense("fxPolicyOriginalCurrencyDebt"),
+        fxPolicyManualApproval: expense("fxPolicyManualApproval"),
+        fxPolicyDifferenceAdjustment: expense("fxPolicyDifferenceAdjustment"),
+      }),
+      testId: "proposal-fx-policy",
+    },
+    {
+      label: expense("fxRateDate"),
+      value: proposal.fxRateDate ?? "-",
+      testId: "proposal-fx-rate-date",
+    },
+    {
+      label: expense("fxProvider"),
+      value: proposal.fxProvider ?? "-",
+      testId: "proposal-fx-provider",
+    },
+    {
+      label: expense("fxLockedAt"),
+      value: proposal.fxLockedAt ? formatTimestamp(locale, proposal.fxLockedAt) : "-",
+      testId: "proposal-fx-locked-at",
+    },
+  ];
 }
 
 function ForbiddenState({
@@ -589,12 +642,20 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
 
               <div className="rounded-lg border border-border bg-background p-4">
                 <h2 className="text-sm font-semibold">{expense("fxLock")}</h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {proposal.originalCurrency}/{proposal.settlementCurrency} · {proposal.fxRate}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {proposal.fxRateDate} · {proposal.fxProvider}
-                </p>
+                <dl className="mt-3 grid gap-2 text-sm">
+                  {fxLockRows(proposal, locale, expense).map((row) => (
+                    <div
+                      className="flex flex-wrap items-start justify-between gap-2 border-b border-border/60 pb-2 last:border-b-0 last:pb-0"
+                      data-testid={row.testId}
+                      key={row.testId}
+                    >
+                      <dt className="text-xs text-muted-foreground">{row.label}</dt>
+                      <dd className="max-w-full break-words text-right text-xs font-medium text-foreground">
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
 
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">

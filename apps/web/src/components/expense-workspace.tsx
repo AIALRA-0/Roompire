@@ -7,6 +7,7 @@ import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { fxSourceLabel } from "@/lib/fx-display";
 import { splitByWeights, splitEqual } from "@/lib/money/split";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
@@ -56,7 +57,11 @@ type ExpenseProposalSummary = {
   originalCurrency: string;
   settlementAmount: string;
   settlementCurrency: string;
+  fxPolicy: FxPolicy;
   fxRate: string | null;
+  fxRateDate: string | null;
+  fxProvider: string | null;
+  fxLockedAt: string | null;
   status: ProposalStatus;
   debtorCount: number;
 };
@@ -93,7 +98,11 @@ type ExpenseProposalApiItem = {
   originalCurrency: string;
   settlementAmount: string;
   settlementCurrency: string;
+  fxPolicy: FxPolicy;
   fxRate: string | null;
+  fxRateDate: string | null;
+  fxProvider: string | null;
+  fxLockedAt: string | null;
   status: ProposalStatus;
   shares: unknown[];
 };
@@ -136,6 +145,20 @@ type ExpenseLabels = {
   fxRateHintOriginalCurrency: string;
   fxRateHintManual: string;
   fxRateHintDifferenceAdjustment: string;
+  fxSource: string;
+  fxSourceManual: string;
+  fxSourceProvider: string;
+  fxSourceSameCurrency: string;
+  fxSourceOriginalCurrencyDebt: string;
+  fxSourceUnknown: string;
+  fxProvider: string;
+  fxRateDate: string;
+  fxLockedAt: string;
+  fxPolicy: string;
+  fxPolicyLockAtExpenseDate: string;
+  fxPolicyOriginalCurrencyDebt: string;
+  fxPolicyManualApproval: string;
+  fxPolicyDifferenceAdjustment: string;
   debtors: string;
   payerShareIncluded: string;
   splitMethod: string;
@@ -372,7 +395,11 @@ export function ExpenseWorkspace({
       originalCurrency: proposal.originalCurrency,
       settlementAmount: proposal.settlementAmount,
       settlementCurrency: proposal.settlementCurrency,
+      fxPolicy: proposal.fxPolicy,
       fxRate: proposal.fxRate,
+      fxRateDate: proposal.fxRateDate,
+      fxProvider: proposal.fxProvider,
+      fxLockedAt: proposal.fxLockedAt,
       status: proposal.status,
       debtorCount: proposal.shares.length,
     };
@@ -1133,6 +1160,9 @@ export function ExpenseWorkspace({
                   </span>
                   <span>
                     {proposal.expenseDate} · {proposal.debtorCount} {labels.debtors}
+                  </span>
+                  <span data-testid={`expense-proposal-fx-source-${proposal.id}`}>
+                    {labels.fxSource}: {fxSourceLabel(proposal, labels)}
                   </span>
                 </div>
                 {proposal.tags.length > 0 ? (

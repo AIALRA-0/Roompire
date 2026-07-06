@@ -376,6 +376,7 @@ Naming examples:
 | `status.pending`          | Pending                                       | 待确认                       |
 | `status.matured`          | In ledger                                     | 已入账                       |
 | `fx.lockedRate`           | Locked rate                                   | 锁定汇率                     |
+| `fx.source`               | FX source                                     | 汇率来源                     |
 | `expense.noBalanceEffect` | This will not affect balances until approved. | 通过确认前不会影响正式余额。 |
 
 ## UX copy rules
@@ -397,6 +398,7 @@ Approval screen must show:
 - your assigned amount
 - how split was calculated
 - FX conversion if any
+- FX source, policy, provider, rate date, and lock timestamp
 - due date
 - receipt
 - approve/reject actions
