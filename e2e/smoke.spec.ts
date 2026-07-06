@@ -244,6 +244,34 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
           checkedAt: generatedAt,
           error: null,
         },
+        sharedAppStorageInventory: {
+          status: "ok",
+          statusFile: "ops/status/shared-app-storage.json",
+          generatedAt,
+          roots: ["/srv/aialra/apps"],
+          topLimit: 3,
+          totalTimeoutMs: 240000,
+          pathTimeoutMs: 45000,
+          totalBytes: 48_384 * 1024 * 1024,
+          paths: [
+            {
+              path: "/srv/aialra/apps/opencode-turn-engine",
+              sizeBytes: 27_000 * 1024 * 1024,
+            },
+            {
+              path: "/srv/aialra/apps/codex-turn-engine",
+              sizeBytes: 7_200 * 1024 * 1024,
+            },
+            {
+              path: "/srv/aialra/apps/codexapp",
+              sizeBytes: 14_184 * 1024 * 1024,
+            },
+          ],
+          timedOutPaths: [],
+          errors: [],
+          checkedAt: generatedAt,
+          error: null,
+        },
         diskTrend: {
           status: "ok",
           historyFile: "ops/status/disk-history.json",
@@ -2032,6 +2060,13 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-root-storage-row").first()).toContainText(
       "/var/lib/containerd",
     );
+    await expect(page.getByTestId("ops-shared-app-storage-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-shared-app-storage-total")).toContainText("47.3 GB");
+    await expect(page.getByTestId("ops-shared-app-storage-path-count")).toContainText("3");
+    await expect(page.getByTestId("ops-shared-app-storage-timeouts")).toContainText("0");
+    await expect(page.getByTestId("ops-shared-app-storage-row").first()).toContainText(
+      "/srv/aialra/apps/opencode-turn-engine",
+    );
     await expect(page.getByTestId("ops-docker-status")).toContainText("OK");
     await expect(page.getByTestId("ops-docker-reclaimable")).toContainText("192 MB");
     await expect(page.getByTestId("ops-docker-reported-reclaimable")).toContainText("832 MB");
@@ -2085,6 +2120,13 @@ test.describe("Roompire real browser smoke", () => {
           topLimit: number;
           totalBytes: number;
           paths: Array<{ path: string; sizeBytes: number }>;
+          status: string;
+        };
+        sharedAppStorageInventory: {
+          topLimit: number;
+          totalBytes: number;
+          paths: Array<{ path: string; sizeBytes: number }>;
+          timedOutPaths: string[];
           status: string;
         };
         dockerStorage: {
@@ -2152,6 +2194,17 @@ test.describe("Roompire real browser smoke", () => {
         totalBytes: 34_656 * 1024 * 1024,
         status: "ok",
         paths: expect.arrayContaining([expect.objectContaining({ path: "/var/lib/containerd" })]),
+      }),
+    );
+    expect(opsPayload.status.sharedAppStorageInventory).toEqual(
+      expect.objectContaining({
+        topLimit: 3,
+        totalBytes: 48_384 * 1024 * 1024,
+        status: "ok",
+        timedOutPaths: [],
+        paths: expect.arrayContaining([
+          expect.objectContaining({ path: "/srv/aialra/apps/opencode-turn-engine" }),
+        ]),
       }),
     );
     expect(opsPayload.status.dockerStorage).toEqual(

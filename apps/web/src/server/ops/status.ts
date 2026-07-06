@@ -70,6 +70,21 @@ export type OpsStatusSnapshot = {
     checkedAt: string | null;
     error: string | null;
   };
+  sharedAppStorageInventory: {
+    status: HealthState;
+    statusFile: string;
+    generatedAt: string | null;
+    roots: string[];
+    topLimit: number;
+    totalTimeoutMs: number;
+    pathTimeoutMs: number;
+    totalBytes: number;
+    paths: OpsRootStorageInventoryItem[];
+    timedOutPaths: string[];
+    errors: Array<{ path: string; message: string }>;
+    checkedAt: string | null;
+    error: string | null;
+  };
   diskTrend: {
     status: HealthState;
     historyFile: string;
@@ -287,6 +302,10 @@ const smokeStatusStaleMs = positiveEnvNumber("ROOMPIRE_SMOKE_STATUS_STALE_MS", 2
 const restoreDrillStatusStaleMs = positiveEnvNumber(
   "ROOMPIRE_RESTORE_DRILL_STATUS_STALE_MS",
   36 * 60 * 60 * 1000,
+);
+const sharedAppStorageStatusStaleMs = positiveEnvNumber(
+  "ROOMPIRE_SHARED_APP_STORAGE_STATUS_STALE_MS",
+  48 * 60 * 60 * 1000,
 );
 
 function positiveEnvNumber(name: string, fallback: number) {
@@ -510,6 +529,70 @@ function normalizeRootStorageInventory(value: unknown): OpsStatusSnapshot["rootS
   };
 }
 
+function normalizeSharedAppStorageError(value: unknown): { path: string; message: string } | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const itemPath = stringValue(value.path);
+  const message = stringValue(value.message);
+
+  if (!itemPath || !message) {
+    return null;
+  }
+
+  return {
+    path: itemPath,
+    message,
+  };
+}
+
+function normalizeSharedAppStorageInventory(
+  value: unknown,
+): OpsStatusSnapshot["sharedAppStorageInventory"] {
+  if (!isRecord(value)) {
+    return {
+      status: "unknown",
+      statusFile: "ops/status/shared-app-storage.json",
+      generatedAt: null,
+      roots: [],
+      topLimit: 12,
+      totalTimeoutMs: 240000,
+      pathTimeoutMs: 45000,
+      totalBytes: 0,
+      paths: [],
+      timedOutPaths: [],
+      errors: [],
+      checkedAt: null,
+      error: "Shared app storage inventory has not been recorded yet.",
+    };
+  }
+
+  return {
+    status: healthStateValue(value.status),
+    statusFile: stringValue(value.statusFile, "ops/status/shared-app-storage.json"),
+    generatedAt: nullableStringValue(value.generatedAt),
+    roots: Array.isArray(value.roots)
+      ? value.roots.filter((root): root is string => typeof root === "string")
+      : [],
+    topLimit: numberValue(value.topLimit) ?? 12,
+    totalTimeoutMs: numberValue(value.totalTimeoutMs) ?? 240000,
+    pathTimeoutMs: numberValue(value.pathTimeoutMs) ?? 45000,
+    totalBytes: numberValue(value.totalBytes) ?? 0,
+    paths: Array.isArray(value.paths)
+      ? value.paths.map(normalizeRootStorageInventoryItem).filter((item) => item !== null)
+      : [],
+    timedOutPaths: Array.isArray(value.timedOutPaths)
+      ? value.timedOutPaths.filter((item): item is string => typeof item === "string")
+      : [],
+    errors: Array.isArray(value.errors)
+      ? value.errors.map(normalizeSharedAppStorageError).filter((item) => item !== null)
+      : [],
+    checkedAt: nullableStringValue(value.checkedAt),
+    error: nullableStringValue(value.error),
+  };
+}
+
 function normalizeDiskTrend(value: unknown): OpsStatusSnapshot["diskTrend"] {
   if (!isRecord(value)) {
     return {
@@ -691,6 +774,9 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
   const latestRestoreDrillGeneratedAtTime = status.latestRestoreDrill.generatedAt
     ? Date.parse(status.latestRestoreDrill.generatedAt)
     : Number.NaN;
+  const sharedAppStorageGeneratedAtTime = status.sharedAppStorageInventory.generatedAt
+    ? Date.parse(status.sharedAppStorageInventory.generatedAt)
+    : Number.NaN;
 
   if (!status.statusFile.loaded) {
     warnings.push("status_file_missing");
@@ -721,6 +807,18 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
 
   if (status.rootStorageInventory.status === "unknown") {
     warnings.push("root_storage_inventory_unknown");
+  }
+
+  if (status.sharedAppStorageInventory.status === "warning") {
+    warnings.push("shared_app_storage_attention");
+  }
+
+  if (
+    status.sharedAppStorageInventory.generatedAt !== null &&
+    (!Number.isFinite(sharedAppStorageGeneratedAtTime) ||
+      Date.now() - sharedAppStorageGeneratedAtTime > sharedAppStorageStatusStaleMs)
+  ) {
+    warnings.push("shared_app_storage_stale");
   }
 
   if (status.dockerStorage.status === "unknown") {
@@ -861,6 +959,9 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawRootStorageInventory = isRecord(raw.rootStorageInventory)
     ? raw.rootStorageInventory
     : {};
+  const rawSharedAppStorageInventory = isRecord(raw.sharedAppStorageInventory)
+    ? raw.sharedAppStorageInventory
+    : {};
   const rawBackupTimer = isRecord(raw.backupTimer) ? raw.backupTimer : {};
   const rawBackupService = isRecord(raw.backupService) ? raw.backupService : {};
   const rawDockerStorage = isRecord(raw.dockerStorage) ? raw.dockerStorage : {};
@@ -912,6 +1013,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       error: nullableStringValue(rawDisk.error),
     },
     rootStorageInventory: normalizeRootStorageInventory(rawRootStorageInventory),
+    sharedAppStorageInventory: normalizeSharedAppStorageInventory(rawSharedAppStorageInventory),
     diskTrend: normalizeDiskTrend(rawDiskTrend),
     dockerStorage: {
       images: dockerImages,
@@ -1115,6 +1217,23 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       totalBytes: 0,
       paths: [],
       status: "unknown" as const,
+      checkedAt: new Date().toISOString(),
+      error: "Host status file has not been generated.",
+    },
+    sharedAppStorageInventory: {
+      status: "unknown" as const,
+      statusFile:
+        process.env.ROOMPIRE_SHARED_APP_STORAGE_STATUS_FILE?.trim() ||
+        "ops/status/shared-app-storage.json",
+      generatedAt: null,
+      roots: [],
+      topLimit: 12,
+      totalTimeoutMs: 240000,
+      pathTimeoutMs: 45000,
+      totalBytes: 0,
+      paths: [],
+      timedOutPaths: [],
+      errors: [],
       checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",
     },

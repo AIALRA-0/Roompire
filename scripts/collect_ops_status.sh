@@ -29,6 +29,9 @@ const backupOffsiteStatusPath =
 const smokeStatusPath = process.env.ROOMPIRE_SMOKE_STATUS_FILE || "ops/status/latest-smoke.json";
 const restoreDrillStatusPath =
   process.env.ROOMPIRE_RESTORE_DRILL_STATUS_FILE || "ops/status/latest-restore-drill.json";
+const sharedAppStorageStatusPath =
+  process.env.ROOMPIRE_SHARED_APP_STORAGE_STATUS_FILE ||
+  "ops/status/shared-app-storage.json";
 const diskHistoryPath = process.env.ROOMPIRE_OPS_DISK_HISTORY_FILE || "ops/status/disk-history.json";
 const generatedAt = new Date().toISOString();
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
@@ -690,6 +693,118 @@ function collectRootStorageInventory() {
   };
 }
 
+function sharedAppStorageStateValue(value) {
+  return ["ok", "warning", "unknown"].includes(value) ? value : "unknown";
+}
+
+function normalizeSharedAppStoragePath(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const itemPath = typeof value.path === "string" ? value.path : "";
+  const sizeBytes = Number(value.sizeBytes);
+
+  if (!itemPath || !Number.isFinite(sizeBytes)) {
+    return null;
+  }
+
+  return {
+    path: itemPath,
+    sizeBytes,
+  };
+}
+
+function normalizeSharedAppStorageError(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const itemPath = typeof value.path === "string" ? value.path : "";
+  const message = typeof value.message === "string" ? value.message : "";
+
+  if (!itemPath || !message) {
+    return null;
+  }
+
+  return {
+    path: itemPath,
+    message,
+  };
+}
+
+function readSharedAppStorageInventory() {
+  try {
+    if (!fs.existsSync(sharedAppStorageStatusPath)) {
+      return {
+        status: "unknown",
+        statusFile: sharedAppStorageStatusPath,
+        generatedAt: null,
+        roots: [],
+        topLimit: 12,
+        totalTimeoutMs: 240000,
+        pathTimeoutMs: 45000,
+        totalBytes: 0,
+        paths: [],
+        timedOutPaths: [],
+        errors: [],
+        checkedAt: null,
+        error: "Shared app storage inventory has not been recorded yet.",
+      };
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(sharedAppStorageStatusPath, "utf8"));
+    const roots = Array.isArray(parsed.roots)
+      ? parsed.roots.filter((value) => typeof value === "string")
+      : [];
+    const paths = Array.isArray(parsed.paths)
+      ? parsed.paths.map(normalizeSharedAppStoragePath).filter((value) => value !== null)
+      : [];
+    const timedOutPaths = Array.isArray(parsed.timedOutPaths)
+      ? parsed.timedOutPaths.filter((value) => typeof value === "string")
+      : [];
+    const errors = Array.isArray(parsed.errors)
+      ? parsed.errors.map(normalizeSharedAppStorageError).filter((value) => value !== null)
+      : [];
+    const topLimit = Number(parsed.topLimit);
+    const totalTimeoutMs = Number(parsed.totalTimeoutMs);
+    const pathTimeoutMs = Number(parsed.pathTimeoutMs);
+    const totalBytes = Number(parsed.totalBytes);
+
+    return {
+      status: sharedAppStorageStateValue(parsed.status),
+      statusFile: sharedAppStorageStatusPath,
+      generatedAt: typeof parsed.generatedAt === "string" ? parsed.generatedAt : null,
+      roots,
+      topLimit: Number.isFinite(topLimit) ? topLimit : 12,
+      totalTimeoutMs: Number.isFinite(totalTimeoutMs) ? totalTimeoutMs : 240000,
+      pathTimeoutMs: Number.isFinite(pathTimeoutMs) ? pathTimeoutMs : 45000,
+      totalBytes: Number.isFinite(totalBytes) ? totalBytes : 0,
+      paths,
+      timedOutPaths,
+      errors,
+      checkedAt: typeof parsed.checkedAt === "string" ? parsed.checkedAt : null,
+      error: typeof parsed.error === "string" ? parsed.error : null,
+    };
+  } catch (error) {
+    return {
+      status: "unknown",
+      statusFile: sharedAppStorageStatusPath,
+      generatedAt: null,
+      roots: [],
+      topLimit: 12,
+      totalTimeoutMs: 240000,
+      pathTimeoutMs: 45000,
+      totalBytes: 0,
+      paths: [],
+      timedOutPaths: [],
+      errors: [],
+      checkedAt: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function diskHistorySampleFromDisk(disk) {
   if (
     disk.sizeBytes === null ||
@@ -1306,6 +1421,7 @@ const snapshot = {
   generatedAt,
   disk,
   rootStorageInventory: collectRootStorageInventory(),
+  sharedAppStorageInventory: readSharedAppStorageInventory(),
   diskTrend: collectDiskTrend(disk),
   dockerStorage: collectDockerStorage(dockerImageInventory),
   dockerImageInventory,

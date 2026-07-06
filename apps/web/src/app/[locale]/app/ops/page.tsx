@@ -298,6 +298,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_unknown: ops("warningDiskUnknown"),
     disk_trend_depleting: ops("warningDiskTrendDepleting"),
     root_storage_inventory_unknown: ops("warningRootStorageInventoryUnknown"),
+    shared_app_storage_attention: ops("warningSharedAppStorageAttention"),
+    shared_app_storage_stale: ops("warningSharedAppStorageStale"),
     docker_storage_unknown: ops("warningDockerStorageUnknown"),
     docker_image_inventory_unknown: ops("warningDockerImageInventoryUnknown"),
     container_health_unknown: ops("warningContainerHealthUnknown"),
@@ -684,6 +686,75 @@ export default async function OpsPage({ params }: PageProps) {
                     {status.rootStorageInventory.error ? (
                       <p className="mt-3 text-sm text-muted-foreground">
                         {status.rootStorageInventory.error}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div
+                    className="mt-2 min-w-0 border-t border-border pt-3"
+                    data-testid="ops-shared-app-storage-inventory"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                        <FolderTree aria-hidden="true" className="h-4 w-4" />
+                        {ops("sharedAppStorageInventory")}
+                      </span>
+                      <Badge
+                        data-testid="ops-shared-app-storage-status"
+                        variant={healthVariant(status.sharedAppStorageInventory.status)}
+                      >
+                        {healthLabel(ops, status.sharedAppStorageInventory.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("sharedAppStorageRecorded")}
+                        testId="ops-shared-app-storage-total"
+                        value={formatFileSize(locale, status.sharedAppStorageInventory.totalBytes)}
+                      />
+                      <MetricRow
+                        label={ops("sharedAppStoragePaths")}
+                        testId="ops-shared-app-storage-path-count"
+                        value={formatInteger(locale, status.sharedAppStorageInventory.paths.length)}
+                      />
+                      <MetricRow
+                        label={ops("sharedAppStorageTimedOut")}
+                        testId="ops-shared-app-storage-timeouts"
+                        value={formatInteger(
+                          locale,
+                          status.sharedAppStorageInventory.timedOutPaths.length,
+                        )}
+                      />
+                      {status.sharedAppStorageInventory.paths.length > 0 ? (
+                        <div className="grid min-w-0 gap-2">
+                          {status.sharedAppStorageInventory.paths.map((item) => (
+                            <div
+                              className="min-w-0 rounded-md border border-border bg-background/60 px-3 py-2"
+                              data-testid="ops-shared-app-storage-row"
+                              key={item.path}
+                            >
+                              <div className="flex min-w-0 items-start justify-between gap-3">
+                                <p
+                                  className="min-w-0 truncate text-sm font-medium"
+                                  title={formatStoragePath(item)}
+                                >
+                                  {formatStoragePath(item)}
+                                </p>
+                                <span className="shrink-0 text-sm font-semibold">
+                                  {formatFileSize(locale, item.sizeBytes)}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {ops("noSharedAppStoragePaths")}
+                        </p>
+                      )}
+                    </div>
+                    {status.sharedAppStorageInventory.error ? (
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        {status.sharedAppStorageInventory.error}
                       </p>
                     ) : null}
                   </div>

@@ -1874,6 +1874,7 @@ components:
           statusFile,
           disk,
           rootStorageInventory,
+          sharedAppStorageInventory,
           diskTrend,
           dockerStorage,
           dockerImageInventory,
@@ -1952,6 +1953,65 @@ components:
                   path: { type: string, example: /var/lib/containerd }
                   sizeBytes: { type: integer, example: 30064771072 }
             status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        sharedAppStorageInventory:
+          type: object
+          required:
+            [
+              status,
+              statusFile,
+              generatedAt,
+              roots,
+              topLimit,
+              totalTimeoutMs,
+              pathTimeoutMs,
+              totalBytes,
+              paths,
+              timedOutPaths,
+              errors,
+              checkedAt,
+              error,
+            ]
+          properties:
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            statusFile: { type: string, example: ops/status/shared-app-storage.json }
+            generatedAt:
+              type: string
+              format: date-time
+              nullable: true
+            roots:
+              type: array
+              items: { type: string }
+              example: [/srv/aialra/apps]
+            topLimit: { type: integer, example: 12 }
+            totalTimeoutMs: { type: integer, example: 240000 }
+            pathTimeoutMs: { type: integer, example: 45000 }
+            totalBytes: { type: integer, example: 50734301184 }
+            paths:
+              type: array
+              items:
+                type: object
+                required: [path, sizeBytes]
+                properties:
+                  path: { type: string, example: /srv/aialra/apps/opencode-turn-engine }
+                  sizeBytes: { type: integer, example: 28991029248 }
+            timedOutPaths:
+              type: array
+              items: { type: string }
+            errors:
+              type: array
+              items:
+                type: object
+                required: [path, message]
+                properties:
+                  path: { type: string }
+                  message: { type: string }
             checkedAt:
               type: string
               format: date-time
