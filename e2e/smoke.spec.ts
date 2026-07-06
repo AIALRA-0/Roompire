@@ -3583,6 +3583,171 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByText(proposalTitle)).toBeVisible();
   });
 
+  test("original-currency debt policy keeps cross-currency obligations in original currency", async ({
+    page,
+  }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `original-fx-owner+${suffix}@example.test`;
+    const debtorEmail = `original-fx-debtor+${suffix}@example.test`;
+    const householdName = `Original FX House ${suffix}`;
+    const proposalTitle = `Original Currency Groceries ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "Original FX Owner E2E");
+    await page.goto("/en-US/app");
+    await page.getByTestId("create-household-name").fill(householdName);
+    await page.getByTestId("create-household-timezone").fill("America/Los_Angeles");
+    await page.getByTestId("create-household-currency").fill("CNY");
+    await clickHouseholdCreateWithRetry(page);
+    await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
+
+    const sessionResponse = await getApiWithRetry(page, "/api/v1/session");
+    expect(sessionResponse.ok()).toBeTruthy();
+    const sessionPayload = (await sessionResponse.json()) as {
+      household: { id: string } | null;
+    };
+    const householdId = sessionPayload.household?.id;
+    expect(householdId).toBeTruthy();
+    if (!householdId) {
+      throw new Error("Expected original-currency FX household id.");
+    }
+
+    await page.getByTestId("settings-household-fx-policy").selectOption("ORIGINAL_CURRENCY_DEBT");
+    const settingsResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/v1/households/${householdId}`) &&
+        response.request().method() === "PATCH",
+    );
+    await page.getByRole("button", { name: "Save settings" }).click();
+    const settingsResponse = await settingsResponsePromise;
+    expect(settingsResponse.ok()).toBeTruthy();
+    await expect(page.getByText("Settings saved")).toBeVisible();
+
+    const invitePayload = await createInviteWithRetry(
+      page,
+      householdId,
+      {
+        email: debtorEmail,
+        role: "MEMBER",
+      },
+      ownerEmail,
+    );
+
+    await setDevSessionWithRetry(page, debtorEmail, "Original FX Debtor E2E");
+    const acceptResponse = await page.request.post("/api/v1/invites/accept", {
+      data: {
+        token: invitePayload.token,
+      },
+      headers: {
+        "x-roompire-dev-user-email": debtorEmail,
+      },
+    });
+    expect(acceptResponse.ok()).toBeTruthy();
+
+    await setDevSessionWithRetry(page, ownerEmail, "Original FX Owner E2E");
+    await page.goto("/en-US/app");
+    await page.getByTestId("expense-title").fill(proposalTitle);
+    await page.getByTestId("expense-merchant").fill("Original FX Market");
+    await page.getByTestId("expense-date").fill("2026-07-06");
+    await page.getByTestId("expense-amount").fill("40");
+    await page.getByTestId("expense-original-currency").fill("USD");
+    await expect(page.getByTestId("expense-settlement-currency")).toHaveValue("USD");
+    await expect(page.getByTestId("expense-fx-rate")).toBeDisabled();
+    await expect(page.getByText("Not used for original-currency debt")).toBeVisible();
+    await page.getByTestId(`expense-debtor-${debtorEmail}`).check();
+    const previewRow = page.getByTestId(`expense-split-preview-${debtorEmail}`);
+    await expect(previewRow).toContainText("USD 20");
+
+    const proposalResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/v1/households/${householdId}/expenses/proposals`) &&
+        response.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Submit proposal" }).click();
+    const proposalResponse = await proposalResponsePromise;
+    expect(proposalResponse.status()).toBe(201);
+    const proposalPayload = (await proposalResponse.json()) as {
+      proposal: {
+        id: string;
+        fxPolicy: string;
+        fxProvider: string;
+        fxRate: string;
+        originalCurrency: string;
+        settlementCurrency: string;
+        settlementAmount: string;
+        shares: Array<{
+          id: string;
+          shareCurrency: string;
+          settlementCurrency: string;
+          shareOriginalAmount: string;
+          shareSettlementAmount: string;
+        }>;
+      };
+    };
+    expect(proposalPayload.proposal).toMatchObject({
+      fxPolicy: "ORIGINAL_CURRENCY_DEBT",
+      fxProvider: "original-currency-debt",
+      fxRate: "1",
+      originalCurrency: "USD",
+      settlementCurrency: "USD",
+      settlementAmount: "40",
+    });
+    expect(proposalPayload.proposal.shares[0]).toMatchObject({
+      shareCurrency: "USD",
+      settlementCurrency: "USD",
+      shareOriginalAmount: "20",
+      shareSettlementAmount: "20",
+    });
+    await expect(page.getByText("Proposal submitted")).toBeVisible();
+
+    const shareId = proposalPayload.proposal.shares[0]?.id;
+    expect(shareId).toBeTruthy();
+    if (!shareId) {
+      throw new Error("Expected original-currency share id.");
+    }
+
+    const approvalResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/shares/${shareId}/approve`,
+      {
+        data: {
+          comment: "Original-currency approval",
+        },
+        headers: {
+          "Idempotency-Key": `original-fx-approve-${Date.now()}`,
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      },
+    );
+    expect(approvalResponse.ok()).toBeTruthy();
+
+    const obligationsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/ledger/obligations`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(obligationsResponse.ok()).toBeTruthy();
+    const obligationsPayload = (await obligationsResponse.json()) as {
+      obligations: Array<{
+        originalCurrency: string;
+        settlementCurrency: string;
+        originalAmount: string;
+        settlementAmount: string;
+        remainingAmount: string;
+      }>;
+    };
+    expect(obligationsPayload.obligations[0]).toMatchObject({
+      originalCurrency: "USD",
+      settlementCurrency: "USD",
+      originalAmount: "20",
+      settlementAmount: "20",
+      remainingAmount: "20",
+    });
+  });
+
   test("owner transfers ownership and preserves self-removal guard", async ({ page }, testInfo) => {
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
     const ownerEmail = `transfer-owner+${suffix}@example.test`;

@@ -821,6 +821,15 @@ async function resolveHouseholdFxRateLock(input: {
   manualRate?: Decimal.Value | null;
   policy: FxPolicy;
 }) {
+  if (input.policy === FxPolicy.ORIGINAL_CURRENCY_DEBT) {
+    return {
+      rate: new Decimal(1),
+      rateDate: input.date,
+      provider: "original-currency-debt",
+      lockedAt: new Date(),
+    };
+  }
+
   if (input.baseCurrency === input.quoteCurrency) {
     return resolveFxRateLock(input);
   }
@@ -833,10 +842,7 @@ async function resolveHouseholdFxRateLock(input: {
     );
   }
 
-  if (
-    input.policy === FxPolicy.ORIGINAL_CURRENCY_DEBT ||
-    input.policy === FxPolicy.FX_DIFFERENCE_ADJUSTMENT
-  ) {
+  if (input.policy === FxPolicy.FX_DIFFERENCE_ADJUSTMENT) {
     throw new ApiError(
       409,
       "FX_POLICY_NOT_SUPPORTED",
@@ -1451,8 +1457,11 @@ async function prepareExpenseProposalCreate(
 
   const debtorMemberships = await getParticipantMemberships(householdId, debtorUserIds);
   const originalAmount = new Decimal(data.originalAmount);
-  const settlementCurrency = household.settlementCurrency;
   const originalCurrency = data.originalCurrency;
+  const settlementCurrency =
+    household.fxPolicy === FxPolicy.ORIGINAL_CURRENCY_DEBT
+      ? originalCurrency
+      : household.settlementCurrency;
   const expenseDate = dateOnlyToUtc(data.expenseDate);
   const dueDate = data.dueDate ? dateOnlyToUtc(data.dueDate) : undefined;
   const fxLock = await resolveHouseholdFxRateLock({

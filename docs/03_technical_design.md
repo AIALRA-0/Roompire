@@ -224,7 +224,7 @@ Implementation priorities:
 3. Secondary provider.
 4. Manual rate with approval.
 
-The locked rate used by a proposal must be copied into the proposal/share/ledger context, not merely referenced as mutable external state. Current household settings expose `LOCK_AT_EXPENSE_DATE` and `MANUAL_RATE_WITH_APPROVAL`; original-currency debt and FX-difference adjustment require additional ledger semantics before they are selectable.
+The locked rate used by a proposal must be copied into the proposal/share/ledger context, not merely referenced as mutable external state. Current household settings expose `LOCK_AT_EXPENSE_DATE`, `ORIGINAL_CURRENCY_DEBT`, and `MANUAL_RATE_WITH_APPROVAL`. Under original-currency debt, the proposal's settlement currency becomes the entered original currency and the stored FX lock is `1` with `fxProvider=original-currency-debt`; settlement suggestions and balances then group that debt by original currency. FX-difference adjustment still requires additional ledger semantics before it is selectable.
 
 ## Calendar/task design
 

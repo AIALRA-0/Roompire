@@ -11,7 +11,7 @@ import { splitByWeights, splitEqual } from "@/lib/money/split";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
 type SplitMethod = "EQUAL" | "EXACT" | "PERCENTAGE" | "SHARES";
-type FxPolicy = "LOCK_AT_EXPENSE_DATE" | "MANUAL_RATE_WITH_APPROVAL";
+type FxPolicy = "LOCK_AT_EXPENSE_DATE" | "ORIGINAL_CURRENCY_DEBT" | "MANUAL_RATE_WITH_APPROVAL";
 type ProposalStatus =
   | "DRAFT"
   | "SUBMITTED"
@@ -129,6 +129,7 @@ type ExpenseLabels = {
   settlementCurrency: string;
   fxRate: string;
   fxRateHintAutomatic: string;
+  fxRateHintOriginalCurrency: string;
   fxRateHintManual: string;
   debtors: string;
   payerShareIncluded: string;
@@ -343,6 +344,11 @@ export function ExpenseWorkspace({
     originalCurrencyInput.trim().toUpperCase() !== settlementCurrency;
   const isManualFxRateRequired =
     activeHouseholdFxPolicy === "MANUAL_RATE_WITH_APPROVAL" && isCrossCurrency;
+  const originalCurrencyCode = originalCurrencyInput.trim().toUpperCase();
+  const effectiveSettlementCurrency =
+    activeHouseholdFxPolicy === "ORIGINAL_CURRENCY_DEBT"
+      ? originalCurrencyCode
+      : settlementCurrency;
   const filterResetHref = `/${locale}/app?proposalLimit=${filterValues.limit}`;
 
   function proposalSummaryFromApi(proposal: ExpenseProposalApiItem): ExpenseProposalSummary {
@@ -435,11 +441,12 @@ export function ExpenseWorkspace({
     const originalAmount = decimalOrNull(originalAmountInput);
     const originalCurrency = originalCurrencyInput.trim().toUpperCase();
     const fxRate =
-      settlementCurrency && originalCurrency === settlementCurrency
+      activeHouseholdFxPolicy === "ORIGINAL_CURRENCY_DEBT" ||
+      (settlementCurrency && originalCurrency === settlementCurrency)
         ? new Decimal(1)
         : decimalOrNull(fxRateInput);
 
-    if (!originalAmount || !settlementCurrency || !fxRate) {
+    if (!originalAmount || !effectiveSettlementCurrency || !fxRate) {
       return {
         rows: [],
         error: labels.splitPreviewInvalid,
@@ -568,6 +575,8 @@ export function ExpenseWorkspace({
     }
   }, [
     debtorOptions,
+    activeHouseholdFxPolicy,
+    effectiveSettlementCurrency,
     fxRateInput,
     labels.splitPreviewInvalid,
     originalAmountInput,
@@ -800,14 +809,14 @@ export function ExpenseWorkspace({
                 className="h-10 rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground"
                 data-testid="expense-settlement-currency"
                 disabled
-                value={settlementCurrency ?? ""}
+                value={effectiveSettlementCurrency ?? ""}
               />
             </Field>
             <Field label={labels.fxRate}>
               <input
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
                 data-testid="expense-fx-rate"
-                disabled={isDisabled}
+                disabled={isDisabled || activeHouseholdFxPolicy === "ORIGINAL_CURRENCY_DEBT"}
                 min="0.000001"
                 name="fxRate"
                 onChange={(event) => setFxRateInput(event.target.value)}
@@ -817,9 +826,11 @@ export function ExpenseWorkspace({
                 value={fxRateInput}
               />
               <span className="text-xs text-muted-foreground">
-                {activeHouseholdFxPolicy === "MANUAL_RATE_WITH_APPROVAL"
-                  ? labels.fxRateHintManual
-                  : labels.fxRateHintAutomatic}
+                {activeHouseholdFxPolicy === "ORIGINAL_CURRENCY_DEBT"
+                  ? labels.fxRateHintOriginalCurrency
+                  : activeHouseholdFxPolicy === "MANUAL_RATE_WITH_APPROVAL"
+                    ? labels.fxRateHintManual
+                    : labels.fxRateHintAutomatic}
               </span>
             </Field>
           </div>
@@ -910,7 +921,7 @@ export function ExpenseWorkspace({
                       <span className="font-medium text-foreground">{row.member.displayName}</span>
                       <span>
                         {originalCurrencyInput.toUpperCase()}{" "}
-                        {formatPreviewAmount(row.originalAmount)} · {settlementCurrency}{" "}
+                        {formatPreviewAmount(row.originalAmount)} · {effectiveSettlementCurrency}{" "}
                         {formatPreviewAmount(row.settlementAmount)}
                       </span>
                     </div>

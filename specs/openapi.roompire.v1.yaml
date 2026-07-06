@@ -83,8 +83,8 @@ components:
         ]
     HouseholdFxPolicySetting:
       type: string
-      description: Currently supported household FX policies for proposal creation. Original-currency debt and FX-difference adjustment remain backlog policies and are not accepted in settings yet.
-      enum: [LOCK_AT_EXPENSE_DATE, MANUAL_RATE_WITH_APPROVAL]
+      description: Currently supported household FX policies for proposal creation. FX-difference adjustment remains a backlog policy and is not accepted in settings yet.
+      enum: [LOCK_AT_EXPENSE_DATE, ORIGINAL_CURRENCY_DEBT, MANUAL_RATE_WITH_APPROVAL]
     ApprovalPolicy:
       type: string
       enum: [PAYER_AND_EACH_DEBTOR, ALL_PARTICIPANTS, PAYER_ONLY]
@@ -970,7 +970,7 @@ components:
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         fxRate:
-          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE. Required for cross-currency expenses when the household uses MANUAL_RATE_WITH_APPROVAL.
+          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE. Required for cross-currency expenses when the household uses MANUAL_RATE_WITH_APPROVAL. Ignored under ORIGINAL_CURRENCY_DEBT because debts stay in the original currency.
           $ref: "#/components/schemas/FxRateString"
         participantUserIds:
           type: array
@@ -1020,7 +1020,7 @@ components:
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         fxRate:
-          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE. Required for cross-currency task reimbursements when the household uses MANUAL_RATE_WITH_APPROVAL.
+          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE. Required for cross-currency task reimbursements when the household uses MANUAL_RATE_WITH_APPROVAL. Ignored under ORIGINAL_CURRENCY_DEBT because debts stay in the original currency.
           $ref: "#/components/schemas/FxRateString"
         participantUserIds:
           type: array
@@ -1073,7 +1073,7 @@ components:
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         fxRate:
-          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE. Required for cross-currency event expenses when the household uses MANUAL_RATE_WITH_APPROVAL.
+          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE. Required for cross-currency event expenses when the household uses MANUAL_RATE_WITH_APPROVAL. Ignored under ORIGINAL_CURRENCY_DEBT because debts stay in the original currency.
           $ref: "#/components/schemas/FxRateString"
         participantUserIds:
           type: array

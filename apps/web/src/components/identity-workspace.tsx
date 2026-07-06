@@ -142,6 +142,7 @@ type IdentityLabels = {
   clearingDirectOnly: string;
   clearingHouseholdNetting: string;
   fxLockExpenseDate: string;
+  fxOriginalCurrencyDebt: string;
   fxManualApproval: string;
   householdSettings: string;
   householdSettingsHint: string;
@@ -321,6 +322,7 @@ function roleInputOptions(labels: IdentityLabels, currentRole: Role) {
 function fxPolicyOptions(labels: IdentityLabels) {
   return [
     { value: "LOCK_AT_EXPENSE_DATE", label: labels.fxLockExpenseDate },
+    { value: "ORIGINAL_CURRENCY_DEBT", label: labels.fxOriginalCurrencyDebt },
     { value: "MANUAL_RATE_WITH_APPROVAL", label: labels.fxManualApproval },
   ] satisfies Array<{ value: FxPolicy; label: string }>;
 }
