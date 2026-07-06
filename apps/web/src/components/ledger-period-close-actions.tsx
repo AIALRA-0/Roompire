@@ -198,19 +198,30 @@ export function LedgerPeriodCloseActions({
                 return (
                   <div
                     className="grid min-w-0 gap-3 p-3"
-                    data-testid={`ledger-period-close-${periodClose.periodMonth}`}
+                    data-testid={`ledger-period-close-row-${periodClose.id}`}
                     key={periodClose.id}
                   >
                     <div className="flex min-w-0 max-w-full flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0 max-w-full">
-                        <p className="truncate text-sm font-medium">{periodClose.periodMonth}</p>
+                        <p
+                          className="truncate text-sm font-medium"
+                          data-testid={`ledger-period-close-month-${periodClose.id}`}
+                        >
+                          {periodClose.periodMonth}
+                        </p>
                         {periodClose.note ? (
-                          <p className="mt-1 break-words text-xs text-muted-foreground">
+                          <p
+                            className="mt-1 break-words text-xs text-muted-foreground"
+                            data-testid={`ledger-period-close-note-${periodClose.id}`}
+                          >
                             {periodClose.note}
                           </p>
                         ) : null}
                       </div>
-                      <Badge variant={isClosed ? "warning" : "neutral"}>
+                      <Badge
+                        data-testid={`ledger-period-close-status-${periodClose.id}`}
+                        variant={isClosed ? "warning" : "neutral"}
+                      >
                         {isClosed ? labels.closed : labels.reopened}
                       </Badge>
                     </div>

@@ -11,7 +11,11 @@ import { splitByWeights, splitEqual } from "@/lib/money/split";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
 type SplitMethod = "EQUAL" | "EXACT" | "PERCENTAGE" | "SHARES";
-type FxPolicy = "LOCK_AT_EXPENSE_DATE" | "ORIGINAL_CURRENCY_DEBT" | "MANUAL_RATE_WITH_APPROVAL";
+type FxPolicy =
+  | "LOCK_AT_EXPENSE_DATE"
+  | "ORIGINAL_CURRENCY_DEBT"
+  | "MANUAL_RATE_WITH_APPROVAL"
+  | "FX_DIFFERENCE_ADJUSTMENT";
 type ProposalStatus =
   | "DRAFT"
   | "SUBMITTED"
@@ -131,6 +135,7 @@ type ExpenseLabels = {
   fxRateHintAutomatic: string;
   fxRateHintOriginalCurrency: string;
   fxRateHintManual: string;
+  fxRateHintDifferenceAdjustment: string;
   debtors: string;
   payerShareIncluded: string;
   splitMethod: string;
@@ -830,7 +835,9 @@ export function ExpenseWorkspace({
                   ? labels.fxRateHintOriginalCurrency
                   : activeHouseholdFxPolicy === "MANUAL_RATE_WITH_APPROVAL"
                     ? labels.fxRateHintManual
-                    : labels.fxRateHintAutomatic}
+                    : activeHouseholdFxPolicy === "FX_DIFFERENCE_ADJUSTMENT"
+                      ? labels.fxRateHintDifferenceAdjustment
+                      : labels.fxRateHintAutomatic}
               </span>
             </Field>
           </div>

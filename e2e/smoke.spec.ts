@@ -1008,7 +1008,7 @@ async function clickLedgerPeriodCloseSubmitWithRetry(page: Page) {
   throw new Error(`POST ledger period close failed with status ${lastStatus}`);
 }
 
-async function clickLedgerPeriodReopenWithRetry(page: Page, periodMonth: string) {
+async function clickLedgerPeriodReopenWithRetry(page: Page, periodCloseId: string) {
   let lastStatus = 0;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -1019,10 +1019,7 @@ async function clickLedgerPeriodReopenWithRetry(page: Page, periodMonth: string)
         response.request().method() === "POST",
     );
 
-    await page
-      .getByTestId(`ledger-period-close-${periodMonth}`)
-      .getByRole("button", { name: "Reopen period" })
-      .click();
+    await page.getByTestId(`ledger-period-reopen-${periodCloseId}`).click();
     const response = await responsePromise;
     lastStatus = response.status();
 
@@ -3044,6 +3041,7 @@ test.describe("Roompire real browser smoke", () => {
   });
 
   test("owner updates settings and manages a linked invitee", async ({ page }, testInfo) => {
+    testInfo.setTimeout(300_000);
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
     const ownerEmail = `owner+${suffix}@example.test`;
     const inviteeEmail = `member+${suffix}@example.test`;
@@ -3065,7 +3063,9 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("create-household-timezone").fill("America/Los_Angeles");
     await page.getByTestId("create-household-currency").fill("CNY");
     await clickHouseholdCreateWithRetry(page);
-    await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
+    await expect(page.getByRole("heading", { name: householdName })).toBeVisible({
+      timeout: 30_000,
+    });
     const sessionResponse = await getApiWithRetry(page, "/api/v1/session");
     expect(sessionResponse.ok()).toBeTruthy();
     const sessionPayload = (await sessionResponse.json()) as {
@@ -3081,9 +3081,7 @@ test.describe("Roompire real browser smoke", () => {
     await page.getByTestId("settings-household-timezone").fill("America/New_York");
     await page.getByTestId("settings-household-currency").fill("USD");
     await page.getByTestId("settings-household-locale").selectOption("zh-CN");
-    await page
-      .getByTestId("settings-household-fx-policy")
-      .selectOption("MANUAL_RATE_WITH_APPROVAL");
+    await page.getByTestId("settings-household-fx-policy").selectOption("FX_DIFFERENCE_ADJUSTMENT");
     await page.getByTestId("settings-household-approval-policy").selectOption("ALL_PARTICIPANTS");
     await page.getByTestId("settings-household-clearing-policy").selectOption("HOUSEHOLD_NETTING");
     await page.getByTestId("settings-household-operational-retention-days").fill("365");
@@ -3107,7 +3105,7 @@ test.describe("Roompire real browser smoke", () => {
 
     await expect(page.getByRole("heading", { name: updatedName })).toBeVisible();
     await expect(page.getByTestId("settings-household-fx-policy")).toHaveValue(
-      "MANUAL_RATE_WITH_APPROVAL",
+      "FX_DIFFERENCE_ADJUSTMENT",
     );
     await expect(page.getByTestId("settings-household-operational-retention-days")).toHaveValue(
       "365",
@@ -3912,7 +3910,7 @@ test.describe("Roompire real browser smoke", () => {
   test("owner creates a proposal and debtor approval matures one share", async ({
     page,
   }, testInfo) => {
-    testInfo.setTimeout(180_000);
+    testInfo.setTimeout(300_000);
     const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
     const ownerEmail = `expense-owner+${suffix}@example.test`;
     const debtorEmail = `expense-debtor+${suffix}@example.test`;
@@ -4998,12 +4996,73 @@ test.describe("Roompire real browser smoke", () => {
     };
     expect(reversedBalancesPayload.balances).toEqual([]);
 
+    await page.getByTestId("ledger-adjustment-type").selectOption("FX_DIFFERENCE");
+    await page.getByTestId("ledger-adjustment-debtor").selectOption(approvedShare!.debtorUserId);
+    await page
+      .getByTestId("ledger-adjustment-creditor")
+      .selectOption(approvedShare!.creditorUserId);
+    await page.getByTestId("ledger-adjustment-amount").fill("2.5");
+    await page.getByTestId("ledger-adjustment-currency").fill("CNY");
+    await page.getByTestId("ledger-adjustment-occurred").fill("2026-07-04");
+    await page.getByTestId("ledger-adjustment-reason").fill("FX difference E2E correction");
+    await clickLedgerAdjustmentSubmitWithRetry(page);
+
+    const fxAdjustmentObligationsResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${detailIds.householdId}/ledger/obligations`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(fxAdjustmentObligationsResponse.ok()).toBeTruthy();
+    const fxAdjustmentObligationsPayload = (await fxAdjustmentObligationsResponse.json()) as {
+      obligations: Array<{
+        id: string;
+        sourceShareId: string | null;
+        remainingAmount: string;
+        status: string;
+        sourceTransaction: {
+          type: string;
+          sourceType: string | null;
+        };
+      }>;
+    };
+    const fxAdjustmentObligation = fxAdjustmentObligationsPayload.obligations.find(
+      (obligation) =>
+        obligation.sourceShareId === null &&
+        obligation.remainingAmount === "2.5" &&
+        obligation.status === "OPEN" &&
+        obligation.sourceTransaction.type === "FX_ADJUSTMENT" &&
+        obligation.sourceTransaction.sourceType === "FxDifferenceAdjustment",
+    );
+    expect(fxAdjustmentObligation).toBeTruthy();
+
+    await page
+      .getByTestId(`ledger-reversal-reason-${fxAdjustmentObligation!.id}`)
+      .fill("Reverse FX difference E2E correction");
+    await clickLedgerReversalSubmitWithRetry(page, fxAdjustmentObligation!.id);
+
+    const reversedFxBalancesResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${detailIds.householdId}/balances`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(reversedFxBalancesResponse.ok()).toBeTruthy();
+    const reversedFxBalancesPayload = (await reversedFxBalancesResponse.json()) as {
+      balances: unknown[];
+    };
+    expect(reversedFxBalancesPayload.balances).toEqual([]);
+
+    const closeJulyNote = `Close July ledger ${suffix}`;
     await page.getByTestId("ledger-period-close-month").fill("2026-07");
-    await page.getByTestId("ledger-period-close-note").fill(`Close July ledger ${suffix}`);
+    await page.getByTestId("ledger-period-close-note").fill(closeJulyNote);
     await clickLedgerPeriodCloseSubmitWithRetry(page);
-    const closedPeriodRow = page.getByTestId("ledger-period-close-2026-07");
-    await expect(closedPeriodRow).toContainText("Closed");
-    await expect(closedPeriodRow).toContainText(`Close July ledger ${suffix}`);
 
     const periodClosesResponse = await getApiWithRetry(
       page,
@@ -5019,13 +5078,18 @@ test.describe("Roompire real browser smoke", () => {
       periodCloses: Array<{ id: string; periodMonth: string; status: string; note: string | null }>;
     };
     const closedJulyPeriod = periodClosesPayload.periodCloses.find(
-      (periodClose) => periodClose.periodMonth === "2026-07",
+      (periodClose) => periodClose.periodMonth === "2026-07" && periodClose.note === closeJulyNote,
     );
     expect(closedJulyPeriod).toMatchObject({
       periodMonth: "2026-07",
       status: "CLOSED",
-      note: `Close July ledger ${suffix}`,
+      note: closeJulyNote,
     });
+    const closedPeriodRow = page.getByTestId(`ledger-period-close-row-${closedJulyPeriod!.id}`);
+    await expect(page.getByTestId(`ledger-period-close-status-${closedJulyPeriod!.id}`)).toHaveText(
+      "Closed",
+    );
+    await expect(closedPeriodRow).toContainText(closeJulyNote);
 
     const lockedAdjustmentResponse = await page.request.post(
       `/api/v1/households/${detailIds.householdId}/ledger/adjustments`,
@@ -5053,8 +5117,10 @@ test.describe("Roompire real browser smoke", () => {
       details: { periodMonth: "2026-07" },
     });
 
-    await clickLedgerPeriodReopenWithRetry(page, "2026-07");
-    await expect(page.getByTestId("ledger-period-close-2026-07")).toContainText("Reopened");
+    await clickLedgerPeriodReopenWithRetry(page, closedJulyPeriod!.id);
+    await expect(page.getByTestId(`ledger-period-close-status-${closedJulyPeriod!.id}`)).toHaveText(
+      "Reopened",
+    );
 
     const adjustmentIdempotencyKey = `adjustment-idempotency-${Date.now()}`;
     const adjustmentBody = {

@@ -842,15 +842,6 @@ async function resolveHouseholdFxRateLock(input: {
     );
   }
 
-  if (input.policy === FxPolicy.FX_DIFFERENCE_ADJUSTMENT) {
-    throw new ApiError(
-      409,
-      "FX_POLICY_NOT_SUPPORTED",
-      "This household FX policy is not supported for proposal creation yet.",
-      { fxPolicy: input.policy },
-    );
-  }
-
   return resolveFxRateLock(input);
 }
 

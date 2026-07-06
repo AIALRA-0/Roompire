@@ -77,13 +77,12 @@ Current implemented subset across expense branches: category defaults, household
 - Manual fallback.
 - FX tests.
 
-Current implemented subset for FX: proposal/revision/task-expense/event-expense creation locks same-currency rates as `1`, resolves cross-currency rates from cached `FxRate` rows, fetches and stores Frankfurter historical rates when configured and cache misses, preserves explicit manual `fxRate` fallback under `LOCK_AT_EXPENSE_DATE`, lets owner/admin household settings require `MANUAL_RATE_WITH_APPROVAL` for every cross-currency proposal path, supports `ORIGINAL_CURRENCY_DEBT` by keeping proposals, shares, obligations, balances, and settlement suggestions in the entered original currency with `fxProvider=original-currency-debt`, stores provider/rate/rate date/locked timestamp on proposals, validates provider configuration in health checks, and covers provider parsing, cached USD/CNY locking, manual-policy enforcement, and original-currency debt behavior in browser E2E. Provider failover, more currencies, and FX-difference adjustment workflows remain backlog items.
+Current implemented subset for FX: proposal/revision/task-expense/event-expense creation locks same-currency rates as `1`, resolves cross-currency rates from cached `FxRate` rows, fetches and stores Frankfurter historical rates when configured and cache misses, preserves explicit manual `fxRate` fallback under `LOCK_AT_EXPENSE_DATE` and `FX_DIFFERENCE_ADJUSTMENT`, lets owner/admin household settings require `MANUAL_RATE_WITH_APPROVAL` for every cross-currency proposal path, supports `ORIGINAL_CURRENCY_DEBT` by keeping proposals, shares, obligations, balances, and settlement suggestions in the entered original currency with `fxProvider=original-currency-debt`, supports `FX_DIFFERENCE_ADJUSTMENT` by posting later payment-date variance as append-only `FX_ADJUSTMENT` ledger transactions, stores provider/rate/rate date/locked timestamp on proposals, validates provider configuration in health checks, and covers provider parsing, cached USD/CNY locking, manual-policy enforcement, original-currency debt behavior, and FX-difference adjustment behavior in browser E2E. Provider failover and more currencies remain backlog items.
 
 ### P1
 
 - Provider failover.
 - More currencies.
-- Original-currency debt and FX-difference adjustment household policies.
 
 ## Epic 4 — Formal ledger
 

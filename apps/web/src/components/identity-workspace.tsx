@@ -144,6 +144,7 @@ type IdentityLabels = {
   fxLockExpenseDate: string;
   fxOriginalCurrencyDebt: string;
   fxManualApproval: string;
+  fxDifferenceAdjustment: string;
   householdSettings: string;
   householdSettingsHint: string;
   saveSettings: string;
@@ -324,6 +325,7 @@ function fxPolicyOptions(labels: IdentityLabels) {
     { value: "LOCK_AT_EXPENSE_DATE", label: labels.fxLockExpenseDate },
     { value: "ORIGINAL_CURRENCY_DEBT", label: labels.fxOriginalCurrencyDebt },
     { value: "MANUAL_RATE_WITH_APPROVAL", label: labels.fxManualApproval },
+    { value: "FX_DIFFERENCE_ADJUSTMENT", label: labels.fxDifferenceAdjustment },
   ] satisfies Array<{ value: FxPolicy; label: string }>;
 }
 

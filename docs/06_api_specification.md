@@ -218,7 +218,7 @@ Current implementation also exposes `GET /households/{householdId}/audit-events`
 
 `tagIds` is optional and limited to active tags in the same household. Historical proposals keep tag links even after a tag is archived.
 
-For cross-currency proposals, `fxRate` is optional under `LOCK_AT_EXPENSE_DATE`. When it is omitted, the server locks the expense-date rate from the `FxRate` cache or configured provider and copies `fxRate`, `fxRateDate`, `fxProvider`, and `fxLockedAt` into the proposal. Clients may still send `fxRate` as a manual override when provider lookup is unavailable. When a household uses `MANUAL_RATE_WITH_APPROVAL`, cross-currency proposal, task-expense, and event-expense creation require `fxRate` and store `fxProvider=manual-entry`. When a household uses `ORIGINAL_CURRENCY_DEBT`, proposal, share, and formal obligation settlement currency is the entered original currency, the stored FX rate is `1`, and `fxProvider=original-currency-debt`; any supplied `fxRate` is ignored. `FX_DIFFERENCE_ADJUSTMENT` remains a schema/backlog policy and is not accepted by household settings yet.
+For cross-currency proposals, `fxRate` is optional under `LOCK_AT_EXPENSE_DATE` and `FX_DIFFERENCE_ADJUSTMENT`. When it is omitted, the server locks the expense-date rate from the `FxRate` cache or configured provider and copies `fxRate`, `fxRateDate`, `fxProvider`, and `fxLockedAt` into the proposal. Clients may still send `fxRate` as a manual override when provider lookup is unavailable. When a household uses `MANUAL_RATE_WITH_APPROVAL`, cross-currency proposal, task-expense, and event-expense creation require `fxRate` and store `fxProvider=manual-entry`. When a household uses `ORIGINAL_CURRENCY_DEBT`, proposal, share, and formal obligation settlement currency is the entered original currency, the stored FX rate is `1`, and `fxProvider=original-currency-debt`; any supplied `fxRate` is ignored. Under `FX_DIFFERENCE_ADJUSTMENT`, proposals still mature at the expense-date locked household-currency amount; post-payment FX differences are appended through ledger adjustments with `adjustmentType=FX_DIFFERENCE`, producing an `FX_ADJUSTMENT` transaction instead of mutating historical debt.
 
 Current implementation also accepts advanced split inputs through `participantShares`:
 
@@ -293,6 +293,7 @@ If the proposal has `dueDate`, current implementation creates a `REPAYMENT_DUE` 
 ```
 
 Current implementation allows only household owners and admins to create adjustment obligations.
+Passing `adjustmentType=FX_DIFFERENCE` records the same append-only debt shape as a manual adjustment but writes a `FX_ADJUSTMENT` ledger transaction with `sourceType=FxDifferenceAdjustment`, so payment-date FX variance can be reconciled without rewriting the original proposal, obligation, or settlement allocation.
 
 ### Reverse obligation
 

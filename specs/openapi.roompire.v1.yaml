@@ -83,8 +83,14 @@ components:
         ]
     HouseholdFxPolicySetting:
       type: string
-      description: Currently supported household FX policies for proposal creation. FX-difference adjustment remains a backlog policy and is not accepted in settings yet.
-      enum: [LOCK_AT_EXPENSE_DATE, ORIGINAL_CURRENCY_DEBT, MANUAL_RATE_WITH_APPROVAL]
+      description: Currently supported household FX policies for proposal creation and ledger reconciliation.
+      enum:
+        [
+          LOCK_AT_EXPENSE_DATE,
+          ORIGINAL_CURRENCY_DEBT,
+          MANUAL_RATE_WITH_APPROVAL,
+          FX_DIFFERENCE_ADJUSTMENT,
+        ]
     ApprovalPolicy:
       type: string
       enum: [PAYER_AND_EACH_DEBTOR, ALL_PARTICIPANTS, PAYER_ONLY]
@@ -970,7 +976,7 @@ components:
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         fxRate:
-          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE. Required for cross-currency expenses when the household uses MANUAL_RATE_WITH_APPROVAL. Ignored under ORIGINAL_CURRENCY_DEBT because debts stay in the original currency.
+          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE or FX_DIFFERENCE_ADJUSTMENT. Required for cross-currency expenses when the household uses MANUAL_RATE_WITH_APPROVAL. Ignored under ORIGINAL_CURRENCY_DEBT because debts stay in the original currency.
           $ref: "#/components/schemas/FxRateString"
         participantUserIds:
           type: array
@@ -1020,7 +1026,7 @@ components:
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         fxRate:
-          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE. Required for cross-currency task reimbursements when the household uses MANUAL_RATE_WITH_APPROVAL. Ignored under ORIGINAL_CURRENCY_DEBT because debts stay in the original currency.
+          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE or FX_DIFFERENCE_ADJUSTMENT. Required for cross-currency task reimbursements when the household uses MANUAL_RATE_WITH_APPROVAL. Ignored under ORIGINAL_CURRENCY_DEBT because debts stay in the original currency.
           $ref: "#/components/schemas/FxRateString"
         participantUserIds:
           type: array
@@ -1073,7 +1079,7 @@ components:
         originalAmount: { $ref: "#/components/schemas/DecimalString" }
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         fxRate:
-          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE. Required for cross-currency event expenses when the household uses MANUAL_RATE_WITH_APPROVAL. Ignored under ORIGINAL_CURRENCY_DEBT because debts stay in the original currency.
+          description: Optional manual FX override under LOCK_AT_EXPENSE_DATE or FX_DIFFERENCE_ADJUSTMENT. Required for cross-currency event expenses when the household uses MANUAL_RATE_WITH_APPROVAL. Ignored under ORIGINAL_CURRENCY_DEBT because debts stay in the original currency.
           $ref: "#/components/schemas/FxRateString"
         participantUserIds:
           type: array
@@ -1576,6 +1582,11 @@ components:
       type: object
       required: [debtorUserId, creditorUserId, amount, currency, occurredAt, reason]
       properties:
+        adjustmentType:
+          type: string
+          enum: [MANUAL, FX_DIFFERENCE]
+          default: MANUAL
+          description: FX_DIFFERENCE creates an FX_ADJUSTMENT ledger transaction while preserving the same append-only obligation shape.
         debtorUserId: { type: string, format: uuid }
         creditorUserId: { type: string, format: uuid }
         amount:
@@ -4480,8 +4491,8 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
   /households/{householdId}/ledger/adjustments:
     post:
-      summary: Create a manual ledger adjustment
-      description: Owners and admins can create an audited adjustment transaction that opens a new debt obligation.
+      summary: Create a ledger adjustment
+      description: Owners and admins can create an audited manual or FX-difference adjustment transaction that opens a new debt obligation.
       parameters:
         - in: header
           name: Idempotency-Key

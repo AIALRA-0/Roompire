@@ -63,6 +63,7 @@ export const reverseLedgerObligationSchema = z.object({
 });
 
 export const createLedgerAdjustmentSchema = z.object({
+  adjustmentType: z.enum(["MANUAL", "FX_DIFFERENCE"]).default("MANUAL"),
   debtorUserId: z.string().uuid(),
   creditorUserId: z.string().uuid(),
   amount: decimalStringSchema,
@@ -745,12 +746,19 @@ export async function createLedgerAdjustmentForHousehold(
       throw new ApiError(403, "FORBIDDEN", "Viewers cannot be adjustment debtors or creditors.");
     }
 
+    const isFxDifferenceAdjustment = data.adjustmentType === "FX_DIFFERENCE";
+    const transactionType = isFxDifferenceAdjustment
+      ? LedgerTransactionType.FX_ADJUSTMENT
+      : LedgerTransactionType.ADJUSTMENT;
+    const sourceType = isFxDifferenceAdjustment ? "FxDifferenceAdjustment" : "ManualAdjustment";
+    const descriptionPrefix = isFxDifferenceAdjustment ? "FX adjustment" : "Adjustment";
+
     const ledgerTransaction = await tx.ledgerTransaction.create({
       data: {
         householdId,
-        type: LedgerTransactionType.ADJUSTMENT,
-        description: `Adjustment: ${data.reason}`,
-        sourceType: "ManualAdjustment",
+        type: transactionType,
+        description: `${descriptionPrefix}: ${data.reason}`,
+        sourceType,
         createdByUserId: userId,
         occurredAt,
       },
@@ -775,10 +783,14 @@ export async function createLedgerAdjustmentForHousehold(
       data: {
         householdId,
         actorUserId: userId,
-        action: "ledger_adjustment.created",
+        action: isFxDifferenceAdjustment
+          ? "ledger_fx_adjustment.created"
+          : "ledger_adjustment.created",
         entityType: "LedgerTransaction",
         entityId: ledgerTransaction.id,
         after: {
+          adjustmentType: data.adjustmentType,
+          transactionType,
           debtObligationId: obligation.id,
           debtorUserId: data.debtorUserId,
           creditorUserId: data.creditorUserId,

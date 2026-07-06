@@ -47,6 +47,7 @@ Use this checklist before declaring a milestone complete.
 - [x] Month close blocks formal ledger writes in closed periods until reopened.
 - [ ] Money uses decimal arithmetic.
 - [x] FX locks store provider/rate/rate date/locked timestamp.
+- [x] FX-difference corrections use append-only `FX_ADJUSTMENT` ledger transactions.
 - [ ] Audit event emitted for critical mutation.
 
 ## Security

@@ -18,6 +18,9 @@ type LedgerCorrectionLabels = {
   corrections: string;
   correctionsHint: string;
   manualAdjustment: string;
+  adjustmentType: string;
+  adjustmentTypeManual: string;
+  adjustmentTypeFxDifference: string;
   reverseObligation: string;
   debtor: string;
   creditor: string;
@@ -138,6 +141,7 @@ export function LedgerCorrectionActions({
       await postLedgerCorrection(
         `/api/v1/households/${householdId}/ledger/adjustments`,
         {
+          adjustmentType: String(formData.get("adjustmentType") ?? "MANUAL"),
           debtorUserId: String(formData.get("debtorUserId") ?? ""),
           creditorUserId: String(formData.get("creditorUserId") ?? ""),
           amount: String(formData.get("amount") ?? ""),
@@ -196,6 +200,17 @@ export function LedgerCorrectionActions({
           <div>
             <h3 className="text-sm font-semibold">{labels.manualAdjustment}</h3>
           </div>
+          <Field label={labels.adjustmentType}>
+            <select
+              className="h-10 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-sm focus-ring"
+              data-testid="ledger-adjustment-type"
+              name="adjustmentType"
+              required
+            >
+              <option value="MANUAL">{labels.adjustmentTypeManual}</option>
+              <option value="FX_DIFFERENCE">{labels.adjustmentTypeFxDifference}</option>
+            </select>
+          </Field>
           <div className="grid min-w-0 gap-3 sm:grid-cols-2">
             <Field label={labels.debtor}>
               <select
