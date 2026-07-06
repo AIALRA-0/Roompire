@@ -8,6 +8,8 @@ Environment=ROOMPIRE_OPS_STATUS_FILE_HOST=ops/status/ops-status.json
 Environment=ROOMPIRE_SMOKE_STATUS_FILE=ops/status/latest-smoke.json
 Environment=ROOMPIRE_RESTORE_DRILL_STATUS_FILE=ops/status/latest-restore-drill.json
 Environment=ROOMPIRE_SHARED_APP_STORAGE_STATUS_FILE=ops/status/shared-app-storage.json
+Environment=ROOMPIRE_BACKUP_PASSPHRASE_ESCROW_STATUS_FILE=ops/status/backup-passphrase-escrow.json
+Environment=ROOMPIRE_BACKUP_PASSPHRASE_ESCROW_STALE_MS=15552000000
 Environment=ROOMPIRE_ROOT_STORAGE_INVENTORY_LIMIT=8
 Environment=ROOMPIRE_ROOT_STORAGE_INVENTORY_TIMEOUT_MS=60000
 ExecStart=/usr/bin/env bash ./scripts/collect_ops_status.sh

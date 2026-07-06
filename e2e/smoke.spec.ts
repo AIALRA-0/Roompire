@@ -519,6 +519,18 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
           checkedAt: generatedAt,
           error: null,
         },
+        backupPassphraseEscrow: {
+          configured: true,
+          statusFile: "ops/status/backup-passphrase-escrow.json",
+          method: "password-manager",
+          custodian: "owner",
+          recordedAt: generatedAt,
+          lastVerifiedAt: generatedAt,
+          staleMs: 180 * 24 * 60 * 60 * 1000,
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
         backupOffsite: {
           mode: "local",
           configured: true,
@@ -2105,6 +2117,10 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-backup-encryption-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-encryption-mode")).toContainText("Enabled");
     await expect(page.getByTestId("ops-backup-plaintext-artifacts")).toContainText("0");
+    await expect(page.getByTestId("ops-backup-passphrase-escrow-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-backup-passphrase-escrow-method")).toContainText(
+      "password-manager",
+    );
     await expect(page.getByTestId("ops-backup-offsite-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-offsite-mode")).toContainText("Local mount");
     await expect(page.getByTestId("ops-backup-offsite-artifacts")).toContainText("6");
@@ -2173,6 +2189,11 @@ test.describe("Roompire real browser smoke", () => {
           configured: string;
           encryptedArtifacts: number;
           plaintextArtifacts: number;
+        };
+        backupPassphraseEscrow: {
+          configured: boolean;
+          method: string | null;
+          status: string;
         };
         backupOffsite: {
           mode: string;
@@ -2279,6 +2300,13 @@ test.describe("Roompire real browser smoke", () => {
         configured: "enabled",
         encryptedArtifacts: 3,
         plaintextArtifacts: 0,
+      }),
+    );
+    expect(opsPayload.status.backupPassphraseEscrow).toEqual(
+      expect.objectContaining({
+        configured: true,
+        method: "password-manager",
+        status: "ok",
       }),
     );
     expect(opsPayload.status.backupOffsite).toEqual(

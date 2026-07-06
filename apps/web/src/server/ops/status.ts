@@ -242,6 +242,18 @@ export type OpsStatusSnapshot = {
     checkedAt: string | null;
     error: string | null;
   };
+  backupPassphraseEscrow: {
+    configured: boolean;
+    statusFile: string;
+    method: string | null;
+    custodian: string | null;
+    recordedAt: string | null;
+    lastVerifiedAt: string | null;
+    staleMs: number;
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
   backupOffsite: {
     mode: BackupOffsiteMode;
     configured: boolean;
@@ -311,6 +323,10 @@ const restoreDrillStatusStaleMs = positiveEnvNumber(
 const sharedAppStorageStatusStaleMs = positiveEnvNumber(
   "ROOMPIRE_SHARED_APP_STORAGE_STATUS_STALE_MS",
   48 * 60 * 60 * 1000,
+);
+const backupPassphraseEscrowStaleMs = positiveEnvNumber(
+  "ROOMPIRE_BACKUP_PASSPHRASE_ESCROW_STALE_MS",
+  180 * 24 * 60 * 60 * 1000,
 );
 
 function positiveEnvNumber(name: string, fallback: number) {
@@ -915,6 +931,14 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("backup_encryption_unknown");
   }
 
+  if (status.backupEncryption.configured === "enabled") {
+    if (!status.backupPassphraseEscrow.configured) {
+      warnings.push("backup_passphrase_escrow_missing");
+    } else if (status.backupPassphraseEscrow.status !== "ok") {
+      warnings.push("backup_passphrase_escrow_attention");
+    }
+  }
+
   if (!status.backupOffsite.configured || status.backupOffsite.mode === "disabled") {
     warnings.push("backup_offsite_disabled");
   } else {
@@ -993,6 +1017,9 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawHousekeepingTimer = isRecord(raw.housekeepingTimer) ? raw.housekeepingTimer : {};
   const rawHousekeepingService = isRecord(raw.housekeepingService) ? raw.housekeepingService : {};
   const rawBackupEncryption = isRecord(raw.backupEncryption) ? raw.backupEncryption : {};
+  const rawBackupPassphraseEscrow = isRecord(raw.backupPassphraseEscrow)
+    ? raw.backupPassphraseEscrow
+    : {};
   const rawBackupOffsite = isRecord(raw.backupOffsite) ? raw.backupOffsite : {};
   const availableBytes = numberValue(rawDisk.availableBytes);
   const usedPercent = numberValue(rawDisk.usedPercent);
@@ -1153,6 +1180,21 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       status: healthStateValue(rawBackupEncryption.status),
       checkedAt: nullableStringValue(rawBackupEncryption.checkedAt),
       error: nullableStringValue(rawBackupEncryption.error),
+    },
+    backupPassphraseEscrow: {
+      configured: booleanValue(rawBackupPassphraseEscrow.configured),
+      statusFile: stringValue(
+        rawBackupPassphraseEscrow.statusFile,
+        "ops/status/backup-passphrase-escrow.json",
+      ),
+      method: nullableStringValue(rawBackupPassphraseEscrow.method),
+      custodian: nullableStringValue(rawBackupPassphraseEscrow.custodian),
+      recordedAt: nullableStringValue(rawBackupPassphraseEscrow.recordedAt),
+      lastVerifiedAt: nullableStringValue(rawBackupPassphraseEscrow.lastVerifiedAt),
+      staleMs: numberValue(rawBackupPassphraseEscrow.staleMs) ?? backupPassphraseEscrowStaleMs,
+      status: healthStateValue(rawBackupPassphraseEscrow.status),
+      checkedAt: nullableStringValue(rawBackupPassphraseEscrow.checkedAt),
+      error: nullableStringValue(rawBackupPassphraseEscrow.error),
     },
     backupOffsite: {
       mode: backupOffsiteModeValue(rawBackupOffsite.mode),
@@ -1344,6 +1386,20 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       plaintextArtifacts: 0,
       missingSha256Sidecars: 0,
       latestEncryptedArtifact: null,
+      status: "unknown" as const,
+      checkedAt: new Date().toISOString(),
+      error: "Host status file has not been generated.",
+    },
+    backupPassphraseEscrow: {
+      configured: false,
+      statusFile:
+        process.env.ROOMPIRE_BACKUP_PASSPHRASE_ESCROW_STATUS_FILE?.trim() ||
+        "ops/status/backup-passphrase-escrow.json",
+      method: null,
+      custodian: null,
+      recordedAt: null,
+      lastVerifiedAt: null,
+      staleMs: backupPassphraseEscrowStaleMs,
       status: "unknown" as const,
       checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",

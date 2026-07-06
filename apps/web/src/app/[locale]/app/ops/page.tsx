@@ -340,6 +340,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     backup_encryption_sidecar_missing: ops("warningBackupEncryptionSidecarMissing"),
     backup_passphrase_missing: ops("warningBackupPassphraseMissing"),
     backup_encryption_unknown: ops("warningBackupEncryptionUnknown"),
+    backup_passphrase_escrow_missing: ops("warningBackupPassphraseEscrowMissing"),
+    backup_passphrase_escrow_attention: ops("warningBackupPassphraseEscrowAttention"),
     backup_offsite_disabled: ops("warningBackupOffsiteDisabled"),
     backup_offsite_attention: ops("warningBackupOffsiteAttention"),
     backup_offsite_same_filesystem: ops("warningBackupOffsiteSameFilesystem"),
@@ -1208,6 +1210,44 @@ export default async function OpsPage({ params }: PageProps) {
                     </div>
                     {status.backupEncryption.error ? (
                       <p className="mt-3 text-sm text-rose-700">{status.backupEncryption.error}</p>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">
+                        {ops("passphraseEscrow")}
+                      </span>
+                      <Badge
+                        data-testid="ops-backup-passphrase-escrow-status"
+                        variant={healthVariant(status.backupPassphraseEscrow.status)}
+                      >
+                        {healthLabel(ops, status.backupPassphraseEscrow.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("escrowMethod")}
+                        testId="ops-backup-passphrase-escrow-method"
+                        value={status.backupPassphraseEscrow.method ?? "—"}
+                      />
+                      <MetricRow
+                        label={ops("escrowCustodian")}
+                        value={status.backupPassphraseEscrow.custodian ?? "—"}
+                      />
+                      <MetricRow
+                        label={ops("escrowLastVerified")}
+                        testId="ops-backup-passphrase-escrow-verified"
+                        value={formatDateTime(locale, status.backupPassphraseEscrow.lastVerifiedAt)}
+                      />
+                      <MetricRow
+                        label={ops("escrowStatusFile")}
+                        value={status.backupPassphraseEscrow.statusFile}
+                      />
+                    </div>
+                    {status.backupPassphraseEscrow.error ? (
+                      <p className="mt-3 text-sm text-rose-700">
+                        {status.backupPassphraseEscrow.error}
+                      </p>
                     ) : null}
                   </div>
                   <div className="mt-2 border-t border-border pt-3">

@@ -1888,6 +1888,7 @@ components:
           housekeepingTimer,
           housekeepingService,
           backupEncryption,
+          backupPassphraseEscrow,
           backupOffsite,
           smokeTimer,
           smokeService,
@@ -2396,6 +2397,51 @@ components:
             latestEncryptedArtifact:
               type: string
               nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        backupPassphraseEscrow:
+          type: object
+          required:
+            [
+              configured,
+              statusFile,
+              method,
+              custodian,
+              recordedAt,
+              lastVerifiedAt,
+              staleMs,
+              status,
+              checkedAt,
+              error,
+            ]
+          properties:
+            configured: { type: boolean }
+            statusFile:
+              type: string
+              example: ops/status/backup-passphrase-escrow.json
+            method:
+              type: string
+              nullable: true
+              example: password-manager
+            custodian:
+              type: string
+              nullable: true
+              example: owner
+            recordedAt:
+              type: string
+              format: date-time
+              nullable: true
+            lastVerifiedAt:
+              type: string
+              format: date-time
+              nullable: true
+            staleMs: { type: integer, example: 15552000000 }
             status: { $ref: "#/components/schemas/OpsHealthState" }
             checkedAt:
               type: string

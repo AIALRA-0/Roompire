@@ -24,6 +24,17 @@ const housekeepingServiceName =
   process.env.ROOMPIRE_HOUSEKEEPING_SERVICE || "roompire-housekeeping.service";
 const backupRoot =
   process.env.ROOMPIRE_BACKUP_ROOT || process.env.BACKUP_ROOT || "/srv/aialra/backups/roompire";
+const backupPassphraseEscrowStatusPath =
+  process.env.ROOMPIRE_BACKUP_PASSPHRASE_ESCROW_STATUS_FILE ||
+  "ops/status/backup-passphrase-escrow.json";
+const configuredBackupPassphraseEscrowStaleMs = Number(
+  process.env.ROOMPIRE_BACKUP_PASSPHRASE_ESCROW_STALE_MS || 180 * 24 * 60 * 60 * 1000,
+);
+const backupPassphraseEscrowStaleMs =
+  Number.isFinite(configuredBackupPassphraseEscrowStaleMs) &&
+  configuredBackupPassphraseEscrowStaleMs > 0
+    ? configuredBackupPassphraseEscrowStaleMs
+    : 180 * 24 * 60 * 60 * 1000;
 const backupOffsiteStatusPath =
   process.env.ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE || "ops/status/backup-offsite.json";
 const smokeStatusPath = process.env.ROOMPIRE_SMOKE_STATUS_FILE || "ops/status/latest-smoke.json";
@@ -434,6 +445,75 @@ function collectBackupEncryption() {
       latestEncryptedArtifact: null,
       status: "unknown",
       checkedAt: generatedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function collectBackupPassphraseEscrow() {
+  const base = {
+    statusFile: backupPassphraseEscrowStatusPath,
+    staleMs: backupPassphraseEscrowStaleMs,
+    checkedAt: generatedAt,
+  };
+
+  if (!fs.existsSync(backupPassphraseEscrowStatusPath)) {
+    return {
+      ...base,
+      configured: false,
+      method: null,
+      custodian: null,
+      recordedAt: null,
+      lastVerifiedAt: null,
+      status: "warning",
+      error: "Backup passphrase escrow has not been recorded.",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(backupPassphraseEscrowStatusPath, "utf8"));
+    const method = typeof parsed.method === "string" && parsed.method ? parsed.method : null;
+    const custodian =
+      typeof parsed.custodian === "string" && parsed.custodian ? parsed.custodian : null;
+    const recordedAt = typeof parsed.generatedAt === "string" ? parsed.generatedAt : null;
+    const lastVerifiedAt =
+      typeof parsed.lastVerifiedAt === "string" ? parsed.lastVerifiedAt : recordedAt;
+    const errors = [];
+    const lastVerifiedMs = lastVerifiedAt ? Date.parse(lastVerifiedAt) : Number.NaN;
+
+    if (!method) {
+      errors.push("Backup passphrase escrow method is not recorded.");
+    }
+
+    if (!lastVerifiedAt || !Number.isFinite(lastVerifiedMs)) {
+      errors.push("Backup passphrase escrow verification time is not recorded.");
+    } else if (Date.now() - lastVerifiedMs > backupPassphraseEscrowStaleMs) {
+      errors.push("Backup passphrase escrow verification is stale.");
+    }
+
+    if (typeof parsed.error === "string" && parsed.error) {
+      errors.push(parsed.error);
+    }
+
+    return {
+      ...base,
+      configured: true,
+      method,
+      custodian,
+      recordedAt,
+      lastVerifiedAt,
+      status: errors.length > 0 ? "warning" : healthStateValue(parsed.status),
+      error: errors.join("; ") || null,
+    };
+  } catch (error) {
+    return {
+      ...base,
+      configured: true,
+      method: null,
+      custodian: null,
+      recordedAt: null,
+      lastVerifiedAt: null,
+      status: "unknown",
       error: error instanceof Error ? error.message : String(error),
     };
   }
@@ -1469,6 +1549,7 @@ const snapshot = {
   housekeepingTimer: collectHousekeepingTimer(),
   housekeepingService: collectHousekeepingService(),
   backupEncryption: collectBackupEncryption(),
+  backupPassphraseEscrow: collectBackupPassphraseEscrow(),
   backupOffsite: collectBackupOffsite(),
   latestSmoke: readLatestSmoke(),
   latestRestoreDrill: readLatestRestoreDrill(),
