@@ -44,7 +44,49 @@ const frankfurterResponseSchema = z.object({
   rates: z.record(z.string(), z.number()),
 });
 
+const ecbObservationValueSchema = z.union([z.number(), z.string(), z.null()]);
+const ecbResponseSchema = z.object({
+  dataSets: z.array(
+    z.object({
+      series: z
+        .record(
+          z.string(),
+          z.object({
+            observations: z.record(z.string(), z.array(ecbObservationValueSchema)),
+          }),
+        )
+        .optional(),
+    }),
+  ),
+  structure: z.object({
+    dimensions: z.object({
+      series: z.array(
+        z.object({
+          id: z.string(),
+          values: z.array(
+            z.object({
+              id: z.string(),
+            }),
+          ),
+        }),
+      ),
+      observation: z.array(
+        z.object({
+          id: z.string(),
+          values: z.array(
+            z.object({
+              id: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            }),
+          ),
+        }),
+      ),
+    }),
+  }),
+});
+
 const DEFAULT_FRANKFURTER_BASE_URL = "https://api.frankfurter.app";
+const DEFAULT_ECB_BASE_URL = "https://data-api.ecb.europa.eu/service/data/EXR";
+const ECB_REFERENCE_CURRENCY = "EUR";
 
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
@@ -52,6 +94,14 @@ function dateOnlyToUtc(value: string) {
 
 function dateToDateOnly(value: Date) {
   return value.toISOString().slice(0, 10);
+}
+
+function dateOnlyDaysBefore(value: string, days: number) {
+  const date = dateOnlyToUtc(value);
+
+  date.setUTCDate(date.getUTCDate() - days);
+
+  return dateToDateOnly(date);
 }
 
 function currency(value: string) {
@@ -162,6 +212,199 @@ export class FrankfurterFxProvider implements FxProvider {
   }
 }
 
+function decimalFromObservation(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  try {
+    const decimal = new Decimal(value);
+
+    return decimal.isFinite() && decimal.gt(0) ? decimal : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseEcbRatesByCurrency(input: {
+  data: unknown;
+  expectedCurrencies: string[];
+}): Map<string, Map<string, Decimal>> {
+  const parsed = ecbResponseSchema.safeParse(input.data);
+
+  if (!parsed.success) {
+    throw new Error("ECB response was invalid.");
+  }
+
+  const seriesDimensions = parsed.data.structure.dimensions.series;
+  const currencyDimensionIndex = seriesDimensions.findIndex(
+    (dimension) => dimension.id === "CURRENCY",
+  );
+  const timeDimension = parsed.data.structure.dimensions.observation.find(
+    (dimension) => dimension.id === "TIME_PERIOD",
+  );
+
+  if (currencyDimensionIndex < 0 || !timeDimension) {
+    throw new Error("ECB response did not include currency/time dimensions.");
+  }
+
+  const ratesByCurrency = new Map<string, Map<string, Decimal>>();
+  const expectedCurrencies = new Set(input.expectedCurrencies);
+
+  for (const dataset of parsed.data.dataSets) {
+    for (const [seriesKey, series] of Object.entries(dataset.series ?? {})) {
+      const currencyIndex = Number(seriesKey.split(":")[currencyDimensionIndex]);
+      const seriesCurrency = currency(
+        seriesDimensions[currencyDimensionIndex]?.values[currencyIndex]?.id ?? "",
+      );
+
+      if (!expectedCurrencies.has(seriesCurrency)) {
+        continue;
+      }
+
+      const currencyRates = ratesByCurrency.get(seriesCurrency) ?? new Map<string, Decimal>();
+
+      for (const [observationIndex, observation] of Object.entries(series.observations)) {
+        const date = timeDimension.values[Number(observationIndex)]?.id;
+        const rate = decimalFromObservation(observation[0]);
+
+        if (date && rate) {
+          currencyRates.set(date, rate);
+        }
+      }
+
+      if (currencyRates.size > 0) {
+        ratesByCurrency.set(seriesCurrency, currencyRates);
+      }
+    }
+  }
+
+  return ratesByCurrency;
+}
+
+function latestCommonEcbRate(input: {
+  baseCurrency: string;
+  quoteCurrency: string;
+  ratesByCurrency: Map<string, Map<string, Decimal>>;
+}) {
+  const baseCurrency = currency(input.baseCurrency);
+  const quoteCurrency = currency(input.quoteCurrency);
+  const candidateDates = new Set<string>();
+
+  for (const ratesByDate of input.ratesByCurrency.values()) {
+    for (const date of ratesByDate.keys()) {
+      candidateDates.add(date);
+    }
+  }
+
+  for (const date of Array.from(candidateDates).sort().reverse()) {
+    const basePerEur =
+      baseCurrency === ECB_REFERENCE_CURRENCY
+        ? new Decimal(1)
+        : (input.ratesByCurrency.get(baseCurrency)?.get(date) ?? null);
+    const quotePerEur =
+      quoteCurrency === ECB_REFERENCE_CURRENCY
+        ? new Decimal(1)
+        : (input.ratesByCurrency.get(quoteCurrency)?.get(date) ?? null);
+
+    if (!basePerEur || !quotePerEur) {
+      continue;
+    }
+
+    return {
+      rate: quotePerEur.div(basePerEur),
+      rateDate: date,
+      basePerEur,
+      quotePerEur,
+    };
+  }
+
+  return null;
+}
+
+export class EcbFxProvider implements FxProvider {
+  readonly baseUrl: string;
+  readonly name: string;
+
+  constructor(input: { baseUrl?: string; name?: string } = {}) {
+    this.baseUrl = normalizeBaseUrl(input.baseUrl ?? DEFAULT_ECB_BASE_URL);
+    this.name = input.name ?? "ecb";
+  }
+
+  async getRate(input: {
+    baseCurrency: string;
+    quoteCurrency: string;
+    date: string;
+  }): Promise<FxRateQuote> {
+    const baseCurrency = currency(input.baseCurrency);
+    const quoteCurrency = currency(input.quoteCurrency);
+    const requestedCurrencies = Array.from(
+      new Set([baseCurrency, quoteCurrency].filter((item) => item !== ECB_REFERENCE_CURRENCY)),
+    );
+
+    if (requestedCurrencies.length === 0) {
+      return {
+        rate: new Decimal(1),
+        rateDate: input.date,
+        provider: this.name,
+        fetchedAt: new Date(),
+        sourceMeta: {
+          requestedBaseCurrency: baseCurrency,
+          requestedQuoteCurrency: quoteCurrency,
+          requestedDate: input.date,
+          providerBaseUrl: this.baseUrl,
+          referenceCurrency: ECB_REFERENCE_CURRENCY,
+        },
+      };
+    }
+
+    const url = new URL(`D.${requestedCurrencies.join("+")}.EUR.SP00.A`, this.baseUrl);
+
+    url.searchParams.set("startPeriod", dateOnlyDaysBefore(input.date, 7));
+    url.searchParams.set("endPeriod", input.date);
+    url.searchParams.set("format", "jsondata");
+
+    const response = await fetch(url, {
+      redirect: "follow",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(`ECB returned ${response.status}`);
+    }
+
+    const ratesByCurrency = parseEcbRatesByCurrency({
+      data: await response.json(),
+      expectedCurrencies: requestedCurrencies,
+    });
+    const crossRate = latestCommonEcbRate({
+      baseCurrency,
+      quoteCurrency,
+      ratesByCurrency,
+    });
+
+    if (!crossRate) {
+      throw new Error("ECB response did not contain a usable quote for the requested currencies.");
+    }
+
+    return {
+      rate: crossRate.rate,
+      rateDate: crossRate.rateDate,
+      provider: this.name,
+      fetchedAt: new Date(),
+      sourceMeta: {
+        requestedBaseCurrency: baseCurrency,
+        requestedQuoteCurrency: quoteCurrency,
+        requestedDate: input.date,
+        providerBaseUrl: this.baseUrl,
+        referenceCurrency: ECB_REFERENCE_CURRENCY,
+        basePerEur: crossRate.basePerEur.toString(),
+        quotePerEur: crossRate.quotePerEur.toString(),
+      },
+    };
+  }
+}
+
 export class FallbackFxProvider implements FxProvider {
   readonly name: string;
 
@@ -257,6 +500,42 @@ export function resolveConfiguredFxProviders(
 
         seenProviders.add(key);
         providers.push(new FrankfurterFxProvider({ baseUrl, name }));
+      });
+
+      continue;
+    }
+
+    if (providerName === "ecb") {
+      let baseUrls: string[];
+
+      try {
+        baseUrls = Array.from(
+          new Set(
+            parseList(env.ROOMPIRE_FX_ECB_BASE_URLS, [DEFAULT_ECB_BASE_URL]).map((baseUrl) =>
+              normalizeBaseUrl(baseUrl),
+            ),
+          ),
+        );
+      } catch (error) {
+        throw new ApiError(
+          500,
+          "FX_PROVIDER_CONFIG_INVALID",
+          `Invalid ROOMPIRE_FX_ECB_BASE_URLS: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
+      baseUrls.forEach((baseUrl, index) => {
+        const name = index === 0 ? "ecb" : `ecb-${index + 1}`;
+        const key = `${name}:${baseUrl}`;
+
+        if (seenProviders.has(key)) {
+          return;
+        }
+
+        seenProviders.add(key);
+        providers.push(new EcbFxProvider({ baseUrl, name }));
       });
 
       continue;

@@ -124,7 +124,7 @@ For public/staging deployments, configure site-level Basic Auth and private file
 - `ROOMPIRE_SITE_GATE_USERNAME`
 - `ROOMPIRE_SITE_GATE_PASSWORD`
 - `ROOMPIRE_SITE_GATE_SESSION_EMAIL` when the gate username is not the desired app user email
-- `ROOMPIRE_FX_PROVIDER=frankfurter` for live historical FX lookup, or `cache-only` to require preloaded `FxRate` rows/manual rates
+- `ROOMPIRE_FX_PROVIDER=frankfurter,ecb` for live historical FX lookup with provider-family fallback, or `cache-only` to require preloaded `FxRate` rows/manual rates
 - `ROOMPIRE_FILE_STORAGE_PROVIDER=s3` plus `ROOMPIRE_S3_*` settings for R2/S3/MinIO private receipt storage
 - `ROOMPIRE_RATE_LIMITS_ENABLED=true` plus optional `ROOMPIRE_RATE_LIMIT_*` limits/window overrides for invite, upload-intent, comment, and share-decision abuse controls
 
