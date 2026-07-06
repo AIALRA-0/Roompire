@@ -27,6 +27,8 @@ type HouseholdSummary = {
   fxPolicy: FxPolicy;
   approvalPolicy: ApprovalPolicy;
   clearingPolicy: ClearingPolicy;
+  operationalRetentionDays: number | null;
+  attachmentRetentionDays: number | null;
 };
 
 type MemberSummary = {
@@ -96,6 +98,10 @@ type IdentityLabels = {
   fxPolicy: string;
   approvalPolicy: string;
   clearingPolicy: string;
+  dataRetention: string;
+  operationalRetentionDays: string;
+  attachmentRetentionDays: string;
+  retentionIndefinite: string;
   approvalEachDebtor: string;
   approvalAllParticipants: string;
   approvalPayerOnly: string;
@@ -299,6 +305,18 @@ function clearingPolicyOptions(labels: IdentityLabels) {
   ] satisfies Array<{ value: ClearingPolicy; label: string }>;
 }
 
+function retentionDaysInputValue(value: FormDataEntryValue | null) {
+  const trimmed = String(value ?? "").trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const numericValue = Number(trimmed);
+
+  return Number.isFinite(numericValue) ? numericValue : trimmed;
+}
+
 export function IdentityWorkspace({
   locale,
   currentUserEmail,
@@ -460,6 +478,10 @@ export function IdentityWorkspace({
           fxPolicy: String(formData.get("fxPolicy") ?? "LOCK_AT_EXPENSE_DATE"),
           approvalPolicy: String(formData.get("approvalPolicy") ?? "PAYER_AND_EACH_DEBTOR"),
           clearingPolicy: String(formData.get("clearingPolicy") ?? "DIRECT_ONLY"),
+          operationalRetentionDays: retentionDaysInputValue(
+            formData.get("operationalRetentionDays"),
+          ),
+          attachmentRetentionDays: retentionDaysInputValue(formData.get("attachmentRetentionDays")),
         },
         labels.errorFallback,
         "PATCH",
@@ -1020,6 +1042,37 @@ export function IdentityWorkspace({
                   ))}
                 </select>
               </Field>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold">{labels.dataRetention}</h3>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Field label={labels.operationalRetentionDays}>
+                  <input
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="settings-household-operational-retention-days"
+                    defaultValue={activeHousehold?.operationalRetentionDays ?? ""}
+                    disabled={settingsDisabled}
+                    max={3650}
+                    min={30}
+                    name="operationalRetentionDays"
+                    placeholder={labels.retentionIndefinite}
+                    type="number"
+                  />
+                </Field>
+                <Field label={labels.attachmentRetentionDays}>
+                  <input
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+                    data-testid="settings-household-attachment-retention-days"
+                    defaultValue={activeHousehold?.attachmentRetentionDays ?? ""}
+                    disabled={settingsDisabled}
+                    max={3650}
+                    min={30}
+                    name="attachmentRetentionDays"
+                    placeholder={labels.retentionIndefinite}
+                    type="number"
+                  />
+                </Field>
+              </div>
             </div>
             <Button disabled={isPending || settingsDisabled} type="submit">
               {isPending ? labels.working : labels.saveSettings}

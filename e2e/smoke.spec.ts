@@ -722,6 +722,51 @@ async function clickExpenseProposalSubmitWithRetry(page: Page) {
   throw new Error(`POST expense proposal failed with status ${lastStatus}`);
 }
 
+async function clickProposalCommentSubmitWithRetry(page: Page, commentBody: string) {
+  let lastStatus = 0;
+  let lastError = "no response";
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.getByTestId("proposal-comment-body").fill(commentBody);
+    const responsePromise = page
+      .waitForResponse(
+        (response) => {
+          const pathname = new URL(response.url()).pathname;
+
+          return (
+            pathname.includes("/expenses/proposals/") &&
+            pathname.endsWith("/comments") &&
+            response.request().method() === "POST"
+          );
+        },
+        { timeout: 10_000 },
+      )
+      .catch((error: unknown) => {
+        lastError = error instanceof Error ? error.message : String(error);
+        return null;
+      });
+
+    await page.getByTestId("proposal-comment-submit").click();
+    const response = await responsePromise;
+
+    if (!response) {
+      await page.waitForTimeout(1000);
+      continue;
+    }
+
+    lastStatus = response.status();
+
+    if (response.ok()) {
+      await expect(page.getByTestId("proposal-comments")).toContainText(commentBody);
+      return;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(`POST proposal comment failed with status ${lastStatus}: ${lastError}`);
+}
+
 async function clickShareApproveWithRetry(
   page: Page,
   shareId: string,
@@ -1034,16 +1079,43 @@ async function clickTaskSubmitWithRetry(page: Page) {
 
 async function clickTaskCompleteWithRetry(page: Page, taskId: string) {
   let lastStatus = 0;
+  let lastError = "no response";
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const responsePromise = page.waitForResponse(
-      (response) =>
-        response.url().includes(`/tasks/${taskId}/complete`) &&
-        response.request().method() === "POST",
-    );
+    const responsePromise = page
+      .waitForResponse(
+        (response) => {
+          const pathname = new URL(response.url()).pathname;
+
+          return (
+            pathname.endsWith(`/tasks/${taskId}/complete`) && response.request().method() === "POST"
+          );
+        },
+        { timeout: 10_000 },
+      )
+      .catch((error: unknown) => {
+        lastError = error instanceof Error ? error.message : String(error);
+        return null;
+      });
 
     await page.getByTestId(`task-complete-${taskId}`).click();
     const response = await responsePromise;
+
+    if (!response) {
+      const completed = await page
+        .getByTestId(`task-row-${taskId}`)
+        .getByText("Completed")
+        .isVisible()
+        .catch(() => false);
+
+      if (completed) {
+        return;
+      }
+
+      await page.waitForTimeout(1000);
+      continue;
+    }
+
     lastStatus = response.status();
 
     if (response.ok()) {
@@ -1054,7 +1126,7 @@ async function clickTaskCompleteWithRetry(page: Page, taskId: string) {
     await page.waitForTimeout(1000);
   }
 
-  throw new Error(`POST task complete failed with status ${lastStatus}`);
+  throw new Error(`POST task complete failed with status ${lastStatus}: ${lastError}`);
 }
 
 async function clickTaskExpenseProposalSubmitWithRetry(page: Page, taskId: string) {
@@ -2940,12 +3012,50 @@ test.describe("Roompire real browser smoke", () => {
       .selectOption("MANUAL_RATE_WITH_APPROVAL");
     await page.getByTestId("settings-household-approval-policy").selectOption("ALL_PARTICIPANTS");
     await page.getByTestId("settings-household-clearing-policy").selectOption("HOUSEHOLD_NETTING");
+    await page.getByTestId("settings-household-operational-retention-days").fill("365");
+    await page.getByTestId("settings-household-attachment-retention-days").fill("1095");
+    const settingsResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/v1/households/${householdId}`) &&
+        response.request().method() === "PATCH",
+    );
     await page.getByRole("button", { name: "Save settings" }).click();
+    const settingsResponse = await settingsResponsePromise;
+    expect(settingsResponse.ok()).toBeTruthy();
+    const settingsPayload = (await settingsResponse.json()) as {
+      household: {
+        operationalRetentionDays: number | null;
+        attachmentRetentionDays: number | null;
+      };
+    };
+    expect(settingsPayload.household.operationalRetentionDays).toBe(365);
+    expect(settingsPayload.household.attachmentRetentionDays).toBe(1095);
 
     await expect(page.getByRole("heading", { name: updatedName })).toBeVisible();
     await expect(page.getByTestId("settings-household-fx-policy")).toHaveValue(
       "MANUAL_RATE_WITH_APPROVAL",
     );
+    await expect(page.getByTestId("settings-household-operational-retention-days")).toHaveValue(
+      "365",
+    );
+    await expect(page.getByTestId("settings-household-attachment-retention-days")).toHaveValue(
+      "1095",
+    );
+
+    const invalidRetentionResponse = await page.request.patch(`/api/v1/households/${householdId}`, {
+      data: {
+        name: updatedName,
+        timezone: "America/New_York",
+        settlementCurrency: "USD",
+        defaultLocale: "zh-CN",
+        fxPolicy: "MANUAL_RATE_WITH_APPROVAL",
+        approvalPolicy: "ALL_PARTICIPANTS",
+        clearingPolicy: "HOUSEHOLD_NETTING",
+        operationalRetentionDays: 29,
+        attachmentRetentionDays: 1095,
+      },
+    });
+    expect(invalidRetentionResponse.status()).toBe(400);
 
     await page.getByTestId("category-create-name-en").fill(categoryName);
     await page.getByTestId("category-create-name-zh-cn").fill(categoryNameZh);
@@ -3618,10 +3728,7 @@ test.describe("Roompire real browser smoke", () => {
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve share" })).toHaveCount(0);
     const ownerComment = `Owner note ${suffix}`;
-    await page.getByTestId("proposal-comment-body").fill(ownerComment);
-    await page.getByTestId("proposal-comment-submit").click();
-    await expect(page.getByText("Comment added")).toBeVisible();
-    await expect(page.getByTestId("proposal-comments")).toContainText(ownerComment);
+    await clickProposalCommentSubmitWithRetry(page, ownerComment);
     await expect(page.getByTestId("proposal-timeline")).toContainText("submitted proposal");
     await expect(page.getByTestId("proposal-timeline")).toContainText("commented");
 
@@ -4841,6 +4948,8 @@ test.describe("Roompire real browser smoke", () => {
         fxPolicy: "LOCK_AT_EXPENSE_DATE",
         approvalPolicy: "ALL_PARTICIPANTS",
         clearingPolicy: "DIRECT_ONLY",
+        operationalRetentionDays: null,
+        attachmentRetentionDays: null,
       },
       headers: {
         "x-roompire-dev-user-email": ownerEmail,

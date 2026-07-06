@@ -31,6 +31,8 @@ function serializeSessionHousehold(
         fxPolicy: membership.household.fxPolicy,
         approvalPolicy: membership.household.approvalPolicy,
         clearingPolicy: membership.household.clearingPolicy,
+        operationalRetentionDays: membership.household.operationalRetentionDays,
+        attachmentRetentionDays: membership.household.attachmentRetentionDays,
       }
     : null;
 }

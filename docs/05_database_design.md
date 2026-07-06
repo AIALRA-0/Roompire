@@ -64,6 +64,10 @@ PostgreSQL.
 - `MANUAL_RATE_WITH_APPROVAL`
 - `FX_DIFFERENCE_ADJUSTMENT`
 
+### Household data retention settings
+
+`Household.operationalRetentionDays` and `Household.attachmentRetentionDays` are optional integer policy fields. `NULL` means indefinite retention; non-null values must be between 30 and 3650 days. These fields are governance metadata and are audited on settings update. They do not delete formal ledger rows, audit hash-chain events, receipt files, or settlement evidence by themselves.
+
 ### SplitMethod
 
 - `EQUAL`

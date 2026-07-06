@@ -134,6 +134,8 @@ model Household {
   fxPolicy           FxPolicy       @default(LOCK_AT_EXPENSE_DATE)
   approvalPolicy     String         @default("PAYER_AND_EACH_DEBTOR")
   clearingPolicy     ClearingPolicy @default(DIRECT_ONLY)
+  operationalRetentionDays Int?
+  attachmentRetentionDays  Int?
   createdByUserId    String         @db.Uuid
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt

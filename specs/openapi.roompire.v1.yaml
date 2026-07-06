@@ -594,6 +594,8 @@ components:
           fxPolicy,
           approvalPolicy,
           clearingPolicy,
+          operationalRetentionDays,
+          attachmentRetentionDays,
         ]
       properties:
         id: { type: string, format: uuid }
@@ -604,6 +606,18 @@ components:
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
         approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
         clearingPolicy: { $ref: "#/components/schemas/ClearingPolicy" }
+        operationalRetentionDays:
+          type: integer
+          nullable: true
+          minimum: 30
+          maximum: 3650
+          description: Optional household policy for non-financial operational records; null means retain indefinitely.
+        attachmentRetentionDays:
+          type: integer
+          nullable: true
+          minimum: 30
+          maximum: 3650
+          description: Optional household policy for receipts and settlement evidence; null means retain indefinitely.
     HouseholdMembershipSummary:
       type: object
       required:
@@ -616,6 +630,8 @@ components:
           fxPolicy,
           approvalPolicy,
           clearingPolicy,
+          operationalRetentionDays,
+          attachmentRetentionDays,
           role,
         ]
       properties:
@@ -627,6 +643,16 @@ components:
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
         approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
         clearingPolicy: { $ref: "#/components/schemas/ClearingPolicy" }
+        operationalRetentionDays:
+          type: integer
+          nullable: true
+          minimum: 30
+          maximum: 3650
+        attachmentRetentionDays:
+          type: integer
+          nullable: true
+          minimum: 30
+          maximum: 3650
         role: { $ref: "#/components/schemas/Role" }
     CreateHouseholdRequest:
       type: object
@@ -647,6 +673,8 @@ components:
           fxPolicy,
           approvalPolicy,
           clearingPolicy,
+          operationalRetentionDays,
+          attachmentRetentionDays,
         ]
       properties:
         name: { type: string, minLength: 2, maxLength: 80 }
@@ -656,6 +684,16 @@ components:
         fxPolicy: { $ref: "#/components/schemas/HouseholdFxPolicySetting" }
         approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
         clearingPolicy: { $ref: "#/components/schemas/ClearingPolicy" }
+        operationalRetentionDays:
+          type: integer
+          nullable: true
+          minimum: 30
+          maximum: 3650
+        attachmentRetentionDays:
+          type: integer
+          nullable: true
+          minimum: 30
+          maximum: 3650
     ExpenseCategory:
       type: object
       required: [id, key, nameEn, nameZhCn, icon, colorToken, sortOrder, isActive]

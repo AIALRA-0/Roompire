@@ -105,6 +105,8 @@ Current implementation lets owners and admins manage non-self member roles and r
 
 Current category/tag implementation: active household members can list active expense categories and tags. Owners and admins can create, rename/reorder, or archive categories and tags from the household settings page or REST API. Category and tag archiving is soft deletion: historical proposals keep their category reference and tag links, while new expense, task-expense, event-expense, and recurring-template flows only list active categories/tags. Category and tag mutations emit audit events.
 
+Current data-retention settings implementation: household responses include optional `operationalRetentionDays` and `attachmentRetentionDays` policy values. `PATCH /households/{householdId}` lets owners/admins set each value to `null` for indefinite retention or an integer from 30 to 3650 days, records the before/after values in `household.settings_updated`, and does not automatically delete ledger, audit, receipt, or evidence rows. Automated deletion remains a separate future workflow because formal ledger history and audit hash-chain integrity must not be shortened by a settings change alone.
+
 ### Expense proposals
 
 - `GET /households/{householdId}/expenses/proposals`

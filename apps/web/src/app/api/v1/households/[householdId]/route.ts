@@ -26,6 +26,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         fxPolicy: household.fxPolicy,
         approvalPolicy: household.approvalPolicy,
         clearingPolicy: household.clearingPolicy,
+        operationalRetentionDays: household.operationalRetentionDays,
+        attachmentRetentionDays: household.attachmentRetentionDays,
       },
     });
   } catch (error) {

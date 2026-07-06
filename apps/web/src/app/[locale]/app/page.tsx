@@ -204,6 +204,10 @@ export default async function AppPage({ params, searchParams }: PageProps) {
     fxPolicy: identity("fxPolicy"),
     approvalPolicy: identity("approvalPolicy"),
     clearingPolicy: identity("clearingPolicy"),
+    dataRetention: identity("dataRetention"),
+    operationalRetentionDays: identity("operationalRetentionDays"),
+    attachmentRetentionDays: identity("attachmentRetentionDays"),
+    retentionIndefinite: identity("retentionIndefinite"),
     approvalEachDebtor: identity("approvalEachDebtor"),
     approvalAllParticipants: identity("approvalAllParticipants"),
     approvalPayerOnly: identity("approvalPayerOnly"),
@@ -689,6 +693,8 @@ export default async function AppPage({ params, searchParams }: PageProps) {
                     "PAYER_AND_EACH_DEBTOR" | "ALL_PARTICIPANTS" | "PAYER_ONLY",
                   clearingPolicy: membership.household.clearingPolicy as
                     "DIRECT_ONLY" | "HOUSEHOLD_NETTING",
+                  operationalRetentionDays: membership.household.operationalRetentionDays,
+                  attachmentRetentionDays: membership.household.attachmentRetentionDays,
                 }))}
                 labels={identityLabels}
                 locale={locale}

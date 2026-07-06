@@ -42,6 +42,8 @@ export const updateHouseholdSchema = z.object({
   fxPolicy: z.enum(["LOCK_AT_EXPENSE_DATE", "MANUAL_RATE_WITH_APPROVAL"]),
   approvalPolicy: z.enum(["PAYER_AND_EACH_DEBTOR", "ALL_PARTICIPANTS", "PAYER_ONLY"]),
   clearingPolicy: z.enum(["DIRECT_ONLY", "HOUSEHOLD_NETTING"]),
+  operationalRetentionDays: z.number().int().min(30).max(3650).nullable(),
+  attachmentRetentionDays: z.number().int().min(30).max(3650).nullable(),
 });
 
 export const createInviteSchema = z.object({
@@ -194,6 +196,8 @@ export async function updateHouseholdForUser(userId: string, householdId: string
         fxPolicy: data.fxPolicy,
         approvalPolicy: data.approvalPolicy,
         clearingPolicy: data.clearingPolicy,
+        operationalRetentionDays: data.operationalRetentionDays,
+        attachmentRetentionDays: data.attachmentRetentionDays,
       },
     });
 
@@ -212,6 +216,8 @@ export async function updateHouseholdForUser(userId: string, householdId: string
           fxPolicy: previous.fxPolicy,
           approvalPolicy: previous.approvalPolicy,
           clearingPolicy: previous.clearingPolicy,
+          operationalRetentionDays: previous.operationalRetentionDays,
+          attachmentRetentionDays: previous.attachmentRetentionDays,
         },
         after: {
           name: household.name,
@@ -221,6 +227,8 @@ export async function updateHouseholdForUser(userId: string, householdId: string
           fxPolicy: household.fxPolicy,
           approvalPolicy: household.approvalPolicy,
           clearingPolicy: household.clearingPolicy,
+          operationalRetentionDays: household.operationalRetentionDays,
+          attachmentRetentionDays: household.attachmentRetentionDays,
         },
       },
     });

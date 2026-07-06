@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
         fxPolicy: membership.household.fxPolicy,
         approvalPolicy: membership.household.approvalPolicy,
         clearingPolicy: membership.household.clearingPolicy,
+        operationalRetentionDays: membership.household.operationalRetentionDays,
+        attachmentRetentionDays: membership.household.attachmentRetentionDays,
         role: membership.role,
       })),
     });
@@ -49,6 +51,8 @@ export async function POST(request: NextRequest) {
           fxPolicy: household.fxPolicy,
           approvalPolicy: household.approvalPolicy,
           clearingPolicy: household.clearingPolicy,
+          operationalRetentionDays: household.operationalRetentionDays,
+          attachmentRetentionDays: household.attachmentRetentionDays,
           role: membership.role,
         },
       },
