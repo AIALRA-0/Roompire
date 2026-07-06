@@ -2412,6 +2412,10 @@ components:
               artifactCount,
               totalBytes,
               latestArtifact,
+              sourceDeviceId,
+              targetDeviceId,
+              sameFilesystem,
+              sameFilesystemAllowed,
               status,
               checkedAt,
               error,
@@ -2436,6 +2440,21 @@ components:
             latestArtifact:
               type: string
               nullable: true
+            sourceDeviceId:
+              type: string
+              nullable: true
+              description: Host stat device id for the local backup root when local offsite sync has run.
+            targetDeviceId:
+              type: string
+              nullable: true
+              description: Host stat device id for the local offsite target when local offsite sync has run.
+            sameFilesystem:
+              type: boolean
+              nullable: true
+              description: Whether the local offsite target is on the same filesystem as the backup root.
+            sameFilesystemAllowed:
+              type: boolean
+              description: Whether same-filesystem local sync was explicitly allowed for a non-offsite drill.
             status: { $ref: "#/components/schemas/OpsHealthState" }
             checkedAt:
               type: string

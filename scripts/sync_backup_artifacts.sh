@@ -4,6 +4,7 @@ set -euo pipefail
 BACKUP_ROOT=${BACKUP_ROOT:-backups}
 ROOMPIRE_BACKUP_OFFSITE_MODE=${ROOMPIRE_BACKUP_OFFSITE_MODE:-disabled}
 ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE=${ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE:-ops/status/backup-offsite.json}
+ROOMPIRE_BACKUP_OFFSITE_ALLOW_SAME_FILESYSTEM=${ROOMPIRE_BACKUP_OFFSITE_ALLOW_SAME_FILESYSTEM:-false}
 
 case "$ROOMPIRE_BACKUP_OFFSITE_MODE" in
   disabled | local | rclone) ;;
@@ -21,6 +22,9 @@ write_status() {
   local total_bytes=$5
   local latest_artifact=$6
   local error=$7
+  local source_device_id=${8:-}
+  local target_device_id=${9:-}
+  local same_filesystem=${10:-unknown}
 
   STATUS_FILE="$ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE" \
     STATUS="$status" \
@@ -30,9 +34,23 @@ write_status() {
     TOTAL_BYTES="$total_bytes" \
     LATEST_ARTIFACT="$latest_artifact" \
     ERROR_MESSAGE="$error" \
+    SOURCE_DEVICE_ID="$source_device_id" \
+    TARGET_DEVICE_ID="$target_device_id" \
+    SAME_FILESYSTEM="$same_filesystem" \
+    SAME_FILESYSTEM_ALLOWED="$ROOMPIRE_BACKUP_OFFSITE_ALLOW_SAME_FILESYSTEM" \
     node <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
+
+function nullableString(value) {
+  return value && value !== "unknown" ? value : null;
+}
+
+function nullableBoolean(value) {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
+}
 
 const statusFile = process.env.STATUS_FILE;
 const payload = {
@@ -46,6 +64,10 @@ const payload = {
   latestArtifact: process.env.LATEST_ARTIFACT || null,
   status: process.env.STATUS,
   error: process.env.ERROR_MESSAGE || null,
+  sourceDeviceId: nullableString(process.env.SOURCE_DEVICE_ID),
+  targetDeviceId: nullableString(process.env.TARGET_DEVICE_ID),
+  sameFilesystem: nullableBoolean(process.env.SAME_FILESYSTEM),
+  sameFilesystemAllowed: process.env.SAME_FILESYSTEM_ALLOWED === "true",
 };
 
 fs.mkdirSync(path.dirname(statusFile), { recursive: true });
@@ -116,6 +138,15 @@ if [ "$ROOMPIRE_BACKUP_OFFSITE_MODE" = "local" ]; then
 
   install -m 0700 -d "$target_abs"
 
+  source_device_id=$(stat -c "%d" "$source_abs")
+  target_device_id=$(stat -c "%d" "$target_abs")
+
+  if [ "$source_device_id" = "$target_device_id" ] && [ "$ROOMPIRE_BACKUP_OFFSITE_ALLOW_SAME_FILESYSTEM" != "true" ]; then
+    write_status "warning" "local" "local:$target_abs" "$artifact_count" "$total_bytes" "$latest_artifact" "Offsite target is on the same filesystem as the backup root. Mount a real off-host target or set ROOMPIRE_BACKUP_OFFSITE_ALLOW_SAME_FILESYSTEM=true for a non-offsite drill only." "$source_device_id" "$target_device_id" "true"
+    echo "Offsite target is on the same filesystem as the backup root: $target_abs" >&2
+    exit 2
+  fi
+
   for artifact in "${artifacts[@]}"; do
     relative_path=${artifact#"$source_abs/"}
     destination="$target_abs/$relative_path"
@@ -123,7 +154,13 @@ if [ "$ROOMPIRE_BACKUP_OFFSITE_MODE" = "local" ]; then
     cp -p "$artifact" "$destination"
   done
 
-  write_status "ok" "local" "local:$target_abs" "$artifact_count" "$total_bytes" "$latest_artifact" ""
+  if [ "$source_device_id" = "$target_device_id" ]; then
+    same_filesystem=true
+  else
+    same_filesystem=false
+  fi
+
+  write_status "ok" "local" "local:$target_abs" "$artifact_count" "$total_bytes" "$latest_artifact" "" "$source_device_id" "$target_device_id" "$same_filesystem"
   echo "offsite backup sync ok: local:$target_abs artifacts=$artifact_count bytes=$total_bytes"
   exit 0
 fi

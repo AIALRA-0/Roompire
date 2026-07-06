@@ -277,6 +277,24 @@ function backupOffsiteModeLabel(
   return ops("statusUnknown");
 }
 
+function backupOffsiteFilesystemLabel(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  sameFilesystem: boolean | null,
+  sameFilesystemAllowed: boolean,
+) {
+  if (sameFilesystem === true) {
+    return sameFilesystemAllowed
+      ? ops("offsiteSameFilesystemAllowed")
+      : ops("offsiteSameFilesystemYes");
+  }
+
+  if (sameFilesystem === false) {
+    return ops("offsiteSameFilesystemNo");
+  }
+
+  return ops("statusUnknown");
+}
+
 function passphraseFileLabel(
   ops: Awaited<ReturnType<typeof getTranslations>>,
   configured: boolean,
@@ -324,6 +342,7 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     backup_encryption_unknown: ops("warningBackupEncryptionUnknown"),
     backup_offsite_disabled: ops("warningBackupOffsiteDisabled"),
     backup_offsite_attention: ops("warningBackupOffsiteAttention"),
+    backup_offsite_same_filesystem: ops("warningBackupOffsiteSameFilesystem"),
     restore_drill_failed: ops("warningRestoreDrillFailed"),
     restore_drill_missing: ops("warningRestoreDrillMissing"),
     restore_drill_stale: ops("warningRestoreDrillStale"),
@@ -1192,6 +1211,23 @@ export default async function OpsPage({ params }: PageProps) {
                       <MetricRow
                         label={ops("offsiteTarget")}
                         value={status.backupOffsite.target ?? "—"}
+                      />
+                      <MetricRow
+                        label={ops("offsiteFilesystem")}
+                        testId="ops-backup-offsite-filesystem"
+                        value={backupOffsiteFilesystemLabel(
+                          ops,
+                          status.backupOffsite.sameFilesystem,
+                          status.backupOffsite.sameFilesystemAllowed,
+                        )}
+                      />
+                      <MetricRow
+                        label={ops("offsiteSourceDevice")}
+                        value={status.backupOffsite.sourceDeviceId ?? "—"}
+                      />
+                      <MetricRow
+                        label={ops("offsiteTargetDevice")}
+                        value={status.backupOffsite.targetDeviceId ?? "—"}
                       />
                     </div>
                     {status.backupOffsite.error ? (

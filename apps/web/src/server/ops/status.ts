@@ -251,6 +251,10 @@ export type OpsStatusSnapshot = {
     artifactCount: number;
     totalBytes: number;
     latestArtifact: string | null;
+    sourceDeviceId: string | null;
+    targetDeviceId: string | null;
+    sameFilesystem: boolean | null;
+    sameFilesystemAllowed: boolean;
     status: HealthState;
     checkedAt: string | null;
     error: string | null;
@@ -908,8 +912,14 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
 
   if (!status.backupOffsite.configured || status.backupOffsite.mode === "disabled") {
     warnings.push("backup_offsite_disabled");
-  } else if (status.backupOffsite.status !== "ok") {
-    warnings.push("backup_offsite_attention");
+  } else {
+    if (status.backupOffsite.status !== "ok") {
+      warnings.push("backup_offsite_attention");
+    }
+
+    if (status.backupOffsite.sameFilesystem === true) {
+      warnings.push("backup_offsite_same_filesystem");
+    }
   }
 
   if (status.latestRestoreDrill.status === "failed") {
@@ -1149,6 +1159,10 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       artifactCount: numberValue(rawBackupOffsite.artifactCount) ?? 0,
       totalBytes: numberValue(rawBackupOffsite.totalBytes) ?? 0,
       latestArtifact: nullableStringValue(rawBackupOffsite.latestArtifact),
+      sourceDeviceId: nullableStringValue(rawBackupOffsite.sourceDeviceId),
+      targetDeviceId: nullableStringValue(rawBackupOffsite.targetDeviceId),
+      sameFilesystem: nullableBooleanValue(rawBackupOffsite.sameFilesystem),
+      sameFilesystemAllowed: booleanValue(rawBackupOffsite.sameFilesystemAllowed),
       status: healthStateValue(rawBackupOffsite.status),
       checkedAt: nullableStringValue(rawBackupOffsite.checkedAt),
       error: nullableStringValue(rawBackupOffsite.error),
@@ -1389,6 +1403,10 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       artifactCount: 0,
       totalBytes: 0,
       latestArtifact: null,
+      sourceDeviceId: null,
+      targetDeviceId: null,
+      sameFilesystem: null,
+      sameFilesystemAllowed: false,
       status: "unknown" as const,
       checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",

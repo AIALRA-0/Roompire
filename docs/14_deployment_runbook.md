@@ -286,7 +286,10 @@ Offsite backup sync is disabled until a real target exists. The sync only copies
 Environment=ROOMPIRE_BACKUP_OFFSITE_MODE=local
 Environment=ROOMPIRE_BACKUP_OFFSITE_TARGET_DIR=/mnt/roompire-offsite
 Environment=ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE=ops/status/backup-offsite.json
+Environment=ROOMPIRE_BACKUP_OFFSITE_ALLOW_SAME_FILESYSTEM=false
 ```
+
+Local offsite mode rejects targets whose `stat` device id matches the backup root by default. This catches missing mounts such as an empty `/mnt/roompire-offsite` directory silently falling back to the server root disk. Set `ROOMPIRE_BACKUP_OFFSITE_ALLOW_SAME_FILESYSTEM=true` only for a controlled non-offsite drill; the ops dashboard will still surface a same-filesystem warning.
 
 For a configured `rclone` remote, use:
 
@@ -296,7 +299,7 @@ Environment=ROOMPIRE_BACKUP_OFFSITE_RCLONE_REMOTE=roompire-offsite:backups/roomp
 Environment=ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE=ops/status/backup-offsite.json
 ```
 
-Leave `ROOMPIRE_BACKUP_OFFSITE_MODE=disabled` until the target is truly off the server root filesystem. The ops dashboard will show an expected warning while no offsite copy is configured.
+Leave `ROOMPIRE_BACKUP_OFFSITE_MODE=disabled` until the target is truly off the server root filesystem. The ops dashboard will show an expected warning while no offsite copy is configured, and it records source/target device ids after local syncs so mount-loss checks are visible from the real site.
 
 ## Ops Automation
 

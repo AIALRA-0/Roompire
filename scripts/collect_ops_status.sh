@@ -484,6 +484,10 @@ function collectBackupOffsite() {
       artifactCount: 0,
       totalBytes: 0,
       latestArtifact: null,
+      sourceDeviceId: null,
+      targetDeviceId: null,
+      sameFilesystem: null,
+      sameFilesystemAllowed: false,
       status: mode === "disabled" ? "warning" : "unknown",
       checkedAt: generatedAt,
       error: serviceEnvResult.ok
@@ -505,6 +509,10 @@ function collectBackupOffsite() {
       artifactCount: 0,
       totalBytes: 0,
       latestArtifact: null,
+      sourceDeviceId: null,
+      targetDeviceId: null,
+      sameFilesystem: null,
+      sameFilesystemAllowed: false,
       status: "warning",
       checkedAt: generatedAt,
       error:
@@ -525,6 +533,10 @@ function collectBackupOffsite() {
       artifactCount: 0,
       totalBytes: 0,
       latestArtifact: null,
+      sourceDeviceId: null,
+      targetDeviceId: null,
+      sameFilesystem: null,
+      sameFilesystemAllowed: false,
       status: "warning",
       checkedAt: generatedAt,
       error: "Offsite backup sync has not written a status file.",
@@ -559,6 +571,16 @@ function collectBackupOffsite() {
       artifactCount: finiteNumberValue(parsed.artifactCount),
       totalBytes: finiteNumberValue(parsed.totalBytes),
       latestArtifact: typeof parsed.latestArtifact === "string" ? parsed.latestArtifact : null,
+      sourceDeviceId:
+        typeof parsed.sourceDeviceId === "string" && parsed.sourceDeviceId
+          ? parsed.sourceDeviceId
+          : null,
+      targetDeviceId:
+        typeof parsed.targetDeviceId === "string" && parsed.targetDeviceId
+          ? parsed.targetDeviceId
+          : null,
+      sameFilesystem: typeof parsed.sameFilesystem === "boolean" ? parsed.sameFilesystem : null,
+      sameFilesystemAllowed: parsed.sameFilesystemAllowed === true,
       status:
         errors.length > 0 || statusMode !== mode ? "warning" : healthStateValue(parsed.status),
       checkedAt: generatedAt,
@@ -575,6 +597,10 @@ function collectBackupOffsite() {
       artifactCount: 0,
       totalBytes: 0,
       latestArtifact: null,
+      sourceDeviceId: null,
+      targetDeviceId: null,
+      sameFilesystem: null,
+      sameFilesystemAllowed: false,
       status: "unknown",
       checkedAt: generatedAt,
       error: error instanceof Error ? error.message : String(error),

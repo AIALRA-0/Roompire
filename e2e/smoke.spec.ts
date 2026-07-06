@@ -529,6 +529,10 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
           totalBytes: 123456789,
           latestArtifact:
             "/srv/aialra/backups/roompire/postgres/roompire_20260704T235250Z.dump.enc.sha256",
+          sourceDeviceId: "2049",
+          targetDeviceId: "2050",
+          sameFilesystem: false,
+          sameFilesystemAllowed: false,
           status: "ok",
           checkedAt: generatedAt,
           error: null,
@@ -2099,6 +2103,9 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-backup-offsite-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-offsite-mode")).toContainText("Local mount");
     await expect(page.getByTestId("ops-backup-offsite-artifacts")).toContainText("6");
+    await expect(page.getByTestId("ops-backup-offsite-filesystem")).toContainText(
+      "Different filesystem",
+    );
     await expect(page.getByTestId("ops-smoke-status")).toContainText("Passed");
     await expect(page.getByTestId("ops-smoke-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-status-timer-status")).toContainText("OK");
@@ -2165,6 +2172,8 @@ test.describe("Roompire real browser smoke", () => {
           mode: string;
           configured: boolean;
           artifactCount: number;
+          sameFilesystem: boolean | null;
+          sameFilesystemAllowed: boolean;
           status: string;
         };
         latestRestoreDrill: {
@@ -2270,6 +2279,8 @@ test.describe("Roompire real browser smoke", () => {
         mode: "local",
         configured: true,
         artifactCount: 6,
+        sameFilesystem: false,
+        sameFilesystemAllowed: false,
         status: "ok",
       }),
     );
