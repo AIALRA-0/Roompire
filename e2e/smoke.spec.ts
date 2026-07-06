@@ -212,6 +212,23 @@ async function writeOpsStatusFixture() {
           checkedAt: generatedAt,
           error: null,
         },
+        diskTrend: {
+          status: "ok",
+          historyFile: "ops/status/disk-history.json",
+          sampleCount: 4,
+          oldestCheckedAt: "2026-07-02T04:30:00.000Z",
+          newestCheckedAt: generatedAt,
+          windowHours: 72,
+          availableChangeBytes: 4 * 1024 * 1024 * 1024,
+          usedChangeBytes: -4 * 1024 * 1024 * 1024,
+          usedPercentChange: -4,
+          averageUsedBytesPerDay: -1 * 1024 * 1024 * 1024,
+          estimatedDaysUntilFull: null,
+          warningDays: 14,
+          minimumWindowHours: 6,
+          checkedAt: generatedAt,
+          error: null,
+        },
         dockerStorage: {
           images: {
             totalCount: 4,
@@ -1858,6 +1875,11 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: "Ops health" })).toBeVisible();
     await expect(page.getByTestId("ops-summary-status")).toContainText("OK");
     await expect(page.getByTestId("ops-disk-card")).toContainText("58 GB");
+    await expect(page.getByTestId("ops-disk-trend-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-disk-trend-samples")).toContainText("4");
+    await expect(page.getByTestId("ops-disk-trend-available-change")).toContainText("+4 GB");
+    await expect(page.getByTestId("ops-disk-trend-used-per-day")).toContainText("-1 GB/day");
+    await expect(page.getByTestId("ops-disk-trend-eta")).toContainText("No current growth");
     await expect(page.getByTestId("ops-docker-status")).toContainText("OK");
     await expect(page.getByTestId("ops-docker-reclaimable")).toContainText("832 MB");
     await expect(page.getByTestId("ops-docker-images")).toContainText("3/4 active");
@@ -1882,6 +1904,12 @@ test.describe("Roompire real browser smoke", () => {
       status: {
         source: string;
         summary: { status: string; warnings: string[] };
+        diskTrend: {
+          status: string;
+          sampleCount: number;
+          availableChangeBytes: number | null;
+          estimatedDaysUntilFull: number | null;
+        };
         dockerStorage: {
           totalReclaimableBytes: number;
           status: string;
@@ -1911,6 +1939,14 @@ test.describe("Roompire real browser smoke", () => {
     };
     expect(opsPayload.status.source).toBe("host_status_file");
     expect(opsPayload.status.summary).toEqual({ status: "ok", warnings: [] });
+    expect(opsPayload.status.diskTrend).toEqual(
+      expect.objectContaining({
+        status: "ok",
+        sampleCount: 4,
+        availableChangeBytes: 4 * 1024 * 1024 * 1024,
+        estimatedDaysUntilFull: null,
+      }),
+    );
     expect(opsPayload.status.dockerStorage).toEqual(
       expect.objectContaining({
         totalReclaimableBytes: 832 * 1024 * 1024,

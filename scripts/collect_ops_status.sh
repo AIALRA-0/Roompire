@@ -27,8 +27,14 @@ const backupRoot =
 const backupOffsiteStatusPath =
   process.env.ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE || "ops/status/backup-offsite.json";
 const smokeStatusPath = process.env.ROOMPIRE_SMOKE_STATUS_FILE || "ops/status/latest-smoke.json";
+const diskHistoryPath = process.env.ROOMPIRE_OPS_DISK_HISTORY_FILE || "ops/status/disk-history.json";
 const generatedAt = new Date().toISOString();
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
+const diskTrendWarningDays = Number(process.env.ROOMPIRE_OPS_DISK_TREND_WARNING_DAYS || 14);
+const diskTrendMinimumWindowHours = Number(
+  process.env.ROOMPIRE_OPS_DISK_TREND_MIN_WINDOW_HOURS || 6,
+);
+const diskHistoryMaxSamples = Number(process.env.ROOMPIRE_OPS_DISK_HISTORY_MAX_SAMPLES || 672);
 const configuredDockerReclaimableWarningBytes = Number(
   process.env.ROOMPIRE_DOCKER_RECLAIMABLE_WARNING_BYTES || 5 * 1024 * 1024 * 1024,
 );
@@ -219,6 +225,10 @@ function backupOffsiteModeValue(value) {
 
 function finiteNumberValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function positiveIntegerValue(value, fallback) {
+  return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
 function parseDockerSize(value) {
@@ -586,6 +596,227 @@ function collectDisk() {
   };
 }
 
+function diskHistorySampleFromDisk(disk) {
+  if (
+    disk.sizeBytes === null ||
+    disk.usedBytes === null ||
+    disk.availableBytes === null ||
+    disk.usedPercent === null ||
+    !disk.checkedAt
+  ) {
+    return null;
+  }
+
+  return {
+    checkedAt: disk.checkedAt,
+    path: disk.path,
+    sizeBytes: disk.sizeBytes,
+    usedBytes: disk.usedBytes,
+    availableBytes: disk.availableBytes,
+    usedPercent: disk.usedPercent,
+  };
+}
+
+function normalizeDiskHistorySample(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const checkedAt = typeof value.checkedAt === "string" ? value.checkedAt : "";
+  const checkedAtMs = Date.parse(checkedAt);
+  const samplePath = typeof value.path === "string" && value.path ? value.path : diskPath;
+  const sizeBytes = Number(value.sizeBytes);
+  const usedBytes = Number(value.usedBytes);
+  const availableBytes = Number(value.availableBytes);
+  const usedPercent = Number(value.usedPercent);
+
+  if (
+    !Number.isFinite(checkedAtMs) ||
+    !Number.isFinite(sizeBytes) ||
+    !Number.isFinite(usedBytes) ||
+    !Number.isFinite(availableBytes) ||
+    !Number.isFinite(usedPercent)
+  ) {
+    return null;
+  }
+
+  return {
+    checkedAt,
+    path: samplePath,
+    sizeBytes,
+    usedBytes,
+    availableBytes,
+    usedPercent,
+  };
+}
+
+function readDiskHistorySamples() {
+  if (!fs.existsSync(diskHistoryPath)) {
+    return { samples: [], error: null };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(diskHistoryPath, "utf8"));
+    const rawSamples = Array.isArray(parsed) ? parsed : Array.isArray(parsed.samples) ? parsed.samples : [];
+
+    return {
+      samples: rawSamples.map(normalizeDiskHistorySample).filter((sample) => sample !== null),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      samples: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function writeDiskHistorySamples(samples) {
+  const payload = {
+    schemaVersion: 1,
+    generatedAt,
+    maxSamples: positiveIntegerValue(diskHistoryMaxSamples, 672),
+    samples,
+  };
+
+  fs.mkdirSync(path.dirname(diskHistoryPath), { recursive: true });
+  const tmpPath = `${diskHistoryPath}.tmp`;
+  fs.writeFileSync(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o644 });
+  fs.renameSync(tmpPath, diskHistoryPath);
+}
+
+function collectDiskTrend(disk) {
+  const history = readDiskHistorySamples();
+  const currentSample = diskHistorySampleFromDisk(disk);
+  const maxSamples = positiveIntegerValue(diskHistoryMaxSamples, 672);
+  let samples = history.samples;
+  let writeError = null;
+
+  if (currentSample) {
+    samples = samples
+      .filter(
+        (sample) =>
+          !(sample.path === currentSample.path && sample.checkedAt === currentSample.checkedAt),
+      )
+      .concat(currentSample)
+      .sort((left, right) => Date.parse(left.checkedAt) - Date.parse(right.checkedAt))
+      .slice(-maxSamples);
+
+    try {
+      writeDiskHistorySamples(samples);
+    } catch (error) {
+      writeError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  const pathSamples = samples
+    .filter((sample) => sample.path === disk.path)
+    .sort((left, right) => Date.parse(left.checkedAt) - Date.parse(right.checkedAt));
+  const newest = pathSamples[pathSamples.length - 1] ?? null;
+  const oldest = pathSamples[0] ?? null;
+  const historyError = history.error || writeError;
+
+  if (!oldest || !newest || pathSamples.length < 2) {
+    return {
+      status: "unknown",
+      historyFile: diskHistoryPath,
+      sampleCount: pathSamples.length,
+      oldestCheckedAt: oldest?.checkedAt ?? null,
+      newestCheckedAt: newest?.checkedAt ?? null,
+      windowHours: null,
+      availableChangeBytes: null,
+      usedChangeBytes: null,
+      usedPercentChange: null,
+      averageUsedBytesPerDay: null,
+      estimatedDaysUntilFull: null,
+      warningDays: Number.isFinite(diskTrendWarningDays) ? diskTrendWarningDays : 14,
+      minimumWindowHours: Number.isFinite(diskTrendMinimumWindowHours)
+        ? diskTrendMinimumWindowHours
+        : 6,
+      checkedAt: generatedAt,
+      error: historyError || "Not enough disk history samples yet.",
+    };
+  }
+
+  const windowHours =
+    Math.round(((Date.parse(newest.checkedAt) - Date.parse(oldest.checkedAt)) / 3600000) * 10) / 10;
+
+  if (!Number.isFinite(windowHours) || windowHours <= 0) {
+    return {
+      status: "unknown",
+      historyFile: diskHistoryPath,
+      sampleCount: pathSamples.length,
+      oldestCheckedAt: oldest.checkedAt,
+      newestCheckedAt: newest.checkedAt,
+      windowHours: null,
+      availableChangeBytes: null,
+      usedChangeBytes: null,
+      usedPercentChange: null,
+      averageUsedBytesPerDay: null,
+      estimatedDaysUntilFull: null,
+      warningDays: Number.isFinite(diskTrendWarningDays) ? diskTrendWarningDays : 14,
+      minimumWindowHours: Number.isFinite(diskTrendMinimumWindowHours)
+        ? diskTrendMinimumWindowHours
+        : 6,
+      checkedAt: generatedAt,
+      error: historyError || "Disk history samples have no usable time window.",
+    };
+  }
+
+  const availableChangeBytes = newest.availableBytes - oldest.availableBytes;
+  const usedChangeBytes = newest.usedBytes - oldest.usedBytes;
+  const usedPercentChange = Math.round((newest.usedPercent - oldest.usedPercent) * 10) / 10;
+  const averageUsedBytesPerDay = Math.round((usedChangeBytes / windowHours) * 24);
+  const minimumWindowHours = Number.isFinite(diskTrendMinimumWindowHours)
+    ? diskTrendMinimumWindowHours
+    : 6;
+
+  if (windowHours < minimumWindowHours) {
+    return {
+      status: "unknown",
+      historyFile: diskHistoryPath,
+      sampleCount: pathSamples.length,
+      oldestCheckedAt: oldest.checkedAt,
+      newestCheckedAt: newest.checkedAt,
+      windowHours,
+      availableChangeBytes,
+      usedChangeBytes,
+      usedPercentChange,
+      averageUsedBytesPerDay,
+      estimatedDaysUntilFull: null,
+      warningDays: Number.isFinite(diskTrendWarningDays) ? diskTrendWarningDays : 14,
+      minimumWindowHours,
+      checkedAt: generatedAt,
+      error: `Disk history window is below the ${minimumWindowHours}h minimum trend window.`,
+    };
+  }
+
+  const estimatedDaysUntilFull =
+    averageUsedBytesPerDay > 0 && newest.availableBytes > 0
+      ? Math.round((newest.availableBytes / averageUsedBytesPerDay) * 10) / 10
+      : null;
+  const warningDays = Number.isFinite(diskTrendWarningDays) ? diskTrendWarningDays : 14;
+
+  return {
+    status:
+      estimatedDaysUntilFull !== null && estimatedDaysUntilFull <= warningDays ? "warning" : "ok",
+    historyFile: diskHistoryPath,
+    sampleCount: pathSamples.length,
+    oldestCheckedAt: oldest.checkedAt,
+    newestCheckedAt: newest.checkedAt,
+    windowHours,
+    availableChangeBytes,
+    usedChangeBytes,
+    usedPercentChange,
+    averageUsedBytesPerDay,
+    estimatedDaysUntilFull,
+    warningDays,
+    minimumWindowHours,
+    checkedAt: generatedAt,
+    error: historyError,
+  };
+}
+
 function collectDockerStorage() {
   const result = command("docker", ["system", "df", "--format", "{{json .}}"]);
 
@@ -702,11 +933,13 @@ function readLatestSmoke() {
   }
 }
 
+const disk = collectDisk();
 const snapshot = {
   schemaVersion: 1,
   source: "host_status_file",
   generatedAt,
-  disk: collectDisk(),
+  disk,
+  diskTrend: collectDiskTrend(disk),
   dockerStorage: collectDockerStorage(),
   opsStatusTimer: collectOpsStatusTimer(),
   opsStatusService: collectOpsStatusService(),

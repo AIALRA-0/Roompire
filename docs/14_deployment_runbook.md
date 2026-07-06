@@ -81,6 +81,8 @@ Generate the host ops snapshot before and after deployment so `/en-US/app/ops` c
 ./scripts/collect_ops_status.sh
 ```
 
+The snapshot refresh also appends root filesystem samples to `ops/status/disk-history.json` and folds a disk-capacity trend into `ops/status/ops-status.json`. Tune the retention with `ROOMPIRE_OPS_DISK_HISTORY_MAX_SAMPLES`, the minimum projection window with `ROOMPIRE_OPS_DISK_TREND_MIN_WINDOW_HOURS`, and the projected-full warning window with `ROOMPIRE_OPS_DISK_TREND_WARNING_DAYS`.
+
 On a dedicated host without an existing reverse proxy, Caddy can be started explicitly:
 
 ```bash
@@ -297,7 +299,7 @@ systemctl start roompire-ops-status.service roompire-smoke.service roompire-remi
 systemctl list-timers 'roompire-*'
 ```
 
-`roompire-ops-status.timer` refreshes disk, Docker storage, its own timer/service state, backup timer/service state, housekeeping timer/service state, reminder timer/service state, backup encryption health, offsite backup copy status, smoke timer/service state, and latest smoke state every 15 minutes. The Docker storage snapshot records image, container, local-volume, and build-cache size/reclaimable totals from `docker system df` so disk-pressure investigations do not require shell access from the web container. The encryption health snapshot checks the backup unit configuration, passphrase file presence, encrypted artifact count, plaintext artifact count, and `.sha256` sidecar coverage without exposing secret values. The offsite snapshot checks whether a real sync target is configured and whether the latest sync status is healthy. `roompire-smoke.timer` runs authenticated real-domain checks hourly at minute 7, updates `ops/status/latest-smoke.json`, then refreshes the ops snapshot; `roompire-reminders.timer` runs recurring expense proposal generation followed by in-app reminder delivery hourly at minute 17 and refreshes ops status after each service run. The ops dashboard surfaces these automation timers and their latest service results so stale snapshot, smoke, or reminder automation is visible from the real site.
+`roompire-ops-status.timer` refreshes disk, disk-capacity trend, Docker storage, its own timer/service state, backup timer/service state, housekeeping timer/service state, reminder timer/service state, backup encryption health, offsite backup copy status, smoke timer/service state, and latest smoke state every 15 minutes. The Docker storage snapshot records image, container, local-volume, and build-cache size/reclaimable totals from `docker system df` so disk-pressure investigations do not require shell access from the web container. The encryption health snapshot checks the backup unit configuration, passphrase file presence, encrypted artifact count, plaintext artifact count, and `.sha256` sidecar coverage without exposing secret values. The offsite snapshot checks whether a real sync target is configured and whether the latest sync status is healthy. `roompire-smoke.timer` runs authenticated real-domain checks hourly at minute 7, updates `ops/status/latest-smoke.json`, then refreshes the ops snapshot; `roompire-reminders.timer` runs recurring expense proposal generation followed by in-app reminder delivery hourly at minute 17 and refreshes ops status after each service run. The ops dashboard surfaces these automation timers and their latest service results so stale snapshot, smoke, reminder automation, or projected disk exhaustion is visible from the real site.
 
 ## Restore Drill
 

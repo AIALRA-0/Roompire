@@ -1870,6 +1870,7 @@ components:
           summary,
           statusFile,
           disk,
+          diskTrend,
           dockerStorage,
           opsStatusTimer,
           opsStatusService,
@@ -1921,6 +1922,65 @@ components:
             availableBytes: { type: integer, nullable: true }
             usedPercent: { type: number, nullable: true }
             status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        diskTrend:
+          type: object
+          required:
+            [
+              status,
+              historyFile,
+              sampleCount,
+              oldestCheckedAt,
+              newestCheckedAt,
+              windowHours,
+              availableChangeBytes,
+              usedChangeBytes,
+              usedPercentChange,
+              averageUsedBytesPerDay,
+              estimatedDaysUntilFull,
+              warningDays,
+              minimumWindowHours,
+              checkedAt,
+              error,
+            ]
+          properties:
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            historyFile: { type: string, example: ops/status/disk-history.json }
+            sampleCount: { type: integer, example: 96 }
+            oldestCheckedAt:
+              type: string
+              format: date-time
+              nullable: true
+            newestCheckedAt:
+              type: string
+              format: date-time
+              nullable: true
+            windowHours:
+              type: number
+              nullable: true
+            availableChangeBytes:
+              type: integer
+              nullable: true
+            usedChangeBytes:
+              type: integer
+              nullable: true
+            usedPercentChange:
+              type: number
+              nullable: true
+            averageUsedBytesPerDay:
+              type: integer
+              nullable: true
+            estimatedDaysUntilFull:
+              type: number
+              nullable: true
+            warningDays: { type: number, example: 14 }
+            minimumWindowHours: { type: number, example: 6 }
             checkedAt:
               type: string
               format: date-time

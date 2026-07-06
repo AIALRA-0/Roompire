@@ -49,6 +49,23 @@ export type OpsStatusSnapshot = {
     checkedAt: string | null;
     error: string | null;
   };
+  diskTrend: {
+    status: HealthState;
+    historyFile: string;
+    sampleCount: number;
+    oldestCheckedAt: string | null;
+    newestCheckedAt: string | null;
+    windowHours: number | null;
+    availableChangeBytes: number | null;
+    usedChangeBytes: number | null;
+    usedPercentChange: number | null;
+    averageUsedBytesPerDay: number | null;
+    estimatedDaysUntilFull: number | null;
+    warningDays: number;
+    minimumWindowHours: number;
+    checkedAt: string | null;
+    error: string | null;
+  };
   dockerStorage: {
     images: OpsDockerStorageCategory;
     containers: OpsDockerStorageCategory;
@@ -261,6 +278,46 @@ function normalizeDockerStorageCategory(value: unknown): OpsDockerStorageCategor
   };
 }
 
+function normalizeDiskTrend(value: unknown): OpsStatusSnapshot["diskTrend"] {
+  if (!isRecord(value)) {
+    return {
+      status: "unknown",
+      historyFile: "ops/status/disk-history.json",
+      sampleCount: 0,
+      oldestCheckedAt: null,
+      newestCheckedAt: null,
+      windowHours: null,
+      availableChangeBytes: null,
+      usedChangeBytes: null,
+      usedPercentChange: null,
+      averageUsedBytesPerDay: null,
+      estimatedDaysUntilFull: null,
+      warningDays: 14,
+      minimumWindowHours: 6,
+      checkedAt: null,
+      error: "Disk trend has not been recorded yet.",
+    };
+  }
+
+  return {
+    status: healthStateValue(value.status),
+    historyFile: stringValue(value.historyFile, "ops/status/disk-history.json"),
+    sampleCount: numberValue(value.sampleCount) ?? 0,
+    oldestCheckedAt: nullableStringValue(value.oldestCheckedAt),
+    newestCheckedAt: nullableStringValue(value.newestCheckedAt),
+    windowHours: numberValue(value.windowHours),
+    availableChangeBytes: numberValue(value.availableChangeBytes),
+    usedChangeBytes: numberValue(value.usedChangeBytes),
+    usedPercentChange: numberValue(value.usedPercentChange),
+    averageUsedBytesPerDay: numberValue(value.averageUsedBytesPerDay),
+    estimatedDaysUntilFull: numberValue(value.estimatedDaysUntilFull),
+    warningDays: numberValue(value.warningDays) ?? 14,
+    minimumWindowHours: numberValue(value.minimumWindowHours) ?? 6,
+    checkedAt: nullableStringValue(value.checkedAt),
+    error: nullableStringValue(value.error),
+  };
+}
+
 function resolveStatusFileCandidates() {
   const configured = process.env.ROOMPIRE_OPS_STATUS_FILE?.trim();
 
@@ -394,6 +451,10 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("disk_unknown");
   }
 
+  if (status.diskTrend.status === "warning") {
+    warnings.push("disk_trend_depleting");
+  }
+
   if (status.dockerStorage.status === "unknown") {
     warnings.push("docker_storage_unknown");
   }
@@ -489,6 +550,7 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
 function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnapshot {
   const raw = isRecord(parsed) ? parsed : {};
   const rawDisk = isRecord(raw.disk) ? raw.disk : {};
+  const rawDiskTrend = isRecord(raw.diskTrend) ? raw.diskTrend : {};
   const rawBackupTimer = isRecord(raw.backupTimer) ? raw.backupTimer : {};
   const rawBackupService = isRecord(raw.backupService) ? raw.backupService : {};
   const rawDockerStorage = isRecord(raw.dockerStorage) ? raw.dockerStorage : {};
@@ -525,6 +587,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       checkedAt: nullableStringValue(rawDisk.checkedAt),
       error: nullableStringValue(rawDisk.error),
     },
+    diskTrend: normalizeDiskTrend(rawDiskTrend),
     dockerStorage: {
       images: normalizeDockerStorageCategory(rawDockerStorage.images),
       containers: normalizeDockerStorageCategory(rawDockerStorage.containers),
@@ -716,6 +779,24 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       error,
     },
     disk,
+    diskTrend: {
+      status: "unknown" as const,
+      historyFile:
+        process.env.ROOMPIRE_OPS_DISK_HISTORY_FILE?.trim() || "ops/status/disk-history.json",
+      sampleCount: 0,
+      oldestCheckedAt: null,
+      newestCheckedAt: null,
+      windowHours: null,
+      availableChangeBytes: null,
+      usedChangeBytes: null,
+      usedPercentChange: null,
+      averageUsedBytesPerDay: null,
+      estimatedDaysUntilFull: null,
+      warningDays: 14,
+      minimumWindowHours: 6,
+      checkedAt: new Date().toISOString(),
+      error: "Host status file has not been generated.",
+    },
     backupTimer: {
       name: process.env.ROOMPIRE_BACKUP_TIMER?.trim() || "roompire-backup.timer",
       activeState: "unknown",

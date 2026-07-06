@@ -11,6 +11,7 @@ import {
   FileJson,
   HardDrive,
   Home,
+  LineChart,
   ListChecks,
   ReceiptText,
   ServerCog,
@@ -67,6 +68,18 @@ function formatFileSize(locale: Locale, bytes: number) {
   }).format(value)} ${units[exponent]}`;
 }
 
+function formatSignedFileSize(locale: Locale, bytes: number | null) {
+  if (bytes === null) {
+    return "—";
+  }
+
+  if (bytes === 0) {
+    return "0 B";
+  }
+
+  return `${bytes > 0 ? "+" : "-"}${formatFileSize(locale, Math.abs(bytes))}`;
+}
+
 function formatPercent(locale: Locale, value: number | null) {
   if (value === null) {
     return "—";
@@ -77,6 +90,46 @@ function formatPercent(locale: Locale, value: number | null) {
 
 function formatInteger(locale: Locale, value: number) {
   return new Intl.NumberFormat(locale).format(value);
+}
+
+function formatNumber(locale: Locale, value: number) {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value);
+}
+
+function formatHours(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  locale: Locale,
+  value: number | null,
+) {
+  if (value === null) {
+    return "—";
+  }
+
+  return ops("hoursValue", { count: formatNumber(locale, value) });
+}
+
+function formatDaysUntilFull(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  locale: Locale,
+  value: number | null,
+) {
+  if (value === null) {
+    return ops("trendStable");
+  }
+
+  return ops("daysValue", { count: formatNumber(locale, value) });
+}
+
+function formatPerDay(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  locale: Locale,
+  value: number | null,
+) {
+  if (value === null) {
+    return "—";
+  }
+
+  return ops("perDayValue", { value: formatSignedFileSize(locale, value) });
 }
 
 function formatReclaimable(locale: Locale, category: DockerStorageCategory) {
@@ -199,6 +252,7 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_low: ops("warningDiskLow"),
     disk_high_usage: ops("warningDiskHighUsage"),
     disk_unknown: ops("warningDiskUnknown"),
+    disk_trend_depleting: ops("warningDiskTrendDepleting"),
     docker_storage_unknown: ops("warningDockerStorageUnknown"),
     docker_reclaimable_high: ops("warningDockerReclaimableHigh"),
     ops_status_timer_attention: ops("warningOpsStatusTimer"),
@@ -473,6 +527,54 @@ export default async function OpsPage({ params }: PageProps) {
                     label={ops("checkedAt")}
                     value={formatDateTime(locale, status.disk.checkedAt)}
                   />
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                        <LineChart aria-hidden="true" className="h-4 w-4" />
+                        {ops("capacityTrend")}
+                      </span>
+                      <Badge
+                        data-testid="ops-disk-trend-status"
+                        variant={healthVariant(status.diskTrend.status)}
+                      >
+                        {healthLabel(ops, status.diskTrend.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("trendSamples")}
+                        testId="ops-disk-trend-samples"
+                        value={formatInteger(locale, status.diskTrend.sampleCount)}
+                      />
+                      <MetricRow
+                        label={ops("trendWindow")}
+                        testId="ops-disk-trend-window"
+                        value={formatHours(ops, locale, status.diskTrend.windowHours)}
+                      />
+                      <MetricRow
+                        label={ops("availableChange")}
+                        testId="ops-disk-trend-available-change"
+                        value={formatSignedFileSize(locale, status.diskTrend.availableChangeBytes)}
+                      />
+                      <MetricRow
+                        label={ops("usedPerDay")}
+                        testId="ops-disk-trend-used-per-day"
+                        value={formatPerDay(ops, locale, status.diskTrend.averageUsedBytesPerDay)}
+                      />
+                      <MetricRow
+                        label={ops("estimatedFull")}
+                        testId="ops-disk-trend-eta"
+                        value={formatDaysUntilFull(
+                          ops,
+                          locale,
+                          status.diskTrend.estimatedDaysUntilFull,
+                        )}
+                      />
+                    </div>
+                    {status.diskTrend.error ? (
+                      <p className="mt-3 text-sm text-muted-foreground">{status.diskTrend.error}</p>
+                    ) : null}
+                  </div>
                   {status.disk.error ? (
                     <p className="text-sm text-rose-700">{status.disk.error}</p>
                   ) : null}
