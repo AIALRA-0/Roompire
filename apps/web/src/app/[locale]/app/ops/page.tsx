@@ -289,6 +289,7 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     backup_offsite_attention: ops("warningBackupOffsiteAttention"),
     smoke_failed: ops("warningSmokeFailed"),
     smoke_missing: ops("warningSmokeMissing"),
+    smoke_stale: ops("warningSmokeStale"),
   };
 
   return labels[warning] ?? warning;

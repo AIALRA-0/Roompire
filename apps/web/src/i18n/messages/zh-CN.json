@@ -686,6 +686,7 @@
     "warningSmokeService": "最近一次生产 smoke 服务运行需要关注。",
     "warningSmokeFailed": "最近一次生产 smoke 测试失败。",
     "warningSmokeMissing": "暂无最新生产 smoke 结果。",
+    "warningSmokeStale": "最近一次生产 smoke 结果已过期。",
     "disk": "磁盘",
     "diskHint": "来自主机根文件系统的剩余空间。",
     "available": "可用",

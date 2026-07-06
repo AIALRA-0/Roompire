@@ -190,8 +190,14 @@ async function getApiWithRetry(
   throw new Error(`GET ${url} failed: ${lastError}`);
 }
 
-async function writeOpsStatusFixture() {
+type OpsStatusFixtureOptions = {
+  latestSmokeGeneratedAt?: string | null;
+};
+
+async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
   const generatedAt = new Date().toISOString();
+  const latestSmokeGeneratedAt =
+    options.latestSmokeGeneratedAt === undefined ? generatedAt : options.latestSmokeGeneratedAt;
   const statusFilePath = process.env.ROOMPIRE_OPS_STATUS_FILE ?? "ops/status/ops-status.json";
 
   await mkdir(dirname(statusFilePath), { recursive: true });
@@ -477,7 +483,7 @@ async function writeOpsStatusFixture() {
         },
         latestSmoke: {
           status: "passed",
-          generatedAt,
+          generatedAt: latestSmokeGeneratedAt,
           baseUrl: "https://roompire.aialra.online",
           checks: [
             { path: "/en-US", status: "passed", httpStatus: 200, message: null },
@@ -2145,6 +2151,23 @@ test.describe("Roompire real browser smoke", () => {
         checks: expect.arrayContaining([expect.objectContaining({ path: "/api/v1/health" })]),
       }),
     );
+
+    await writeOpsStatusFixture({
+      latestSmokeGeneratedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    });
+    const staleSmokeOpsResponse = await getApiWithRetry(page, "/api/v1/ops/status");
+    expect(staleSmokeOpsResponse.ok()).toBeTruthy();
+    const staleSmokeOpsPayload = (await staleSmokeOpsResponse.json()) as {
+      status: { summary: { status: string; warnings: string[] } };
+    };
+    expect(staleSmokeOpsPayload.status.summary).toEqual({
+      status: "warning",
+      warnings: ["smoke_stale"],
+    });
+
+    await page.reload();
+    await expect(page.getByTestId("ops-summary-status")).toContainText("Attention");
+    await expect(page.getByText("Latest production smoke result is stale.")).toBeVisible();
 
     const viewerOpsResponse = await getApiWithRetry(page, "/api/v1/ops/status", {
       headers: {

@@ -686,6 +686,7 @@
     "warningSmokeService": "Latest production smoke service run needs attention.",
     "warningSmokeFailed": "Latest production smoke test failed.",
     "warningSmokeMissing": "No latest production smoke result is available.",
+    "warningSmokeStale": "Latest production smoke result is stale.",
     "disk": "Disk",
     "diskHint": "Root filesystem headroom from the host.",
     "available": "Available",

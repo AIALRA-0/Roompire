@@ -251,6 +251,13 @@ export type OpsRootStorageInventoryItem = {
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
 const dockerReclaimableWarningBytes = 5 * 1024 * 1024 * 1024;
 const staleStatusMs = 36 * 60 * 60 * 1000;
+const smokeStatusStaleMs = positiveEnvNumber("ROOMPIRE_SMOKE_STATUS_STALE_MS", 2 * 60 * 60 * 1000);
+
+function positiveEnvNumber(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -565,6 +572,9 @@ function diskStatusFromValues(
 function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
   const warnings: string[] = [];
   const generatedAtTime = Date.parse(status.generatedAt);
+  const latestSmokeGeneratedAtTime = status.latestSmoke.generatedAt
+    ? Date.parse(status.latestSmoke.generatedAt)
+    : Number.NaN;
 
   if (!status.statusFile.loaded) {
     warnings.push("status_file_missing");
@@ -688,6 +698,15 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
 
   if (status.latestSmoke.status === "missing" || status.latestSmoke.status === "unknown") {
     warnings.push("smoke_missing");
+  }
+
+  if (
+    status.latestSmoke.status !== "missing" &&
+    status.latestSmoke.status !== "unknown" &&
+    (!Number.isFinite(latestSmokeGeneratedAtTime) ||
+      Date.now() - latestSmokeGeneratedAtTime > smokeStatusStaleMs)
+  ) {
+    warnings.push("smoke_stale");
   }
 
   return warnings;
