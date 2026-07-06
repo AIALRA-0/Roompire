@@ -286,6 +286,13 @@ model ExpenseProposal {
 
   @@index([householdId, status])
   @@index([householdId, expenseDate])
+  @@index([householdId, updatedAt(sort: Desc), createdAt(sort: Desc), id], map: "ExpenseProposal_household_queue_idx")
+  @@index([householdId, status, updatedAt(sort: Desc), createdAt(sort: Desc), id], map: "ExpenseProposal_household_status_queue_idx")
+  @@index([householdId, categoryId, updatedAt(sort: Desc), createdAt(sort: Desc), id], map: "ExpenseProposal_household_category_queue_idx")
+  @@index([householdId, expenseDate, updatedAt(sort: Desc), createdAt(sort: Desc), id], map: "ExpenseProposal_household_date_queue_idx")
+  @@index([householdId, originalAmount], map: "ExpenseProposal_household_originalAmount_idx")
+  @@index([householdId, settlementAmount], map: "ExpenseProposal_household_settlementAmount_idx")
+  @@index([householdId, createdByUserId, updatedAt(sort: Desc), createdAt(sort: Desc), id], map: "ExpenseProposal_household_creator_queue_idx")
   @@index([createdByUserId])
   @@index([supersedesProposalId])
 }
@@ -300,6 +307,7 @@ model ExpenseProposalTag {
 
   @@id([proposalId, tagId])
   @@index([tagId])
+  @@index([tagId, proposalId], map: "ExpenseProposalTag_tagId_proposalId_idx")
 }
 
 model ExpensePayer {
@@ -314,6 +322,7 @@ model ExpensePayer {
 
   @@index([proposalId])
   @@index([userId])
+  @@index([userId, proposalId], map: "ExpensePayer_userId_proposalId_idx")
 }
 
 model ExpenseShare {
@@ -338,6 +347,8 @@ model ExpenseShare {
   @@index([proposalId])
   @@index([debtorUserId])
   @@index([creditorUserId])
+  @@index([debtorUserId, proposalId], map: "ExpenseShare_debtorUserId_proposalId_idx")
+  @@index([creditorUserId, proposalId], map: "ExpenseShare_creditorUserId_proposalId_idx")
 }
 
 model ProposalApproval {
