@@ -43,8 +43,9 @@ Phase 2 expense proposal approval/ledger slice is implemented:
 - Proposal creation supports private receipt attachments through local disk in development or S3-compatible storage in production, with short-lived signed download URLs on proposal detail.
 - Proposal detail pages support member comments, receipt attachment/download, revision submission for disputed/rejected proposals, and a submitted/approval/rejection/change-request/receipt/comment timeline.
 - Household audit events are available through a dedicated audit page and cursor-paginated API, with actor/entity/time, before/after/metadata JSON, hash-chain status, and full-history export support for review.
-- Debtors can approve, reject, or request changes only for their own pending shares from the proposal detail page.
-- Approved shares mature into append-only `LedgerTransaction` and `DebtObligation` rows exactly once, with repayment due events created when the proposal has a due date.
+- Household approval policies control share maturity: the default lets each debtor-approved share enter the ledger, all-participants approval waits until every share is approved, and payer-only approval lets the primary payer confirm shares from the proposal detail page.
+- Rejection and request-changes feedback remain debtor-owned actions for a debtor's own pending share.
+- Matured shares create append-only `LedgerTransaction` and `DebtObligation` rows exactly once, with repayment due events created when the proposal has a due date.
 - Proposal creation and share approve/reject persist `Idempotency-Key` records, replay matching duplicate requests, and reject key reuse with changed request bodies.
 - Rejected shares and pending proposals do not affect formal balances.
 - Dashboard formal balances render from open `DebtObligation` rows, not proposal totals.

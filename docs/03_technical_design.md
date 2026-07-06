@@ -158,11 +158,11 @@ Rejected or pending shares stay outside the formal ledger.
 A share can mature when:
 
 - proposal is submitted and not cancelled;
-- share state is approved by debtor;
-- payer/creditor confirmation exists;
+- share state is approved by the required actor for the household approval policy;
+- payer/creditor confirmation exists, with proposal submission counting as primary-payer confirmation under the default policy;
 - FX lock is present if currency conversion required;
 - share has not already created a ledger obligation;
-- household settings allow partial maturity or all shares are approved.
+- `PAYER_AND_EACH_DEBTOR` allows each debtor-approved share to mature independently, `ALL_PARTICIPANTS` waits until every share is approved before any share matures, and `PAYER_ONLY` lets the primary payer mature shares directly.
 
 Use persisted idempotency keys and unique constraints to prevent duplicate ledger creation. Current financial mutations store one `IdempotencyRecord` per user/key with a request hash and replayable response; a reused key with a different endpoint or body is rejected with `409`.
 

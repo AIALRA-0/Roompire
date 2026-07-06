@@ -1128,6 +1128,7 @@ components:
           originalCurrency,
           settlementAmount,
           settlementCurrency,
+          approvalPolicy,
           splitMethod,
           fxPolicy,
           revisionNumber,
@@ -1166,6 +1167,7 @@ components:
         originalCurrency: { $ref: "#/components/schemas/CurrencyCode" }
         settlementAmount: { $ref: "#/components/schemas/DecimalString" }
         settlementCurrency: { $ref: "#/components/schemas/CurrencyCode" }
+        approvalPolicy: { $ref: "#/components/schemas/ApprovalPolicy" }
         splitMethod: { $ref: "#/components/schemas/SplitMethod" }
         fxPolicy: { $ref: "#/components/schemas/FxPolicy" }
         fxRate: { $ref: "#/components/schemas/FxRateString" }

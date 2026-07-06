@@ -120,6 +120,8 @@ Current category/tag implementation: active household members can list active ex
 
 Current proposal listing implementation: `GET /households/{householdId}/expenses/proposals` accepts optional `q`, `status`, `categoryId`, `tagId`, `memberUserId`, `from`, `to`, `minAmount`, `maxAmount`, `cursor`, and `limit` query parameters and returns the existing `proposals` array plus `page` metadata (`limit`, `nextCursor`, `hasMore`). `q` searches title, merchant, and description case-insensitively; `memberUserId` matches creator, payer, debtor, or creditor participation for an active household member; the amount bounds match either visible original or settlement amount. The dashboard proposal queue uses the same API for URL-backed filters and its load-more control while preserving the proposal/ledger split.
 
+Current approval-policy implementation: proposal responses include the household `approvalPolicy` that controlled the approval flow at read time. Under `PAYER_AND_EACH_DEBTOR`, the existing primary-payer submission counts as payer confirmation and each debtor approval matures that debtor's share immediately. Under `ALL_PARTICIPANTS`, a debtor approval records the share as `APPROVED`; formal ledger obligations are created only after every share on the proposal is approved, at which point all approved shares mature together. Under `PAYER_ONLY`, only the primary payer can approve shares, and each approved share can mature without a debtor action. Rejection and request-changes remain debtor share actions.
+
 ### FX
 
 - `GET /fx/rates?base=USD&quote=CNY&date=2026-07-01`
@@ -264,7 +266,7 @@ Current implementation lets owners, admins, and members comment on an expense pr
 }
 ```
 
-If the proposal has `dueDate`, current implementation creates a `REPAYMENT_DUE` calendar event when the approved share matures into a `DebtObligation`, then links the event to that obligation with an `EventLink`.
+If the proposal has `dueDate`, current implementation creates a `REPAYMENT_DUE` calendar event when an approved share matures into a `DebtObligation`, then links the event to that obligation with an `EventLink`. For `ALL_PARTICIPANTS`, an approval can return a proposal with the share in `APPROVED` status and no obligation yet when other shares are still pending.
 
 ### Reject share
 

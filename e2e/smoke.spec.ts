@@ -722,7 +722,11 @@ async function clickExpenseProposalSubmitWithRetry(page: Page) {
   throw new Error(`POST expense proposal failed with status ${lastStatus}`);
 }
 
-async function clickShareApproveWithRetry(page: Page, shareId: string) {
+async function clickShareApproveWithRetry(
+  page: Page,
+  shareId: string,
+  expectedMessage = "Share approved and added to the ledger",
+) {
   let lastStatus = 0;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -737,7 +741,7 @@ async function clickShareApproveWithRetry(page: Page, shareId: string) {
     lastStatus = response.status();
 
     if (response.ok()) {
-      await expect(page.getByText("Share approved and added to the ledger")).toBeVisible();
+      await expect(page.getByText(expectedMessage)).toBeVisible();
       return;
     }
 
@@ -4799,6 +4803,218 @@ test.describe("Roompire real browser smoke", () => {
       status: "REVERSED",
       remainingAmount: "0",
     });
+  });
+
+  test("all-participants approval waits until every share is approved", async ({
+    page,
+  }, testInfo) => {
+    const suffix = `${testInfo.project.name.replace(/\W+/g, "-")}-${Date.now()}`;
+    const ownerEmail = `policy-owner+${suffix}@example.test`;
+    const debtorOneEmail = `policy-debtor-one+${suffix}@example.test`;
+    const debtorTwoEmail = `policy-debtor-two+${suffix}@example.test`;
+    const householdName = `Policy House ${suffix}`;
+    const proposalTitle = `All Participants Dinner ${suffix}`;
+
+    await setDevSessionWithRetry(page, ownerEmail, "Policy Owner E2E");
+    const householdResponse = await page.request.post("/api/v1/households", {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+      },
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(householdResponse.ok()).toBeTruthy();
+    const householdPayload = (await householdResponse.json()) as {
+      household: { id: string };
+    };
+    const householdId = householdPayload.household.id;
+
+    const settingsResponse = await page.request.patch(`/api/v1/households/${householdId}`, {
+      data: {
+        name: householdName,
+        timezone: "America/Los_Angeles",
+        settlementCurrency: "CNY",
+        defaultLocale: "en-US",
+        fxPolicy: "LOCK_AT_EXPENSE_DATE",
+        approvalPolicy: "ALL_PARTICIPANTS",
+        clearingPolicy: "DIRECT_ONLY",
+      },
+      headers: {
+        "x-roompire-dev-user-email": ownerEmail,
+      },
+    });
+    expect(settingsResponse.ok()).toBeTruthy();
+
+    for (const debtorEmail of [debtorOneEmail, debtorTwoEmail]) {
+      const invitePayload = await createInviteWithRetry(
+        page,
+        householdId,
+        {
+          email: debtorEmail,
+          role: "MEMBER",
+        },
+        ownerEmail,
+      );
+
+      await setDevSessionWithRetry(page, debtorEmail, "Policy Debtor E2E");
+      const acceptResponse = await page.request.post("/api/v1/invites/accept", {
+        data: {
+          token: invitePayload.token,
+        },
+        headers: {
+          "x-roompire-dev-user-email": debtorEmail,
+        },
+      });
+      expect(acceptResponse.ok()).toBeTruthy();
+    }
+
+    const membersResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/members`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(membersResponse.ok()).toBeTruthy();
+    const membersPayload = (await membersResponse.json()) as {
+      members: Array<{ userId: string; email: string }>;
+    };
+    const debtorOneUserId = membersPayload.members.find(
+      (member) => member.email === debtorOneEmail,
+    )?.userId;
+    const debtorTwoUserId = membersPayload.members.find(
+      (member) => member.email === debtorTwoEmail,
+    )?.userId;
+    expect(debtorOneUserId).toBeTruthy();
+    expect(debtorTwoUserId).toBeTruthy();
+    if (!debtorOneUserId || !debtorTwoUserId) {
+      throw new Error("Expected both debtor users to exist.");
+    }
+
+    const proposalResponse = await postApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals`,
+      {
+        data: {
+          title: proposalTitle,
+          expenseDate: "2026-07-04",
+          originalAmount: "60",
+          originalCurrency: "CNY",
+          participantUserIds: [debtorOneUserId, debtorTwoUserId],
+        },
+        headers: {
+          "Idempotency-Key": `approval-policy-proposal-${suffix}`,
+          "x-roompire-dev-user-email": ownerEmail,
+        },
+      },
+    );
+    expect(proposalResponse.status()).toBe(201);
+    const proposalPayload = (await proposalResponse.json()) as {
+      proposal: {
+        id: string;
+        approvalPolicy: string;
+        shares: Array<{
+          id: string;
+          debtorUserId: string;
+          status: string;
+          ledgerObligationId: string | null;
+        }>;
+      };
+    };
+    expect(proposalPayload.proposal.approvalPolicy).toBe("ALL_PARTICIPANTS");
+    const debtorOneShareId = proposalPayload.proposal.shares.find(
+      (share) => share.debtorUserId === debtorOneUserId,
+    )?.id;
+    const debtorTwoShareId = proposalPayload.proposal.shares.find(
+      (share) => share.debtorUserId === debtorTwoUserId,
+    )?.id;
+    expect(debtorOneShareId).toBeTruthy();
+    expect(debtorTwoShareId).toBeTruthy();
+    if (!debtorOneShareId || !debtorTwoShareId) {
+      throw new Error("Expected both proposal shares to exist.");
+    }
+
+    const detailUrl = `/en-US/app/households/${householdId}/expenses/proposals/${proposalPayload.proposal.id}`;
+
+    await setDevSessionWithRetry(page, debtorOneEmail, "Policy Debtor One E2E");
+    await page.goto(detailUrl);
+    await expect(
+      page.getByText("Shares enter the ledger only after every participant share is approved."),
+    ).toBeVisible();
+    await clickShareApproveWithRetry(
+      page,
+      debtorOneShareId,
+      "Share approval recorded. Waiting for remaining approvals.",
+    );
+    await page.reload();
+    await expect(page.getByText("Approved").first()).toBeVisible();
+    await expect(
+      page.getByText("No formal ledger obligation has been created for this proposal."),
+    ).toBeVisible();
+
+    const firstApprovalResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals/${proposalPayload.proposal.id}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorOneEmail,
+        },
+      },
+    );
+    expect(firstApprovalResponse.ok()).toBeTruthy();
+    const firstApprovalPayload = (await firstApprovalResponse.json()) as typeof proposalPayload;
+    expect(firstApprovalPayload.proposal.shares).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: debtorOneShareId,
+          ledgerObligationId: null,
+          status: "APPROVED",
+        }),
+        expect.objectContaining({
+          id: debtorTwoShareId,
+          ledgerObligationId: null,
+          status: "PENDING",
+        }),
+      ]),
+    );
+
+    await setDevSessionWithRetry(page, debtorTwoEmail, "Policy Debtor Two E2E");
+    await page.goto(detailUrl);
+    await clickShareApproveWithRetry(page, debtorTwoShareId);
+    await page.reload();
+    await expect(page.getByText("In ledger").first()).toBeVisible();
+
+    const maturedResponse = await getApiWithRetry(
+      page,
+      `/api/v1/households/${householdId}/expenses/proposals/${proposalPayload.proposal.id}`,
+      {
+        headers: {
+          "x-roompire-dev-user-email": debtorTwoEmail,
+        },
+      },
+    );
+    expect(maturedResponse.ok()).toBeTruthy();
+    const maturedPayload = (await maturedResponse.json()) as typeof proposalPayload;
+    expect(maturedPayload.proposal.shares).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: debtorOneShareId,
+          status: "MATURED_TO_LEDGER",
+        }),
+        expect.objectContaining({
+          id: debtorTwoShareId,
+          status: "MATURED_TO_LEDGER",
+        }),
+      ]),
+    );
+    expect(maturedPayload.proposal.shares.every((share) => Boolean(share.ledgerObligationId))).toBe(
+      true,
+    );
   });
 
   test("owner attaches a receipt to a proposal and downloads it", async ({ page }, testInfo) => {

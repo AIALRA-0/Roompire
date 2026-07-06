@@ -9,6 +9,7 @@ type ExpenseShareActionLabels = {
   rejectShare: string;
   requestChanges: string;
   rejectionReason: string;
+  shareApprovalRecorded: string;
   shareApproved: string;
   shareRejected: string;
   changesRequested: string;
@@ -17,6 +18,7 @@ type ExpenseShareActionLabels = {
 };
 
 type ExpenseShareActionsProps = {
+  allowFeedback?: boolean;
   householdId: string;
   shareId: string;
   labels: ExpenseShareActionLabels;
@@ -28,7 +30,20 @@ type ApiErrorPayload = {
   };
 };
 
-async function postShareDecision(url: string, body: unknown, errorFallback: string): Promise<void> {
+type ShareDecisionPayload = {
+  proposal?: {
+    shares?: Array<{
+      id?: string;
+      status?: string;
+    }>;
+  };
+};
+
+async function postShareDecision(
+  url: string,
+  body: unknown,
+  errorFallback: string,
+): Promise<ShareDecisionPayload> {
   const response = await fetch(url, {
     method: "POST",
     credentials: "same-origin",
@@ -46,9 +61,16 @@ async function postShareDecision(url: string, body: unknown, errorFallback: stri
       payload && typeof payload === "object" ? (payload as ApiErrorPayload) : null;
     throw new Error(errorPayload?.error?.message ?? errorFallback);
   }
+
+  return payload && typeof payload === "object" ? (payload as ShareDecisionPayload) : {};
 }
 
-export function ExpenseShareActions({ householdId, shareId, labels }: ExpenseShareActionsProps) {
+export function ExpenseShareActions({
+  allowFeedback = true,
+  householdId,
+  shareId,
+  labels,
+}: ExpenseShareActionsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -58,12 +80,17 @@ export function ExpenseShareActions({ householdId, shareId, labels }: ExpenseSha
     setMessage(null);
 
     try {
-      await postShareDecision(
+      const payload = await postShareDecision(
         `/api/v1/households/${householdId}/expenses/shares/${shareId}/approve`,
         {},
         labels.errorFallback,
       );
-      setMessage(labels.shareApproved);
+      const updatedShare = payload.proposal?.shares?.find((share) => share.id === shareId);
+      setMessage(
+        updatedShare?.status === "MATURED_TO_LEDGER"
+          ? labels.shareApproved
+          : labels.shareApprovalRecorded,
+      );
       startTransition(() => router.refresh());
     } catch (error) {
       setMessage(error instanceof Error ? error.message : labels.errorFallback);
@@ -103,39 +130,41 @@ export function ExpenseShareActions({ householdId, shareId, labels }: ExpenseSha
           {isPending ? labels.working : labels.approveShare}
         </Button>
       </div>
-      <form
-        className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
-        onSubmit={submitShareFeedback}
-      >
-        <input
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-ring"
-          data-testid={`share-reject-reason-${shareId}`}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder={labels.rejectionReason}
-          required
-          value={reason}
-        />
-        <Button
-          data-testid={`share-reject-${shareId}`}
-          disabled={isPending || reason.trim().length === 0}
-          size="sm"
-          type="submit"
-          variant="outline"
-          value="reject"
+      {allowFeedback ? (
+        <form
+          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+          onSubmit={submitShareFeedback}
         >
-          {labels.rejectShare}
-        </Button>
-        <Button
-          data-testid={`share-request-changes-${shareId}`}
-          disabled={isPending || reason.trim().length === 0}
-          size="sm"
-          type="submit"
-          variant="outline"
-          value="request-changes"
-        >
-          {labels.requestChanges}
-        </Button>
-      </form>
+          <input
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-ring"
+            data-testid={`share-reject-reason-${shareId}`}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder={labels.rejectionReason}
+            required
+            value={reason}
+          />
+          <Button
+            data-testid={`share-reject-${shareId}`}
+            disabled={isPending || reason.trim().length === 0}
+            size="sm"
+            type="submit"
+            variant="outline"
+            value="reject"
+          >
+            {labels.rejectShare}
+          </Button>
+          <Button
+            data-testid={`share-request-changes-${shareId}`}
+            disabled={isPending || reason.trim().length === 0}
+            size="sm"
+            type="submit"
+            variant="outline"
+            value="request-changes"
+          >
+            {labels.requestChanges}
+          </Button>
+        </form>
+      ) : null}
       {message ? (
         <p className="text-xs text-muted-foreground" role="status">
           {message}

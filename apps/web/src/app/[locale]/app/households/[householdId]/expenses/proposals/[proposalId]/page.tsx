@@ -229,6 +229,16 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
       : proposal.category.nameEn
     : expense("uncategorized");
   const hasLedgerObligation = proposal.shares.some((share) => share.ledgerObligationId);
+  const isPrimaryPayer = proposal.payers.some(
+    (payer) => payer.isPrimary && payer.userId === user.id,
+  );
+  const detailHint = hasLedgerObligation
+    ? expense("ledgerDetailHint")
+    : proposal.approvalPolicy === "ALL_PARTICIPANTS"
+      ? expense("detailHintAllParticipants")
+      : proposal.approvalPolicy === "PAYER_ONLY"
+        ? expense("detailHintPayerOnly")
+        : expense("detailHint");
   const canRevise =
     proposal.createdByUserId === user.id &&
     !hasLedgerObligation &&
@@ -238,6 +248,7 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
     rejectShare: expense("rejectShare"),
     requestChanges: expense("requestChanges"),
     rejectionReason: expense("rejectionReason"),
+    shareApprovalRecorded: expense("shareApprovalRecorded"),
     shareApproved: expense("shareApproved"),
     shareRejected: expense("shareRejected"),
     changesRequested: expense("changesRequested"),
@@ -340,9 +351,7 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
                   <ReceiptText aria-hidden="true" className="h-5 w-5 text-primary" />
                   <h1 className="text-2xl font-semibold">{proposal.title}</h1>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {hasLedgerObligation ? expense("ledgerDetailHint") : expense("detailHint")}
-                </p>
+                <p className="mt-2 text-sm text-muted-foreground">{detailHint}</p>
               </div>
               <Badge variant={statusVariant(proposal.status)}>
                 {statusLabel(proposal.status, expense, common)}
@@ -422,8 +431,12 @@ export default async function ExpenseProposalDetailPage({ params }: PageProps) {
                             </Badge>
                           </div>
                         </div>
-                        {share.debtorUserId === user.id && share.status === "PENDING" ? (
+                        {share.status === "PENDING" &&
+                        ((proposal.approvalPolicy === "PAYER_ONLY" && isPrimaryPayer) ||
+                          (proposal.approvalPolicy !== "PAYER_ONLY" &&
+                            share.debtorUserId === user.id)) ? (
                           <ExpenseShareActions
+                            allowFeedback={proposal.approvalPolicy !== "PAYER_ONLY"}
                             householdId={householdId}
                             labels={shareActionLabels}
                             shareId={share.id}

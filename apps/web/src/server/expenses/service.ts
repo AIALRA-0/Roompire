@@ -312,6 +312,11 @@ type PreparedExpenseProposalCreate = {
 };
 
 const expenseProposalDetailInclude = {
+  household: {
+    select: {
+      approvalPolicy: true,
+    },
+  },
   category: true,
   tagLinks: {
     include: {
@@ -662,6 +667,151 @@ function assertFxLockReady(proposal: {
       "FX lock must be present before an approved share can mature.",
     );
   }
+}
+
+type ApprovalPolicy = "PAYER_AND_EACH_DEBTOR" | "ALL_PARTICIPANTS" | "PAYER_ONLY";
+
+function approvalPolicyForProposal(proposal: {
+  household?: { approvalPolicy: string } | null;
+}): ApprovalPolicy {
+  const approvalPolicy = proposal.household?.approvalPolicy;
+
+  if (
+    approvalPolicy === "ALL_PARTICIPANTS" ||
+    approvalPolicy === "PAYER_ONLY" ||
+    approvalPolicy === "PAYER_AND_EACH_DEBTOR"
+  ) {
+    return approvalPolicy;
+  }
+
+  return "PAYER_AND_EACH_DEBTOR";
+}
+
+function isPrimaryPayer(
+  proposal: { payers: Array<{ userId: string; isPrimary: boolean }> },
+  userId: string,
+) {
+  return proposal.payers.some((payer) => payer.userId === userId && payer.isPrimary);
+}
+
+type ShareForMaturity = Prisma.ExpenseShareGetPayload<{
+  include: {
+    proposal: {
+      select: {
+        dueDate: true;
+        title: true;
+      };
+    };
+  };
+}>;
+
+async function matureApprovedShare(
+  tx: Prisma.TransactionClient,
+  input: {
+    actorUserId: string;
+    householdId: string;
+    ledgerOccurredAt: Date;
+    share: ShareForMaturity;
+    timezone: string;
+  },
+) {
+  const existingObligation = await tx.debtObligation.findUnique({
+    where: {
+      sourceShareId: input.share.id,
+    },
+  });
+
+  if (existingObligation) {
+    await tx.expenseShare.update({
+      where: { id: input.share.id },
+      data: {
+        status: ShareStatus.MATURED_TO_LEDGER,
+        ledgerObligationId: existingObligation.id,
+      },
+    });
+    return;
+  }
+
+  const ledgerTransaction = await tx.ledgerTransaction.create({
+    data: {
+      householdId: input.householdId,
+      type: LedgerTransactionType.DEBT_CREATED,
+      description: input.share.proposal.title,
+      sourceType: "ExpenseShare",
+      sourceId: input.share.id,
+      createdByUserId: input.actorUserId,
+      occurredAt: input.ledgerOccurredAt,
+    },
+  });
+
+  const obligation = await tx.debtObligation.create({
+    data: {
+      householdId: input.householdId,
+      ledgerTransactionId: ledgerTransaction.id,
+      sourceShareId: input.share.id,
+      debtorUserId: input.share.debtorUserId,
+      creditorUserId: input.share.creditorUserId,
+      originalAmount: input.share.shareOriginalAmount,
+      originalCurrency: input.share.shareCurrency,
+      settlementAmount: input.share.shareSettlementAmount,
+      settlementCurrency: input.share.settlementCurrency,
+      remainingAmount: input.share.shareSettlementAmount,
+      dueDate: input.share.proposal.dueDate,
+    },
+  });
+  let repaymentEventId: string | null = null;
+
+  if (input.share.proposal.dueDate) {
+    const repaymentEvent = await tx.calendarEvent.create({
+      data: {
+        householdId: input.householdId,
+        type: CalendarEventType.REPAYMENT_DUE,
+        title: `Repayment due: ${input.share.proposal.title}`,
+        description: `${obligation.settlementCurrency} ${obligation.remainingAmount.toString()} due for approved share.`,
+        startAt: input.share.proposal.dueDate,
+        allDay: true,
+        timezone: input.timezone,
+        createdByUserId: input.actorUserId,
+      },
+    });
+
+    await tx.eventLink.create({
+      data: {
+        eventId: repaymentEvent.id,
+        linkedType: "debt_obligation",
+        linkedId: obligation.id,
+      },
+    });
+    repaymentEventId = repaymentEvent.id;
+  }
+
+  await tx.expenseShare.update({
+    where: { id: input.share.id },
+    data: {
+      status: ShareStatus.MATURED_TO_LEDGER,
+      ledgerObligationId: obligation.id,
+    },
+  });
+
+  await tx.auditEvent.create({
+    data: {
+      householdId: input.householdId,
+      actorUserId: input.actorUserId,
+      action: "expense_share.matured_to_ledger",
+      entityType: "DebtObligation",
+      entityId: obligation.id,
+      after: {
+        proposalId: input.share.proposalId,
+        shareId: input.share.id,
+        ledgerTransactionId: ledgerTransaction.id,
+        debtorUserId: input.share.debtorUserId,
+        creditorUserId: input.share.creditorUserId,
+        settlementAmount: obligation.settlementAmount.toString(),
+        settlementCurrency: obligation.settlementCurrency,
+        repaymentEventId,
+      },
+    },
+  });
 }
 
 async function resolveHouseholdFxRateLock(input: {
@@ -1209,6 +1359,11 @@ export async function listExpenseProposalsForHousehold(
   const proposals = await prisma.expenseProposal.findMany({
     where: buildExpenseProposalWhere(householdId, parsed.data, cursorProposal),
     include: {
+      household: {
+        select: {
+          approvalPolicy: true,
+        },
+      },
       category: true,
       tagLinks: {
         include: {
@@ -1989,6 +2144,11 @@ export async function approveExpenseShareForHousehold(
       include: {
         proposal: {
           include: {
+            household: {
+              select: {
+                approvalPolicy: true,
+              },
+            },
             payers: true,
             shares: true,
           },
@@ -1998,10 +2158,6 @@ export async function approveExpenseShareForHousehold(
 
     if (!share) {
       throw new ApiError(404, "NOT_FOUND", "Resource not found.");
-    }
-
-    if (share.debtorUserId !== userId) {
-      throw new ApiError(403, "FORBIDDEN", "Users can only approve their own shares.");
     }
 
     if (share.status === ShareStatus.MATURED_TO_LEDGER) {
@@ -2017,21 +2173,20 @@ export async function approveExpenseShareForHousehold(
       throw new ApiError(409, "SHARE_NOT_ACTIONABLE", "Only pending shares can be approved.");
     }
 
-    const hasPayerConfirmation = share.proposal.payers.some(
-      (payer) => payer.userId === share.creditorUserId && payer.isPrimary,
-    );
+    const approvalPolicy = approvalPolicyForProposal(share.proposal);
+    const userIsPrimaryPayer = isPrimaryPayer(share.proposal, userId);
 
-    if (!hasPayerConfirmation) {
-      throw new ApiError(
-        409,
-        "PAYER_CONFIRMATION_REQUIRED",
-        "Primary payer confirmation is required before a share can mature.",
-      );
+    if (approvalPolicy === "PAYER_ONLY") {
+      if (!userIsPrimaryPayer) {
+        throw new ApiError(
+          403,
+          "FORBIDDEN",
+          "Only the primary payer can approve shares under the payer-only policy.",
+        );
+      }
+    } else if (share.debtorUserId !== userId) {
+      throw new ApiError(403, "FORBIDDEN", "Users can only approve their own shares.");
     }
-
-    assertFxLockReady(share.proposal);
-    const ledgerOccurredAt = new Date();
-    await assertLedgerPeriodOpen(tx, householdId, ledgerOccurredAt);
 
     if (share.status === ShareStatus.PENDING) {
       await tx.proposalApproval.create({
@@ -2055,110 +2210,71 @@ export async function approveExpenseShareForHousehold(
             proposalId: share.proposalId,
             debtorUserId: share.debtorUserId,
             creditorUserId: share.creditorUserId,
+            approvalPolicy,
             status: ShareStatus.APPROVED,
           },
         },
       });
-    }
-
-    const existingObligation = await tx.debtObligation.findUnique({
-      where: {
-        sourceShareId: share.id,
-      },
-    });
-
-    if (existingObligation) {
-      await tx.expenseShare.update({
-        where: { id: share.id },
-        data: {
-          status: ShareStatus.MATURED_TO_LEDGER,
-          ledgerObligationId: existingObligation.id,
-        },
-      });
-    } else {
-      const ledgerTransaction = await tx.ledgerTransaction.create({
-        data: {
-          householdId,
-          type: LedgerTransactionType.DEBT_CREATED,
-          description: share.proposal.title,
-          sourceType: "ExpenseShare",
-          sourceId: share.id,
-          createdByUserId: userId,
-          occurredAt: ledgerOccurredAt,
-        },
-      });
-
-      const obligation = await tx.debtObligation.create({
-        data: {
-          householdId,
-          ledgerTransactionId: ledgerTransaction.id,
-          sourceShareId: share.id,
-          debtorUserId: share.debtorUserId,
-          creditorUserId: share.creditorUserId,
-          originalAmount: share.shareOriginalAmount,
-          originalCurrency: share.shareCurrency,
-          settlementAmount: share.shareSettlementAmount,
-          settlementCurrency: share.settlementCurrency,
-          remainingAmount: share.shareSettlementAmount,
-          dueDate: share.proposal.dueDate,
-        },
-      });
-      let repaymentEventId: string | null = null;
-
-      if (share.proposal.dueDate) {
-        const repaymentEvent = await tx.calendarEvent.create({
-          data: {
-            householdId,
-            type: CalendarEventType.REPAYMENT_DUE,
-            title: `Repayment due: ${share.proposal.title}`,
-            description: `${obligation.settlementCurrency} ${obligation.remainingAmount.toString()} due for approved share.`,
-            startAt: share.proposal.dueDate,
-            allDay: true,
-            timezone: membership.household.timezone,
-            createdByUserId: userId,
-          },
-        });
-
-        await tx.eventLink.create({
-          data: {
-            eventId: repaymentEvent.id,
-            linkedType: "debt_obligation",
-            linkedId: obligation.id,
-          },
-        });
-        repaymentEventId = repaymentEvent.id;
-      }
 
       await tx.expenseShare.update({
         where: { id: share.id },
         data: {
-          status: ShareStatus.MATURED_TO_LEDGER,
-          ledgerObligationId: obligation.id,
-        },
-      });
-
-      await tx.auditEvent.create({
-        data: {
-          householdId,
-          actorUserId: userId,
-          action: "expense_share.matured_to_ledger",
-          entityType: "DebtObligation",
-          entityId: obligation.id,
-          after: {
-            proposalId: share.proposalId,
-            shareId: share.id,
-            ledgerTransactionId: ledgerTransaction.id,
-            debtorUserId: share.debtorUserId,
-            creditorUserId: share.creditorUserId,
-            settlementAmount: obligation.settlementAmount.toString(),
-            settlementCurrency: obligation.settlementCurrency,
-            repaymentEventId,
-          },
+          status: ShareStatus.APPROVED,
         },
       });
     }
 
     const refreshedShares = await tx.expenseShare.findMany({
+      where: { proposalId: share.proposalId },
+      include: {
+        proposal: {
+          select: {
+            dueDate: true,
+            title: true,
+          },
+        },
+      },
+    });
+    const canMatureAllParticipantShares =
+      approvalPolicy !== "ALL_PARTICIPANTS" ||
+      refreshedShares.every(
+        (refreshedShare) =>
+          refreshedShare.status === ShareStatus.APPROVED ||
+          refreshedShare.status === ShareStatus.MATURED_TO_LEDGER,
+      );
+
+    if (!canMatureAllParticipantShares) {
+      return tx.expenseProposal.update({
+        where: { id: share.proposalId },
+        data: {
+          status: proposalStatusFromShares(refreshedShares),
+        },
+        include: {
+          ...expenseProposalDetailInclude,
+        },
+      });
+    }
+
+    assertFxLockReady(share.proposal);
+    const ledgerOccurredAt = new Date();
+    await assertLedgerPeriodOpen(tx, householdId, ledgerOccurredAt);
+
+    const sharesToMature =
+      approvalPolicy === "ALL_PARTICIPANTS"
+        ? refreshedShares.filter((refreshedShare) => refreshedShare.status === ShareStatus.APPROVED)
+        : refreshedShares.filter((refreshedShare) => refreshedShare.id === share.id);
+
+    for (const shareToMature of sharesToMature) {
+      await matureApprovedShare(tx, {
+        actorUserId: userId,
+        householdId,
+        ledgerOccurredAt,
+        share: shareToMature,
+        timezone: membership.household.timezone,
+      });
+    }
+
+    const finalShares = await tx.expenseShare.findMany({
       where: { proposalId: share.proposalId },
       select: { status: true },
     });
@@ -2166,7 +2282,7 @@ export async function approveExpenseShareForHousehold(
     return tx.expenseProposal.update({
       where: { id: share.proposalId },
       data: {
-        status: proposalStatusFromShares(refreshedShares),
+        status: proposalStatusFromShares(finalShares),
       },
       include: {
         ...expenseProposalDetailInclude,

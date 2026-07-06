@@ -1,5 +1,6 @@
 import type {
   ExpenseCategory,
+  Household,
   ExpensePayer,
   ExpenseProposal,
   ExpenseProposalTag,
@@ -21,6 +22,7 @@ type ProposalTagWithTag = ExpenseProposalTag & {
 
 type ProposalRelations = {
   category?: ExpenseCategory | null;
+  household?: Pick<Household, "approvalPolicy"> | null;
   tagLinks?: ProposalTagWithTag[];
   payers?: ExpensePayer[];
   shares?: ExpenseShare[];
@@ -63,6 +65,7 @@ export function serializeExpenseProposal(proposal: ExpenseProposal & ProposalRel
     originalCurrency: proposal.originalCurrency,
     settlementAmount: proposal.settlementAmount.toString(),
     settlementCurrency: proposal.settlementCurrency,
+    approvalPolicy: proposal.household?.approvalPolicy ?? "PAYER_AND_EACH_DEBTOR",
     splitMethod: proposal.splitMethod,
     fxPolicy: proposal.fxPolicy,
     fxRate: proposal.fxRate?.toString() ?? null,
