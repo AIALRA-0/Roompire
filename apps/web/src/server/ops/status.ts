@@ -66,6 +66,32 @@ export type OpsHousekeepingStatus = {
   error: string | null;
 };
 
+export type OpsFxRateLookupAttemptStatus = "SUCCESS" | "FAILED";
+
+export type OpsFxRateLookupAttempt = {
+  id: string;
+  status: OpsFxRateLookupAttemptStatus;
+  providerChain: string;
+  provider: string | null;
+  baseCurrency: string;
+  quoteCurrency: string;
+  requestedDate: string;
+  rateDate: string | null;
+  rate: string | null;
+  durationMs: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+};
+
+export type OpsFxRateLookupStatus = {
+  status: HealthState;
+  latest: OpsFxRateLookupAttempt | null;
+  recent: OpsFxRateLookupAttempt[];
+  checkedAt: string | null;
+  error: string | null;
+};
+
 export type OpsStatusSnapshot = {
   schemaVersion: 1;
   source: "host_status_file" | "runtime_fallback";
@@ -325,6 +351,7 @@ export type OpsStatusSnapshot = {
   latestSmoke: OpsSmokeStatus;
   latestRestoreDrill: OpsRestoreDrillStatus;
   latestHousekeeping: OpsHousekeepingStatus;
+  fxRateLookups: OpsFxRateLookupStatus;
 };
 
 export type OpsDockerStorageCategory = {
@@ -412,6 +439,10 @@ function nullableStringValue(value: unknown) {
 
 function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function dateOnlyValue(value: Date | null) {
+  return value ? value.toISOString().slice(0, 10) : null;
 }
 
 function healthStateValue(value: unknown): HealthState {
@@ -899,6 +930,78 @@ function normalizeHousekeeping(value: unknown): OpsHousekeepingStatus {
   };
 }
 
+function emptyFxRateLookupStatus(): OpsFxRateLookupStatus {
+  return {
+    status: "unknown",
+    latest: null,
+    recent: [],
+    checkedAt: null,
+    error: null,
+  };
+}
+
+async function readFxRateLookupStatus(): Promise<OpsFxRateLookupStatus> {
+  const checkedAt = new Date().toISOString();
+
+  try {
+    const rows = await prisma.fxRateLookupLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+    const recent = rows.map((row) => ({
+      id: row.id,
+      status: row.status === "FAILED" ? ("FAILED" as const) : ("SUCCESS" as const),
+      providerChain: row.providerChain,
+      provider: row.provider,
+      baseCurrency: row.baseCurrency.trim(),
+      quoteCurrency: row.quoteCurrency.trim(),
+      requestedDate: dateOnlyValue(row.requestedDate) ?? "",
+      rateDate: dateOnlyValue(row.rateDate),
+      rate: row.rate?.toString() ?? null,
+      durationMs: row.durationMs,
+      errorCode: row.errorCode,
+      errorMessage: row.errorMessage,
+      createdAt: row.createdAt.toISOString(),
+    }));
+    const latest = recent[0] ?? null;
+
+    return {
+      status: latest ? (latest.status === "FAILED" ? "warning" : "ok") : "unknown",
+      latest,
+      recent,
+      checkedAt,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      status: "unknown",
+      latest: null,
+      recent: [],
+      checkedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function withRuntimeFxRateLookups(status: OpsStatusSnapshot): Promise<OpsStatusSnapshot> {
+  const fxRateLookups = await readFxRateLookupStatus();
+  const { summary, ...withoutSummary } = status;
+  void summary;
+  const partial: Omit<OpsStatusSnapshot, "summary"> = {
+    ...withoutSummary,
+    fxRateLookups,
+  };
+  const warnings = deriveWarnings(partial);
+
+  return {
+    ...partial,
+    summary: {
+      status: warnings.length > 0 ? "warning" : "ok",
+      warnings,
+    },
+  };
+}
+
 function deploymentHeadroomFromDisk(
   availableBytes: number | null,
   checkedAt: string | null,
@@ -1099,6 +1202,14 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
 
   if (status.latestHousekeeping.status === "warning") {
     warnings.push("housekeeping_latest_failed");
+  }
+
+  if (status.fxRateLookups.status === "warning") {
+    warnings.push("fx_lookup_latest_failed");
+  }
+
+  if (status.fxRateLookups.status === "unknown" && status.fxRateLookups.error) {
+    warnings.push("fx_lookup_status_unknown");
   }
 
   if (status.latestHousekeeping.status === "unknown") {
@@ -1463,6 +1574,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
     latestSmoke: normalizeSmoke(raw.latestSmoke),
     latestRestoreDrill: normalizeRestoreDrill(raw.latestRestoreDrill),
     latestHousekeeping: normalizeHousekeeping(rawLatestHousekeeping),
+    fxRateLookups: emptyFxRateLookupStatus(),
   };
   const warnings = deriveWarnings(partial);
 
@@ -1760,6 +1872,7 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
     latestSmoke: normalizeSmoke(null),
     latestRestoreDrill: normalizeRestoreDrill(null),
     latestHousekeeping: normalizeHousekeeping(null),
+    fxRateLookups: emptyFxRateLookupStatus(),
   };
   const warnings = deriveWarnings(partial);
 
@@ -1774,19 +1887,22 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
 
 export async function readOpsStatus() {
   const statusFile = await readConfiguredStatusFile();
+  let status: OpsStatusSnapshot;
 
   if (!statusFile.text) {
-    return runtimeFallbackStatus(statusFile.path, statusFile.error ?? null);
+    status = await runtimeFallbackStatus(statusFile.path, statusFile.error ?? null);
+  } else {
+    try {
+      status = normalizeLoadedStatus(JSON.parse(statusFile.text), statusFile.path);
+    } catch (error) {
+      status = await runtimeFallbackStatus(
+        statusFile.path,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
-  try {
-    return normalizeLoadedStatus(JSON.parse(statusFile.text), statusFile.path);
-  } catch (error) {
-    return runtimeFallbackStatus(
-      statusFile.path,
-      error instanceof Error ? error.message : String(error),
-    );
-  }
+  return withRuntimeFxRateLookups(status);
 }
 
 export async function requireOpsStatusViewer(user: User) {

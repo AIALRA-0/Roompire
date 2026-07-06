@@ -44,6 +44,7 @@ type DockerStorageCategory = OpsStatusSnapshot["dockerStorage"]["images"];
 type DockerImageInventoryItem = OpsStatusSnapshot["dockerImageInventory"]["images"][number];
 type RootStorageInventoryItem = OpsStatusSnapshot["rootStorageInventory"]["paths"][number];
 type ContainerHealthItem = OpsStatusSnapshot["containerHealth"]["containers"][number];
+type FxRateLookupAttemptStatus = OpsStatusSnapshot["fxRateLookups"]["recent"][number]["status"];
 
 function formatBytes(locale: Locale, bytes: number | null) {
   if (bytes === null) {
@@ -139,6 +140,18 @@ function formatPerDay(
   }
 
   return ops("perDayValue", { value: formatSignedFileSize(locale, value) });
+}
+
+function formatMilliseconds(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  locale: Locale,
+  value: number | null,
+) {
+  if (value === null) {
+    return "—";
+  }
+
+  return ops("millisecondsValue", { count: formatInteger(locale, value) });
 }
 
 function formatReclaimable(locale: Locale, category: DockerStorageCategory) {
@@ -247,6 +260,13 @@ function restoreDrillLabel(
   return ops("statusUnknown");
 }
 
+function fxRateLookupAttemptLabel(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  status: FxRateLookupAttemptStatus,
+) {
+  return status === "SUCCESS" ? ops("fxLookupSucceeded") : ops("fxLookupFailed");
+}
+
 function backupEncryptionModeLabel(
   ops: Awaited<ReturnType<typeof getTranslations>>,
   mode: BackupEncryptionMode,
@@ -344,6 +364,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     housekeeping_latest_missing: ops("warningHousekeepingLatestMissing"),
     housekeeping_latest_unconfirmed: ops("warningHousekeepingLatestUnconfirmed"),
     housekeeping_latest_stale: ops("warningHousekeepingLatestStale"),
+    fx_lookup_latest_failed: ops("warningFxLookupLatestFailed"),
+    fx_lookup_status_unknown: ops("warningFxLookupStatusUnknown"),
     backup_freshness_attention: ops("warningBackupFreshnessAttention"),
     backup_freshness_unknown: ops("warningBackupFreshnessUnknown"),
     backup_encryption_disabled: ops("warningBackupEncryptionDisabled"),
@@ -451,6 +473,7 @@ export default async function OpsPage({ params }: PageProps) {
     { label: nav("settings"), icon: Settings, href: `/${locale}/app` },
   ];
   const warningLabels = status.summary.warnings.map((warning) => warningLabel(ops, warning));
+  const latestFxLookup = status.fxRateLookups.latest;
 
   return (
     <main className="min-h-svh overflow-x-hidden bg-background text-foreground">
@@ -1633,6 +1656,126 @@ export default async function OpsPage({ params }: PageProps) {
                       {status.reminderTimer.error ?? status.reminderService.error}
                     </p>
                   ) : null}
+                </div>
+              </div>
+
+              <div
+                className="min-w-0 rounded-lg border border-border bg-card"
+                data-testid="ops-fx-lookup-card"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-border p-5">
+                  <div>
+                    <h2 className="text-base font-semibold">{ops("fxLookup")}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{ops("fxLookupHint")}</p>
+                  </div>
+                  <WalletCards aria-hidden="true" className="h-5 w-5 text-teal-700" />
+                </div>
+                <div className="grid gap-3 p-5">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm text-muted-foreground">{ops("latestResult")}</span>
+                    <Badge
+                      data-testid="ops-fx-lookup-status"
+                      variant={healthVariant(status.fxRateLookups.status)}
+                    >
+                      {healthLabel(ops, status.fxRateLookups.status)}
+                    </Badge>
+                  </div>
+                  <MetricRow
+                    label={ops("fxLookupProviderChain")}
+                    value={latestFxLookup?.providerChain ?? "—"}
+                  />
+                  <MetricRow
+                    label={ops("fxLookupProvider")}
+                    testId="ops-fx-lookup-provider"
+                    value={latestFxLookup?.provider ?? "—"}
+                  />
+                  <MetricRow
+                    label={ops("fxLookupPair")}
+                    testId="ops-fx-lookup-pair"
+                    value={
+                      latestFxLookup
+                        ? `${latestFxLookup.baseCurrency}/${latestFxLookup.quoteCurrency}`
+                        : "—"
+                    }
+                  />
+                  <MetricRow
+                    label={ops("fxLookupRequestedDate")}
+                    value={latestFxLookup?.requestedDate ?? "—"}
+                  />
+                  <MetricRow
+                    label={ops("fxLookupRateDate")}
+                    value={latestFxLookup?.rateDate ?? "—"}
+                  />
+                  <MetricRow
+                    label={ops("fxLookupRate")}
+                    testId="ops-fx-lookup-rate"
+                    value={latestFxLookup?.rate ?? "—"}
+                  />
+                  <MetricRow
+                    label={ops("fxLookupDuration")}
+                    value={formatMilliseconds(ops, locale, latestFxLookup?.durationMs ?? null)}
+                  />
+                  <MetricRow
+                    label={ops("checkedAt")}
+                    value={formatDateTime(locale, status.fxRateLookups.checkedAt)}
+                  />
+                  {latestFxLookup?.errorCode || latestFxLookup?.errorMessage ? (
+                    <p className="text-sm text-rose-700">
+                      {[latestFxLookup.errorCode, latestFxLookup.errorMessage]
+                        .filter(Boolean)
+                        .join(": ")}
+                    </p>
+                  ) : null}
+                  {status.fxRateLookups.error ? (
+                    <p className="text-sm text-rose-700">{status.fxRateLookups.error}</p>
+                  ) : null}
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">
+                        {ops("fxLookupRecentAttempts")}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatInteger(locale, status.fxRateLookups.recent.length)}
+                      </span>
+                    </div>
+                    {status.fxRateLookups.recent.length > 0 ? (
+                      <div className="mt-3 grid min-w-0 gap-2">
+                        {status.fxRateLookups.recent.slice(0, 3).map((attempt) => (
+                          <div
+                            className="min-w-0 rounded-md border border-border bg-background/60 px-3 py-2"
+                            data-testid="ops-fx-lookup-row"
+                            key={attempt.id}
+                          >
+                            <div className="flex min-w-0 items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium">
+                                  {attempt.baseCurrency}/{attempt.quoteCurrency}
+                                </p>
+                                <p className="mt-1 truncate text-xs text-muted-foreground">
+                                  {attempt.provider ?? attempt.providerChain}
+                                </p>
+                              </div>
+                              <Badge
+                                className="shrink-0"
+                                variant={attempt.status === "SUCCESS" ? "success" : "danger"}
+                              >
+                                {fxRateLookupAttemptLabel(ops, attempt.status)}
+                              </Badge>
+                            </div>
+                            <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              <span>{attempt.requestedDate}</span>
+                              <span>{formatMilliseconds(ops, locale, attempt.durationMs)}</span>
+                              <span>{formatDateTime(locale, attempt.createdAt)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        {ops("fxLookupNoAttempts")}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 

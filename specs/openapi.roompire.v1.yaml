@@ -2040,6 +2040,70 @@ components:
         message:
           type: string
           nullable: true
+    OpsFxRateLookupAttempt:
+      type: object
+      required:
+        [
+          id,
+          status,
+          providerChain,
+          provider,
+          baseCurrency,
+          quoteCurrency,
+          requestedDate,
+          rateDate,
+          rate,
+          durationMs,
+          errorCode,
+          errorMessage,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [SUCCESS, FAILED]
+        providerChain:
+          type: string
+          example: ecb,frankfurter
+        provider:
+          type: string
+          nullable: true
+          example: ecb
+        baseCurrency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: USD
+        quoteCurrency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: CNY
+        requestedDate:
+          type: string
+          format: date
+        rateDate:
+          type: string
+          format: date
+          nullable: true
+        rate:
+          type: string
+          nullable: true
+          example: "6.774790502793"
+        durationMs:
+          type: integer
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+          example: FX_PROVIDER_LOOKUP_FAILED
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
     OpsStatusSnapshot:
       type: object
       required:
@@ -2066,6 +2130,7 @@ components:
           housekeepingTimer,
           housekeepingService,
           latestHousekeeping,
+          fxRateLookups,
           backupFreshness,
           backupEncryption,
           backupPassphraseEscrow,
@@ -2657,6 +2722,25 @@ components:
             workspaceArtifactMinAvailableBytes:
               type: integer
               nullable: true
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        fxRateLookups:
+          type: object
+          required: [status, latest, recent, checkedAt, error]
+          properties:
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            latest:
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/OpsFxRateLookupAttempt"
+            recent:
+              type: array
+              items: { $ref: "#/components/schemas/OpsFxRateLookupAttempt" }
             checkedAt:
               type: string
               format: date-time

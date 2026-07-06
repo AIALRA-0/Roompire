@@ -50,6 +50,7 @@ Use this checklist before declaring a milestone complete.
 - [x] FX-difference corrections use append-only `FX_ADJUSTMENT` ledger transactions.
 - [x] FX provider lookup supports configured endpoint failover after cache misses.
 - [x] FX provider lookup supports multiple provider families, including Frankfurter-compatible and ECB Data Portal EXR fallbacks.
+- [x] FX provider live lookup attempts are logged and visible in owner/admin ops status.
 - [x] Proposal queue/detail UI distinguishes manual, provider/cache, same-currency, and original-currency FX sources.
 - [ ] Audit event emitted for critical mutation.
 

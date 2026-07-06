@@ -1,16 +1,60 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { ApiError } from "@/server/api/errors";
+import { prisma } from "@/server/db/prisma";
 import {
   EcbFxProvider,
   FrankfurterFxProvider,
   FallbackFxProvider,
   resolveConfiguredFxProvider,
   resolveConfiguredFxProviders,
+  resolveFxRateLock,
 } from "./rates";
+
+vi.mock("@/server/db/prisma", () => ({
+  prisma: {
+    fxRate: {
+      findFirst: vi.fn(),
+      upsert: vi.fn(),
+    },
+    fxRateLookupLog: {
+      create: vi.fn(),
+    },
+  },
+}));
+
+const prismaMock = prisma as unknown as {
+  fxRate: {
+    findFirst: Mock;
+    upsert: Mock;
+  };
+  fxRateLookupLog: {
+    create: Mock;
+  };
+};
+
+const originalFxEnv = {
+  ROOMPIRE_FX_PROVIDER: process.env.ROOMPIRE_FX_PROVIDER,
+  ROOMPIRE_FX_FRANKFURTER_BASE_URLS: process.env.ROOMPIRE_FX_FRANKFURTER_BASE_URLS,
+  ROOMPIRE_FX_ECB_BASE_URLS: process.env.ROOMPIRE_FX_ECB_BASE_URLS,
+};
+
+function restoreFxEnv() {
+  for (const [key, value] of Object.entries(originalFxEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
 
 describe("FX rate providers", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    prismaMock.fxRate.findFirst.mockReset();
+    prismaMock.fxRate.upsert.mockReset();
+    prismaMock.fxRateLookupLog.create.mockReset();
+    restoreFxEnv();
   });
 
   it("parses a Frankfurter historical rate response", async () => {
@@ -300,5 +344,85 @@ describe("FX rate providers", () => {
         ROOMPIRE_FX_ECB_BASE_URLS: "not a url",
       }),
     ).toThrow(ApiError);
+  });
+
+  it("records successful live lookup attempts after cache misses", async () => {
+    process.env.ROOMPIRE_FX_PROVIDER = "frankfurter";
+    process.env.ROOMPIRE_FX_FRANKFURTER_BASE_URLS = "https://fx.example/";
+    prismaMock.fxRate.findFirst.mockResolvedValue(null);
+    prismaMock.fxRate.upsert.mockResolvedValue({});
+    prismaMock.fxRateLookupLog.create.mockResolvedValue({});
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          amount: 1,
+          base: "USD",
+          date: "2026-07-03",
+          rates: {
+            CNY: 6.7814,
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const lock = await resolveFxRateLock({
+      baseCurrency: "usd",
+      quoteCurrency: "cny",
+      date: new Date("2026-07-04T00:00:00.000Z"),
+    });
+    const logData = prismaMock.fxRateLookupLog.create.mock.calls[0]?.[0].data;
+
+    expect(lock.provider).toBe("frankfurter");
+    expect(prismaMock.fxRateLookupLog.create).toHaveBeenCalledTimes(1);
+    expect(logData).toMatchObject({
+      providerChain: "frankfurter",
+      provider: "frankfurter",
+      baseCurrency: "USD",
+      quoteCurrency: "CNY",
+      status: "SUCCESS",
+      rate: "6.781400000000",
+      errorCode: null,
+      errorMessage: null,
+    });
+    expect(logData.requestedDate.toISOString().slice(0, 10)).toBe("2026-07-04");
+    expect(logData.rateDate.toISOString().slice(0, 10)).toBe("2026-07-03");
+    expect(logData.durationMs).toEqual(expect.any(Number));
+  });
+
+  it("records failed live lookup attempts without changing the API error", async () => {
+    process.env.ROOMPIRE_FX_PROVIDER = "frankfurter";
+    process.env.ROOMPIRE_FX_FRANKFURTER_BASE_URLS = "https://fx.example/";
+    prismaMock.fxRate.findFirst.mockResolvedValue(null);
+    prismaMock.fxRateLookupLog.create.mockResolvedValue({});
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("unavailable", { status: 503 }));
+
+    await expect(
+      resolveFxRateLock({
+        baseCurrency: "USD",
+        quoteCurrency: "CNY",
+        date: new Date("2026-07-04T00:00:00.000Z"),
+      }),
+    ).rejects.toMatchObject({
+      code: "FX_RATE_REQUIRED",
+    });
+
+    const logData = prismaMock.fxRateLookupLog.create.mock.calls[0]?.[0].data;
+
+    expect(prismaMock.fxRate.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.fxRateLookupLog.create).toHaveBeenCalledTimes(1);
+    expect(logData).toMatchObject({
+      providerChain: "frankfurter",
+      provider: null,
+      baseCurrency: "USD",
+      quoteCurrency: "CNY",
+      status: "FAILED",
+      errorCode: "FX_PROVIDER_LOOKUP_FAILED",
+      rate: null,
+      rateDate: null,
+    });
+    expect(logData.errorMessage).toContain("Frankfurter returned 503");
+    expect(logData.requestedDate.toISOString().slice(0, 10)).toBe("2026-07-04");
+    expect(logData.durationMs).toEqual(expect.any(Number));
   });
 });

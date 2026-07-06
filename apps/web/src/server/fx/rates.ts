@@ -37,6 +37,8 @@ type CachedRateRow = {
   fetchedAt: Date;
 };
 
+type FxRateLookupLogStatus = "SUCCESS" | "FAILED";
+
 const frankfurterResponseSchema = z.object({
   amount: z.number(),
   base: z.string(),
@@ -90,6 +92,10 @@ const ECB_REFERENCE_CURRENCY = "EUR";
 
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
+}
+
+function optionalDateOnlyToUtc(value: string | null | undefined) {
+  return value ? dateOnlyToUtc(value) : null;
 }
 
 function dateToDateOnly(value: Date) {
@@ -151,6 +157,52 @@ function cachedRateToLock(
     provider: inverted ? `${row.provider}-inverse` : row.provider,
     lockedAt: new Date(),
   } satisfies FxRateLock;
+}
+
+function errorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return message.length > 500 ? `${message.slice(0, 497)}...` : message;
+}
+
+function fxLookupErrorCode(error: unknown) {
+  return error instanceof ApiError ? error.code : "FX_PROVIDER_LOOKUP_FAILED";
+}
+
+async function recordFxRateLookupLog(input: {
+  providerChain: string;
+  provider?: string | null;
+  baseCurrency: string;
+  quoteCurrency: string;
+  requestedDate: string;
+  rateDate?: string | null;
+  rate?: Decimal | null;
+  status: FxRateLookupLogStatus;
+  durationMs: number;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  sourceMeta?: Prisma.InputJsonValue;
+}) {
+  try {
+    await prisma.fxRateLookupLog.create({
+      data: {
+        providerChain: input.providerChain,
+        provider: input.provider ?? null,
+        baseCurrency: currency(input.baseCurrency),
+        quoteCurrency: currency(input.quoteCurrency),
+        requestedDate: dateOnlyToUtc(input.requestedDate),
+        rateDate: optionalDateOnlyToUtc(input.rateDate),
+        rate: input.rate ? input.rate.toFixed(12) : null,
+        status: input.status,
+        durationMs: Math.max(0, Math.round(input.durationMs)),
+        errorCode: input.errorCode ?? null,
+        errorMessage: input.errorMessage ?? null,
+        sourceMeta: input.sourceMeta ?? Prisma.JsonNull,
+      },
+    });
+  } catch {
+    // FX observability must not block proposal creation or hide the user-facing FX error.
+  }
 }
 
 export class FrankfurterFxProvider implements FxProvider {
@@ -686,15 +738,29 @@ export async function resolveFxRateLock(input: {
     );
   }
 
+  const requestedDate = dateToDateOnly(input.date);
+  const startedAt = Date.now();
+
+  let quote: FxRateQuote;
+
   try {
-    const quote = await provider.getRate({
+    quote = await provider.getRate({
       baseCurrency,
       quoteCurrency,
-      date: dateToDateOnly(input.date),
+      date: requestedDate,
+    });
+  } catch (error) {
+    await recordFxRateLookupLog({
+      providerChain: provider.name,
+      baseCurrency,
+      quoteCurrency,
+      requestedDate,
+      status: "FAILED",
+      durationMs: Date.now() - startedAt,
+      errorCode: fxLookupErrorCode(error),
+      errorMessage: errorMessage(error),
     });
 
-    return await writeFetchedFxRate({ baseCurrency, quoteCurrency, quote });
-  } catch (error) {
     if (error instanceof ApiError) {
       throw error;
     }
@@ -705,4 +771,21 @@ export async function resolveFxRateLock(input: {
       "FX rate could not be resolved automatically; provide a manual fxRate.",
     );
   }
+
+  const lock = await writeFetchedFxRate({ baseCurrency, quoteCurrency, quote });
+
+  await recordFxRateLookupLog({
+    providerChain: provider.name,
+    provider: quote.provider,
+    baseCurrency,
+    quoteCurrency,
+    requestedDate,
+    rateDate: quote.rateDate,
+    rate: quote.rate,
+    status: "SUCCESS",
+    durationMs: Date.now() - startedAt,
+    sourceMeta: quote.sourceMeta,
+  });
+
+  return lock;
 }

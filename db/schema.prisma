@@ -125,20 +125,20 @@ model User {
 }
 
 model Household {
-  id                 String         @id @default(uuid()) @db.Uuid
-  name               String
-  slug               String?        @unique
-  defaultLocale      String         @default("en-US")
-  timezone           String         @default("America/Los_Angeles")
-  settlementCurrency String         @default("CNY") @db.Char(3)
-  fxPolicy           FxPolicy       @default(LOCK_AT_EXPENSE_DATE)
-  approvalPolicy     String         @default("PAYER_AND_EACH_DEBTOR")
-  clearingPolicy     ClearingPolicy @default(DIRECT_ONLY)
+  id                       String         @id @default(uuid()) @db.Uuid
+  name                     String
+  slug                     String?        @unique
+  defaultLocale            String         @default("en-US")
+  timezone                 String         @default("America/Los_Angeles")
+  settlementCurrency       String         @default("CNY") @db.Char(3)
+  fxPolicy                 FxPolicy       @default(LOCK_AT_EXPENSE_DATE)
+  approvalPolicy           String         @default("PAYER_AND_EACH_DEBTOR")
+  clearingPolicy           ClearingPolicy @default(DIRECT_ONLY)
   operationalRetentionDays Int?
   attachmentRetentionDays  Int?
-  createdByUserId    String         @db.Uuid
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  createdByUserId          String         @db.Uuid
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
 
   createdBy                 User                       @relation("HouseholdCreator", fields: [createdByUserId], references: [id])
   memberships               HouseholdMembership[]
@@ -431,6 +431,27 @@ model FxRate {
   sourceMeta    Json?
 
   @@unique([provider, baseCurrency, quoteCurrency, rateDate])
+}
+
+model FxRateLookupLog {
+  id            String    @id @default(uuid()) @db.Uuid
+  providerChain String
+  provider      String?
+  baseCurrency  String    @db.Char(3)
+  quoteCurrency String    @db.Char(3)
+  requestedDate DateTime  @db.Date
+  rateDate      DateTime? @db.Date
+  rate          Decimal?  @db.Decimal(24, 12)
+  status        String
+  durationMs    Int?
+  errorCode     String?
+  errorMessage  String?
+  sourceMeta    Json?
+  createdAt     DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([baseCurrency, quoteCurrency, requestedDate])
 }
 
 model LedgerTransaction {
