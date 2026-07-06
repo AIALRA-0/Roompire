@@ -359,6 +359,7 @@ function formatDate(value: string | null, fallback: string, locale: string) {
 
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
+    timeZone: "UTC",
   }).format(new Date(value));
 }
 
@@ -366,6 +367,7 @@ function formatDateTime(value: string, locale: string) {
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "UTC",
   }).format(new Date(value));
 }
 
