@@ -24,6 +24,7 @@ Set these values in `.env.production` through the server's secret-management wor
 - `ROOMPIRE_FILE_SIGNING_SECRET`
 - `ROOMPIRE_EXPORT_SIGNING_SECRET`
 - `ROOMPIRE_FX_PROVIDER`
+- `ROOMPIRE_FX_FRANKFURTER_BASE_URLS`
 - `ROOMPIRE_FILE_STORAGE_PROVIDER`
 - `ROOMPIRE_S3_BUCKET`
 - `ROOMPIRE_S3_REGION`
@@ -44,7 +45,7 @@ API route rate limits are enabled by default for invite creation/acceptance, loc
 
 `ROOMPIRE_EXPORT_SIGNING_SECRET` signs short-lived export download IDs. Use a random secret separate from the site gate password and file signing secret.
 
-`ROOMPIRE_FX_PROVIDER=frankfurter` enables automatic public historical FX lookup after the local `FxRate` cache misses. Set `ROOMPIRE_FX_PROVIDER=cache-only` when a deployment must avoid outbound FX calls; cross-currency proposals then require either a preloaded `FxRate` row for the expense date window or an explicit manual `fxRate`.
+`ROOMPIRE_FX_PROVIDER=frankfurter` enables automatic public historical FX lookup after the local `FxRate` cache misses. Set `ROOMPIRE_FX_PROVIDER=cache-only` when a deployment must avoid outbound FX calls; cross-currency proposals then require either a preloaded `FxRate` row for the expense date window or an explicit manual `fxRate`. `ROOMPIRE_FX_FRANKFURTER_BASE_URLS` accepts a comma-separated list of Frankfurter-compatible endpoints; Roompire tries them in order and stores the endpoint that succeeds as `frankfurter`, `frankfurter-2`, and so on in the copied FX lock/cache metadata.
 
 ## First Deploy
 

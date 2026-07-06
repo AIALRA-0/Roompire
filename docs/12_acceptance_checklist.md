@@ -48,6 +48,7 @@ Use this checklist before declaring a milestone complete.
 - [ ] Money uses decimal arithmetic.
 - [x] FX locks store provider/rate/rate date/locked timestamp.
 - [x] FX-difference corrections use append-only `FX_ADJUSTMENT` ledger transactions.
+- [x] FX provider lookup supports configured endpoint failover after cache misses.
 - [ ] Audit event emitted for critical mutation.
 
 ## Security

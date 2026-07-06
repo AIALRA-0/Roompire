@@ -44,6 +44,8 @@ const frankfurterResponseSchema = z.object({
   rates: z.record(z.string(), z.number()),
 });
 
+const DEFAULT_FRANKFURTER_BASE_URL = "https://api.frankfurter.app";
+
 function dateOnlyToUtc(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
 }
@@ -64,6 +66,26 @@ function maxCacheBackfillDate(date: Date) {
   return lowerBound;
 }
 
+function parseList(value: string | undefined, fallback: string[]) {
+  const rawItems = value ? value.split(",") : fallback;
+  const items = rawItems.map((item) => item.trim()).filter(Boolean);
+
+  return items.length > 0 ? items : fallback;
+}
+
+function normalizeBaseUrl(value: string) {
+  const url = new URL(value);
+
+  if (!url.pathname.endsWith("/")) {
+    url.pathname = `${url.pathname}/`;
+  }
+
+  url.search = "";
+  url.hash = "";
+
+  return url.toString();
+}
+
 function cachedRateToLock(
   row: CachedRateRow,
   input: { baseCurrency: string; quoteCurrency: string },
@@ -82,7 +104,13 @@ function cachedRateToLock(
 }
 
 export class FrankfurterFxProvider implements FxProvider {
-  name = "frankfurter";
+  readonly baseUrl: string;
+  readonly name: string;
+
+  constructor(input: { baseUrl?: string; name?: string } = {}) {
+    this.baseUrl = normalizeBaseUrl(input.baseUrl ?? DEFAULT_FRANKFURTER_BASE_URL);
+    this.name = input.name ?? "frankfurter";
+  }
 
   async getRate(input: {
     baseCurrency: string;
@@ -91,7 +119,7 @@ export class FrankfurterFxProvider implements FxProvider {
   }): Promise<FxRateQuote> {
     const baseCurrency = currency(input.baseCurrency);
     const quoteCurrency = currency(input.quoteCurrency);
-    const url = new URL(`https://api.frankfurter.app/${input.date}`);
+    const url = new URL(input.date, this.baseUrl);
 
     url.searchParams.set("from", baseCurrency);
     url.searchParams.set("to", quoteCurrency);
@@ -128,27 +156,130 @@ export class FrankfurterFxProvider implements FxProvider {
         requestedBaseCurrency: baseCurrency,
         requestedQuoteCurrency: quoteCurrency,
         requestedDate: input.date,
+        providerBaseUrl: this.baseUrl,
       },
     };
   }
 }
 
-export function resolveConfiguredFxProvider(env: Record<string, string | undefined> = process.env) {
-  const provider = (env.ROOMPIRE_FX_PROVIDER ?? "frankfurter").trim().toLowerCase();
+export class FallbackFxProvider implements FxProvider {
+  readonly name: string;
 
-  if (!provider || provider === "none" || provider === "cache-only") {
+  constructor(readonly providers: FxProvider[]) {
+    if (providers.length === 0) {
+      throw new ApiError(
+        500,
+        "FX_PROVIDER_CONFIG_INVALID",
+        "At least one FX provider is required.",
+      );
+    }
+
+    this.name = providers.map((provider) => provider.name).join(",");
+  }
+
+  async getRate(input: {
+    baseCurrency: string;
+    quoteCurrency: string;
+    date: string;
+  }): Promise<FxRateQuote> {
+    const failures: Array<{ provider: string; message: string }> = [];
+
+    for (const provider of this.providers) {
+      try {
+        return await provider.getRate(input);
+      } catch (error) {
+        failures.push({
+          provider: provider.name,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    throw new Error(
+      `All configured FX providers failed: ${failures
+        .map((failure) => `${failure.provider}: ${failure.message}`)
+        .join("; ")}`,
+    );
+  }
+}
+
+export function resolveConfiguredFxProviders(
+  env: Record<string, string | undefined> = process.env,
+) {
+  const providerConfig = (env.ROOMPIRE_FX_PROVIDER ?? "frankfurter").trim().toLowerCase();
+
+  if (!providerConfig || providerConfig === "none" || providerConfig === "cache-only") {
     return null;
   }
 
-  if (provider === "frankfurter") {
-    return new FrankfurterFxProvider();
+  const providerNames = parseList(providerConfig, ["frankfurter"]);
+
+  if (providerNames.some((provider) => provider === "none" || provider === "cache-only")) {
+    throw new ApiError(
+      500,
+      "FX_PROVIDER_CONFIG_INVALID",
+      "ROOMPIRE_FX_PROVIDER cannot mix live providers with none/cache-only.",
+    );
   }
 
-  throw new ApiError(
-    500,
-    "FX_PROVIDER_CONFIG_INVALID",
-    `Unsupported ROOMPIRE_FX_PROVIDER: ${provider}.`,
-  );
+  const providers: FxProvider[] = [];
+  const seenProviders = new Set<string>();
+
+  for (const providerName of providerNames) {
+    if (providerName === "frankfurter") {
+      let baseUrls: string[];
+
+      try {
+        baseUrls = Array.from(
+          new Set(
+            parseList(env.ROOMPIRE_FX_FRANKFURTER_BASE_URLS, [DEFAULT_FRANKFURTER_BASE_URL]).map(
+              (baseUrl) => normalizeBaseUrl(baseUrl),
+            ),
+          ),
+        );
+      } catch (error) {
+        throw new ApiError(
+          500,
+          "FX_PROVIDER_CONFIG_INVALID",
+          `Invalid ROOMPIRE_FX_FRANKFURTER_BASE_URLS: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
+      baseUrls.forEach((baseUrl, index) => {
+        const name = index === 0 ? "frankfurter" : `frankfurter-${index + 1}`;
+        const key = `${name}:${baseUrl}`;
+
+        if (seenProviders.has(key)) {
+          return;
+        }
+
+        seenProviders.add(key);
+        providers.push(new FrankfurterFxProvider({ baseUrl, name }));
+      });
+
+      continue;
+    }
+
+    throw new ApiError(
+      500,
+      "FX_PROVIDER_CONFIG_INVALID",
+      `Unsupported ROOMPIRE_FX_PROVIDER: ${providerName}.`,
+    );
+  }
+
+  return providers;
+}
+
+export function resolveConfiguredFxProvider(env: Record<string, string | undefined> = process.env) {
+  const providers = resolveConfiguredFxProviders(env);
+
+  if (!providers) {
+    return null;
+  }
+
+  return providers.length === 1 ? providers[0] : new FallbackFxProvider(providers);
 }
 
 async function findCachedFxRate(input: {

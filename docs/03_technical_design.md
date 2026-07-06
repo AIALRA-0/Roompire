@@ -221,10 +221,10 @@ Implementation priorities:
 
 1. Cached internal `fx_rates` table.
 2. Primary public provider.
-3. Secondary provider.
+3. Secondary provider or compatible endpoint failover.
 4. Manual rate with approval.
 
-The locked rate used by a proposal must be copied into the proposal/share/ledger context, not merely referenced as mutable external state. Current household settings expose `LOCK_AT_EXPENSE_DATE`, `ORIGINAL_CURRENCY_DEBT`, `MANUAL_RATE_WITH_APPROVAL`, and `FX_DIFFERENCE_ADJUSTMENT`. Under original-currency debt, the proposal's settlement currency becomes the entered original currency and the stored FX lock is `1` with `fxProvider=original-currency-debt`; settlement suggestions and balances then group that debt by original currency. Under FX-difference adjustment, proposals still mature at the expense-date locked settlement-currency amount, and any later payment-date FX variance is appended as an audited `FX_ADJUSTMENT` ledger transaction through the owner/admin correction workflow instead of mutating the original debt.
+The locked rate used by a proposal must be copied into the proposal/share/ledger context, not merely referenced as mutable external state. Current live lookup uses a provider chain after cache misses: `ROOMPIRE_FX_PROVIDER=frankfurter` with optional comma-separated `ROOMPIRE_FX_FRANKFURTER_BASE_URLS` tries each compatible endpoint until one returns a valid quote, then stores the successful provider name with the copied rate. Current household settings expose `LOCK_AT_EXPENSE_DATE`, `ORIGINAL_CURRENCY_DEBT`, `MANUAL_RATE_WITH_APPROVAL`, and `FX_DIFFERENCE_ADJUSTMENT`. Under original-currency debt, the proposal's settlement currency becomes the entered original currency and the stored FX lock is `1` with `fxProvider=original-currency-debt`; settlement suggestions and balances then group that debt by original currency. Under FX-difference adjustment, proposals still mature at the expense-date locked settlement-currency amount, and any later payment-date FX variance is appended as an audited `FX_ADJUSTMENT` ledger transaction through the owner/admin correction workflow instead of mutating the original debt.
 
 ## Calendar/task design
 
