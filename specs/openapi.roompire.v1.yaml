@@ -2039,6 +2039,7 @@ components:
           summary,
           statusFile,
           disk,
+          deploymentHeadroom,
           rootStorageInventory,
           sharedAppStorageInventory,
           diskTrend,
@@ -2098,6 +2099,29 @@ components:
             usedBytes: { type: integer, nullable: true }
             availableBytes: { type: integer, nullable: true }
             usedPercent: { type: number, nullable: true }
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        deploymentHeadroom:
+          type: object
+          required: [requiredAvailableBytes, availableBytes, missingBytes, status, checkedAt, error]
+          properties:
+            requiredAvailableBytes:
+              type: integer
+              example: 6442450944
+              description: Minimum free bytes required before building production images.
+            availableBytes:
+              type: integer
+              nullable: true
+            missingBytes:
+              type: integer
+              nullable: true
+              description: Additional bytes needed to satisfy the deployment headroom gate.
             status: { $ref: "#/components/schemas/OpsHealthState" }
             checkedAt:
               type: string
@@ -2556,6 +2580,7 @@ components:
               repoArtifactMinAvailableBytes,
               tmpCleanupEnabled,
               uvCacheCleanupEnabled,
+              nodeCacheCleanupEnabled,
               dockerPruneEnabled,
               roompireEphemeralImagesEnabled,
               roompireEphemeralImageRepositories,
@@ -2607,6 +2632,7 @@ components:
               nullable: true
             tmpCleanupEnabled: { type: boolean }
             uvCacheCleanupEnabled: { type: boolean }
+            nodeCacheCleanupEnabled: { type: boolean }
             dockerPruneEnabled: { type: boolean }
             roompireEphemeralImagesEnabled: { type: boolean }
             roompireEphemeralImageRepositories:

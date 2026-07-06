@@ -55,6 +55,7 @@ export type OpsHousekeepingStatus = {
   repoArtifactMinAvailableBytes: number | null;
   tmpCleanupEnabled: boolean;
   uvCacheCleanupEnabled: boolean;
+  nodeCacheCleanupEnabled: boolean;
   dockerPruneEnabled: boolean;
   roompireEphemeralImagesEnabled: boolean;
   roompireEphemeralImageRepositories: string[];
@@ -84,6 +85,14 @@ export type OpsStatusSnapshot = {
     usedBytes: number | null;
     availableBytes: number | null;
     usedPercent: number | null;
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
+  deploymentHeadroom: {
+    requiredAvailableBytes: number;
+    availableBytes: number | null;
+    missingBytes: number | null;
     status: HealthState;
     checkedAt: string | null;
     error: string | null;
@@ -355,6 +364,10 @@ export type OpsContainerHealthItem = {
 };
 
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
+const deploymentHeadroomRequiredBytes = positiveEnvNumber(
+  "ROOMPIRE_DEPLOY_MIN_AVAILABLE_BYTES",
+  6 * 1024 * 1024 * 1024,
+);
 const dockerReclaimableWarningBytes = 5 * 1024 * 1024 * 1024;
 const staleStatusMs = 36 * 60 * 60 * 1000;
 const smokeStatusStaleMs = positiveEnvNumber("ROOMPIRE_SMOKE_STATUS_STALE_MS", 2 * 60 * 60 * 1000);
@@ -841,6 +854,7 @@ function normalizeHousekeeping(value: unknown): OpsHousekeepingStatus {
       repoArtifactMinAvailableBytes: null,
       tmpCleanupEnabled: false,
       uvCacheCleanupEnabled: false,
+      nodeCacheCleanupEnabled: false,
       dockerPruneEnabled: false,
       roompireEphemeralImagesEnabled: false,
       roompireEphemeralImageRepositories: [],
@@ -869,6 +883,7 @@ function normalizeHousekeeping(value: unknown): OpsHousekeepingStatus {
     repoArtifactMinAvailableBytes: numberValue(value.repoArtifactMinAvailableBytes),
     tmpCleanupEnabled: booleanValue(value.tmpCleanupEnabled),
     uvCacheCleanupEnabled: booleanValue(value.uvCacheCleanupEnabled),
+    nodeCacheCleanupEnabled: booleanValue(value.nodeCacheCleanupEnabled),
     dockerPruneEnabled: booleanValue(value.dockerPruneEnabled),
     roompireEphemeralImagesEnabled: booleanValue(value.roompireEphemeralImagesEnabled),
     roompireEphemeralImageRepositories: Array.isArray(value.roompireEphemeralImageRepositories)
@@ -880,6 +895,61 @@ function normalizeHousekeeping(value: unknown): OpsHousekeepingStatus {
     browserWorkspacesMode: stringValue(value.browserWorkspacesMode, "unknown"),
     workspaceArtifactMinAvailableBytes: numberValue(value.workspaceArtifactMinAvailableBytes),
     checkedAt: nullableStringValue(value.checkedAt),
+    error: nullableStringValue(value.error),
+  };
+}
+
+function deploymentHeadroomFromDisk(
+  availableBytes: number | null,
+  checkedAt: string | null,
+  error: string | null,
+): OpsStatusSnapshot["deploymentHeadroom"] {
+  const missingBytes =
+    availableBytes === null ? null : Math.max(deploymentHeadroomRequiredBytes - availableBytes, 0);
+
+  return {
+    requiredAvailableBytes: deploymentHeadroomRequiredBytes,
+    availableBytes,
+    missingBytes,
+    status:
+      availableBytes === null
+        ? "unknown"
+        : availableBytes < deploymentHeadroomRequiredBytes
+          ? "warning"
+          : "ok",
+    checkedAt,
+    error: availableBytes === null ? (error ?? "Disk available bytes could not be read.") : null,
+  };
+}
+
+function normalizeDeploymentHeadroom(
+  value: unknown,
+  disk: OpsStatusSnapshot["disk"],
+): OpsStatusSnapshot["deploymentHeadroom"] {
+  if (!isRecord(value)) {
+    return deploymentHeadroomFromDisk(disk.availableBytes, disk.checkedAt, disk.error);
+  }
+
+  const requiredAvailableBytes =
+    numberValue(value.requiredAvailableBytes) ?? deploymentHeadroomRequiredBytes;
+  const availableBytes = numberValue(value.availableBytes) ?? disk.availableBytes;
+  const missingBytes =
+    numberValue(value.missingBytes) ??
+    (availableBytes === null ? null : Math.max(requiredAvailableBytes - availableBytes, 0));
+  const rawStatus = healthStateValue(value.status);
+  const status =
+    rawStatus === "unknown" && availableBytes !== null
+      ? missingBytes !== null && missingBytes > 0
+        ? "warning"
+        : "ok"
+      : rawStatus;
+
+  return {
+    requiredAvailableBytes,
+    availableBytes,
+    missingBytes,
+    status,
+    checkedAt: nullableStringValue(value.checkedAt) ?? disk.checkedAt,
     error: nullableStringValue(value.error),
   };
 }
@@ -939,6 +1009,14 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
 
   if (status.disk.status === "unknown") {
     warnings.push("disk_unknown");
+  }
+
+  if (status.deploymentHeadroom.status === "warning") {
+    warnings.push("deployment_headroom_low");
+  }
+
+  if (status.deploymentHeadroom.status === "unknown") {
+    warnings.push("deployment_headroom_unknown");
   }
 
   if (status.diskTrend.status === "warning") {
@@ -1141,6 +1219,7 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
 function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnapshot {
   const raw = isRecord(parsed) ? parsed : {};
   const rawDisk = isRecord(raw.disk) ? raw.disk : {};
+  const rawDeploymentHeadroom = isRecord(raw.deploymentHeadroom) ? raw.deploymentHeadroom : {};
   const rawDiskTrend = isRecord(raw.diskTrend) ? raw.diskTrend : {};
   const rawRootStorageInventory = isRecord(raw.rootStorageInventory)
     ? raw.rootStorageInventory
@@ -1183,6 +1262,17 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const dockerUnsafeReclaimableBytes =
     numberValue(rawDockerStorage.unsafeReclaimableBytes) ??
     Math.max(dockerTotalReclaimableBytes - dockerSafeReclaimableBytes, 0);
+  const disk = {
+    path: stringValue(rawDisk.path, "/"),
+    sizeBytes: numberValue(rawDisk.sizeBytes),
+    usedBytes: numberValue(rawDisk.usedBytes),
+    availableBytes,
+    usedPercent,
+    status:
+      diskStatus === "unknown" ? diskStatusFromValues(availableBytes, usedPercent) : diskStatus,
+    checkedAt: nullableStringValue(rawDisk.checkedAt),
+    error: nullableStringValue(rawDisk.error),
+  };
   const partial: Omit<OpsStatusSnapshot, "summary"> = {
     schemaVersion: 1 as const,
     source: "host_status_file" as const,
@@ -1192,17 +1282,8 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       loaded: true,
       error: null,
     },
-    disk: {
-      path: stringValue(rawDisk.path, "/"),
-      sizeBytes: numberValue(rawDisk.sizeBytes),
-      usedBytes: numberValue(rawDisk.usedBytes),
-      availableBytes,
-      usedPercent,
-      status:
-        diskStatus === "unknown" ? diskStatusFromValues(availableBytes, usedPercent) : diskStatus,
-      checkedAt: nullableStringValue(rawDisk.checkedAt),
-      error: nullableStringValue(rawDisk.error),
-    },
+    disk,
+    deploymentHeadroom: normalizeDeploymentHeadroom(rawDeploymentHeadroom, disk),
     rootStorageInventory: normalizeRootStorageInventory(rawRootStorageInventory),
     sharedAppStorageInventory: normalizeSharedAppStorageInventory(rawSharedAppStorageInventory),
     diskTrend: normalizeDiskTrend(rawDiskTrend),
@@ -1438,6 +1519,7 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       error,
     },
     disk,
+    deploymentHeadroom: deploymentHeadroomFromDisk(disk.availableBytes, disk.checkedAt, disk.error),
     rootStorageInventory: {
       topLimit: 8,
       timeoutMs: 60000,

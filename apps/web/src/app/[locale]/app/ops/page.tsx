@@ -318,6 +318,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_low: ops("warningDiskLow"),
     disk_high_usage: ops("warningDiskHighUsage"),
     disk_unknown: ops("warningDiskUnknown"),
+    deployment_headroom_low: ops("warningDeploymentHeadroomLow"),
+    deployment_headroom_unknown: ops("warningDeploymentHeadroomUnknown"),
     disk_trend_depleting: ops("warningDiskTrendDepleting"),
     root_storage_inventory_unknown: ops("warningRootStorageInventoryUnknown"),
     shared_app_storage_attention: ops("warningSharedAppStorageAttention"),
@@ -613,6 +615,48 @@ export default async function OpsPage({ params }: PageProps) {
                     label={ops("checkedAt")}
                     value={formatDateTime(locale, status.disk.checkedAt)}
                   />
+                  <div
+                    className="mt-2 border-t border-border pt-3"
+                    data-testid="ops-deployment-headroom"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                        <Wrench aria-hidden="true" className="h-4 w-4" />
+                        {ops("deploymentHeadroom")}
+                      </span>
+                      <Badge
+                        data-testid="ops-deployment-headroom-status"
+                        variant={healthVariant(status.deploymentHeadroom.status)}
+                      >
+                        {healthLabel(ops, status.deploymentHeadroom.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("deploymentHeadroomAvailable")}
+                        testId="ops-deployment-headroom-available"
+                        value={formatBytes(locale, status.deploymentHeadroom.availableBytes)}
+                      />
+                      <MetricRow
+                        label={ops("deploymentHeadroomRequired")}
+                        testId="ops-deployment-headroom-required"
+                        value={formatFileSize(
+                          locale,
+                          status.deploymentHeadroom.requiredAvailableBytes,
+                        )}
+                      />
+                      <MetricRow
+                        label={ops("deploymentHeadroomMissing")}
+                        testId="ops-deployment-headroom-missing"
+                        value={formatFileSize(locale, status.deploymentHeadroom.missingBytes ?? 0)}
+                      />
+                    </div>
+                    {status.deploymentHeadroom.error ? (
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        {status.deploymentHeadroom.error}
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="mt-2 border-t border-border pt-3">
                     <div className="flex items-center justify-between gap-4">
                       <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
@@ -1468,6 +1512,14 @@ export default async function OpsPage({ params }: PageProps) {
                       <MetricRow
                         label={ops("cleanupBrowserWorkspaces")}
                         value={status.latestHousekeeping.browserWorkspacesMode}
+                      />
+                      <MetricRow
+                        label={ops("cleanupNodeCaches")}
+                        testId="ops-housekeeping-node-caches"
+                        value={formatBoolean(
+                          ops,
+                          status.latestHousekeeping.nodeCacheCleanupEnabled,
+                        )}
                       />
                       <MetricRow
                         label={ops("cleanupDockerPrune")}

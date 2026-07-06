@@ -55,6 +55,13 @@ const sharedAppStorageStatusPath =
 const diskHistoryPath = process.env.ROOMPIRE_OPS_DISK_HISTORY_FILE || "ops/status/disk-history.json";
 const generatedAt = new Date().toISOString();
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
+const configuredDeployMinAvailableBytes = Number(
+  process.env.ROOMPIRE_DEPLOY_MIN_AVAILABLE_BYTES || 6 * 1024 * 1024 * 1024,
+);
+const deployMinAvailableBytes =
+  Number.isFinite(configuredDeployMinAvailableBytes) && configuredDeployMinAvailableBytes > 0
+    ? configuredDeployMinAvailableBytes
+    : 6 * 1024 * 1024 * 1024;
 const diskTrendWarningDays = Number(process.env.ROOMPIRE_OPS_DISK_TREND_WARNING_DAYS || 14);
 const diskTrendMinimumWindowHours = Number(
   process.env.ROOMPIRE_OPS_DISK_TREND_MIN_WINDOW_HOURS || 6,
@@ -879,6 +886,22 @@ function collectDisk() {
   };
 }
 
+function collectDeploymentHeadroom(disk) {
+  const availableBytes =
+    Number.isFinite(disk.availableBytes) && disk.availableBytes >= 0 ? disk.availableBytes : null;
+  const missingBytes =
+    availableBytes === null ? null : Math.max(deployMinAvailableBytes - availableBytes, 0);
+
+  return {
+    requiredAvailableBytes: deployMinAvailableBytes,
+    availableBytes,
+    missingBytes,
+    status: availableBytes === null ? "unknown" : missingBytes > 0 ? "warning" : "ok",
+    checkedAt: disk.checkedAt || generatedAt,
+    error: availableBytes === null ? disk.error || "Disk available bytes could not be read." : null,
+  };
+}
+
 function collectRootStorageInventory() {
   const topLimit = positiveIntegerValue(rootStorageInventoryLimit, 8);
   const timeoutMs = positiveIntegerValue(rootStorageInventoryTimeoutMs, 30000);
@@ -1685,6 +1708,7 @@ function readLatestHousekeeping() {
       repoArtifactMinAvailableBytes: null,
       tmpCleanupEnabled: false,
       uvCacheCleanupEnabled: false,
+      nodeCacheCleanupEnabled: false,
       dockerPruneEnabled: false,
       roompireEphemeralImagesEnabled: false,
       roompireEphemeralImageRepositories: [],
@@ -1722,6 +1746,7 @@ function readLatestHousekeeping() {
       ),
       tmpCleanupEnabled: parsed.tmpCleanupEnabled === true,
       uvCacheCleanupEnabled: parsed.uvCacheCleanupEnabled === true,
+      nodeCacheCleanupEnabled: parsed.nodeCacheCleanupEnabled === true,
       dockerPruneEnabled: parsed.dockerPruneEnabled === true,
       roompireEphemeralImagesEnabled: parsed.roompireEphemeralImagesEnabled === true,
       roompireEphemeralImageRepositories: repositories,
@@ -1754,6 +1779,7 @@ function readLatestHousekeeping() {
       repoArtifactMinAvailableBytes: null,
       tmpCleanupEnabled: false,
       uvCacheCleanupEnabled: false,
+      nodeCacheCleanupEnabled: false,
       dockerPruneEnabled: false,
       roompireEphemeralImagesEnabled: false,
       roompireEphemeralImageRepositories: [],
@@ -1773,6 +1799,7 @@ const snapshot = {
   source: "host_status_file",
   generatedAt,
   disk,
+  deploymentHeadroom: collectDeploymentHeadroom(disk),
   rootStorageInventory: collectRootStorageInventory(),
   sharedAppStorageInventory: readSharedAppStorageInventory(),
   diskTrend: collectDiskTrend(disk),

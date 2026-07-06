@@ -218,6 +218,14 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
           checkedAt: generatedAt,
           error: null,
         },
+        deploymentHeadroom: {
+          requiredAvailableBytes: 6 * 1024 * 1024 * 1024,
+          availableBytes: 58 * 1024 * 1024 * 1024,
+          missingBytes: 0,
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
         rootStorageInventory: {
           topLimit: 4,
           timeoutMs: 60000,
@@ -503,6 +511,7 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
           repoArtifactMinAvailableBytes: 6 * 1024 * 1024 * 1024,
           tmpCleanupEnabled: true,
           uvCacheCleanupEnabled: false,
+          nodeCacheCleanupEnabled: false,
           dockerPruneEnabled: true,
           roompireEphemeralImagesEnabled: true,
           roompireEphemeralImageRepositories: ["roompire-migrator"],
@@ -2185,6 +2194,10 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByRole("heading", { name: "Ops health" })).toBeVisible();
     await expect(page.getByTestId("ops-summary-status")).toContainText("OK");
     await expect(page.getByTestId("ops-disk-card")).toContainText("58 GB");
+    await expect(page.getByTestId("ops-deployment-headroom-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-deployment-headroom-available")).toContainText("58 GB");
+    await expect(page.getByTestId("ops-deployment-headroom-required")).toContainText("6 GB");
+    await expect(page.getByTestId("ops-deployment-headroom-missing")).toContainText("0 B");
     await expect(page.getByTestId("ops-disk-trend-status")).toContainText("OK");
     await expect(page.getByTestId("ops-disk-trend-samples")).toContainText("4");
     await expect(page.getByTestId("ops-disk-trend-available-change")).toContainText("+4 GB");
@@ -2236,6 +2249,7 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-housekeeping-confirmed")).toContainText("Enabled");
     await expect(page.getByTestId("ops-housekeeping-finished")).not.toContainText("—");
     await expect(page.getByTestId("ops-housekeeping-reclaimed")).toContainText("+2 GB");
+    await expect(page.getByTestId("ops-housekeeping-node-caches")).toContainText("Disabled");
     await expect(page.getByTestId("ops-reminders-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-freshness-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-freshness-complete")).not.toContainText("—");
@@ -2264,6 +2278,11 @@ test.describe("Roompire real browser smoke", () => {
       status: {
         source: string;
         summary: { status: string; warnings: string[] };
+        deploymentHeadroom: {
+          status: string;
+          requiredAvailableBytes: number;
+          missingBytes: number | null;
+        };
         diskTrend: {
           status: string;
           sampleCount: number;
@@ -2357,6 +2376,13 @@ test.describe("Roompire real browser smoke", () => {
     };
     expect(opsPayload.status.source).toBe("host_status_file");
     expect(opsPayload.status.summary).toEqual({ status: "ok", warnings: [] });
+    expect(opsPayload.status.deploymentHeadroom).toEqual(
+      expect.objectContaining({
+        status: "ok",
+        requiredAvailableBytes: 6 * 1024 * 1024 * 1024,
+        missingBytes: 0,
+      }),
+    );
     expect(opsPayload.status.diskTrend).toEqual(
       expect.objectContaining({
         status: "ok",

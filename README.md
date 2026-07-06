@@ -118,6 +118,7 @@ Set `ROOMPIRE_E2E_SKIP_DB_RESET=true` only when reusing an already-prepared data
 
 Docker-first deployment is the current production baseline for `roompire.aialra.online`.
 Use [`docs/14_deployment_runbook.md`](docs/14_deployment_runbook.md) for the self-hosted Docker/PostgreSQL/Redis deployment flow behind host nginx, backup commands, restore drill, and smoke checks.
+Run `./scripts/check_deploy_headroom.sh` before production image builds; it shares the `ROOMPIRE_DEPLOY_MIN_AVAILABLE_BYTES` threshold with the ops dashboard's deploy-headroom status.
 For public/staging deployments, configure site-level Basic Auth and private file storage through deployment secrets:
 
 - `ROOMPIRE_SITE_GATE_USERNAME`

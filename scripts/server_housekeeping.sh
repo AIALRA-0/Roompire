@@ -6,11 +6,13 @@ ROOT_PATH=${ROOMPIRE_HOUSEKEEPING_ROOT:-/}
 TMP_MAX_AGE_DAYS=${ROOMPIRE_TMP_MAX_AGE_DAYS:-1}
 JOURNAL_VACUUM_SIZE=${ROOMPIRE_JOURNAL_VACUUM_SIZE:-200M}
 CLEAN_UV_CACHE=${ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE:-false}
+CLEAN_NODE_CACHES=${ROOMPIRE_HOUSEKEEPING_CLEAN_NODE_CACHES:-false}
 MANAGE_REPO_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS:-true}
 REPO_ARTIFACT_MIN_AVAILABLE_BYTES=${ROOMPIRE_HOUSEKEEPING_REPO_ARTIFACT_MIN_AVAILABLE_BYTES:-6442450944}
 WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES=${ROOMPIRE_HOUSEKEEPING_WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES:-10737418240}
 MANAGE_TMP_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_TMP:-true}
 MANAGE_DOCKER_PRUNE=${ROOMPIRE_HOUSEKEEPING_DOCKER_PRUNE:-true}
+DOCKER_BUILDER_PRUNE_ALL=${ROOMPIRE_HOUSEKEEPING_DOCKER_BUILDER_PRUNE_ALL:-false}
 MANAGE_ROOMPIRE_EPHEMERAL_IMAGES=${ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGES:-true}
 ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES=${ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES:-roompire-migrator}
 MANAGE_JOURNAL_VACUUM=${ROOMPIRE_HOUSEKEEPING_JOURNAL_VACUUM:-true}
@@ -117,6 +119,7 @@ write_housekeeping_status() {
     REPO_ARTIFACT_MIN_AVAILABLE_BYTES="$REPO_ARTIFACT_MIN_AVAILABLE_BYTES" \
     TMP_CLEANUP_ENABLED="$MANAGE_TMP_ARTIFACTS" \
     UV_CACHE_CLEANUP_ENABLED="$CLEAN_UV_CACHE" \
+    NODE_CACHE_CLEANUP_ENABLED="$CLEAN_NODE_CACHES" \
     DOCKER_PRUNE_ENABLED="$MANAGE_DOCKER_PRUNE" \
     ROOMPIRE_EPHEMERAL_IMAGES_ENABLED="$MANAGE_ROOMPIRE_EPHEMERAL_IMAGES" \
     ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES="$ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES" \
@@ -156,6 +159,7 @@ const payload = {
   ),
   tmpCleanupEnabled: booleanValue(process.env.TMP_CLEANUP_ENABLED),
   uvCacheCleanupEnabled: booleanValue(process.env.UV_CACHE_CLEANUP_ENABLED),
+  nodeCacheCleanupEnabled: booleanValue(process.env.NODE_CACHE_CLEANUP_ENABLED),
   dockerPruneEnabled: booleanValue(process.env.DOCKER_PRUNE_ENABLED),
   roompireEphemeralImagesEnabled: booleanValue(
     process.env.ROOMPIRE_EPHEMERAL_IMAGES_ENABLED,
@@ -281,12 +285,30 @@ clean_tmp_artifacts() {
 clean_optional_caches() {
   section "optional caches"
 
-  if [ "$CLEAN_UV_CACHE" != "true" ]; then
+  if [ "$CLEAN_UV_CACHE" != "true" ] && [ "$CLEAN_NODE_CACHES" != "true" ]; then
     echo "Skipping uv caches; set ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE=true to remove them."
+    echo "Skipping Node/pnpm caches; set ROOMPIRE_HOUSEKEEPING_CLEAN_NODE_CACHES=true to remove them."
     return
   fi
 
-  run_or_print rm -rf /root/.cache/uv /home/aialra/.cache/uv
+  if [ "$CLEAN_UV_CACHE" = "true" ]; then
+    run_or_print rm -rf /root/.cache/uv /home/aialra/.cache/uv || true
+  else
+    echo "Skipping uv caches; set ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE=true to remove them."
+  fi
+
+  if [ "$CLEAN_NODE_CACHES" = "true" ]; then
+    run_or_print rm -rf \
+      /root/.cache/node \
+      /root/.cache/pnpm \
+      /home/aialra/.cache/node \
+      /home/aialra/.cache/pnpm \
+      /tmp/node-compile-cache \
+      /tmp/playwright-transform-cache-* \
+      /tmp/tsx-* || true
+  else
+    echo "Skipping Node/pnpm caches; set ROOMPIRE_HOUSEKEEPING_CLEAN_NODE_CACHES=true to remove them."
+  fi
 }
 
 remove_workspace_path() {
@@ -423,7 +445,12 @@ clean_docker_safely() {
   fi
 
   run_or_print docker image prune -f
-  run_or_print docker builder prune -f
+
+  if [ "$DOCKER_BUILDER_PRUNE_ALL" = "true" ]; then
+    run_or_print docker builder prune -af
+  else
+    run_or_print docker builder prune -f
+  fi
 }
 
 clean_journal() {
