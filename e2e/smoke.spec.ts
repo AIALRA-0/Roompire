@@ -264,6 +264,42 @@ async function writeOpsStatusFixture() {
           checkedAt: generatedAt,
           error: null,
         },
+        dockerImageInventory: {
+          topLimit: 3,
+          totalImageBytes: 8_640 * 1024 * 1024,
+          images: [
+            {
+              repository: "aialra/pdf-onlyoffice",
+              tag: "local",
+              imageId: "4fa60ef14f9d",
+              reference: "aialra/pdf-onlyoffice:local",
+              sizeBytes: 5_690 * 1024 * 1024,
+              containers: 1,
+              createdAt: "2026-07-05T04:30:00.000Z",
+            },
+            {
+              repository: "lscr.io/linuxserver/chromium",
+              tag: "latest",
+              imageId: "6d037d552998",
+              reference: "lscr.io/linuxserver/chromium:latest",
+              sizeBytes: 2_000 * 1024 * 1024,
+              containers: 1,
+              createdAt: "2026-07-04T04:30:00.000Z",
+            },
+            {
+              repository: "roompire-web",
+              tag: "latest",
+              imageId: "b4c713afa21e",
+              reference: "roompire-web:latest",
+              sizeBytes: 950 * 1024 * 1024,
+              containers: 1,
+              createdAt: generatedAt,
+            },
+          ],
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
         opsStatusTimer: {
           name: "roompire-ops-status.timer",
           activeState: "active",
@@ -1884,6 +1920,11 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-docker-reclaimable")).toContainText("832 MB");
     await expect(page.getByTestId("ops-docker-images")).toContainText("3/4 active");
     await expect(page.getByTestId("ops-docker-images-reclaimable")).toContainText("512 MB");
+    await expect(page.getByTestId("ops-docker-image-inventory-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-docker-image-total-size")).toContainText("8.4 GB");
+    await expect(page.getByTestId("ops-docker-image-row").first()).toContainText(
+      "aialra/pdf-onlyoffice:local",
+    );
     await expect(page.getByTestId("ops-backup-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-housekeeping-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-reminders-timer-status")).toContainText("OK");
@@ -1914,6 +1955,12 @@ test.describe("Roompire real browser smoke", () => {
           totalReclaimableBytes: number;
           status: string;
           images: { totalCount: number; activeCount: number };
+        };
+        dockerImageInventory: {
+          topLimit: number;
+          totalImageBytes: number;
+          images: Array<{ reference: string; sizeBytes: number }>;
+          status: string;
         };
         opsStatusTimer: { activeState: string; enabledState: string };
         opsStatusService: { result: string; execMainStatus: string };
@@ -1952,6 +1999,16 @@ test.describe("Roompire real browser smoke", () => {
         totalReclaimableBytes: 832 * 1024 * 1024,
         status: "ok",
         images: expect.objectContaining({ totalCount: 4, activeCount: 3 }),
+      }),
+    );
+    expect(opsPayload.status.dockerImageInventory).toEqual(
+      expect.objectContaining({
+        topLimit: 3,
+        totalImageBytes: 8_640 * 1024 * 1024,
+        status: "ok",
+        images: expect.arrayContaining([
+          expect.objectContaining({ reference: "aialra/pdf-onlyoffice:local" }),
+        ]),
       }),
     );
     expect(opsPayload.status.opsStatusTimer).toEqual(

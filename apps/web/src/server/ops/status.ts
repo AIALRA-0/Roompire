@@ -77,6 +77,14 @@ export type OpsStatusSnapshot = {
     checkedAt: string | null;
     error: string | null;
   };
+  dockerImageInventory: {
+    topLimit: number;
+    totalImageBytes: number;
+    images: OpsDockerImageInventoryItem[];
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
   opsStatusTimer: {
     name: string;
     activeState: string;
@@ -210,6 +218,16 @@ export type OpsDockerStorageCategory = {
   reclaimablePercent: number | null;
 };
 
+export type OpsDockerImageInventoryItem = {
+  repository: string;
+  tag: string;
+  imageId: string;
+  reference: string;
+  sizeBytes: number;
+  containers: number;
+  createdAt: string | null;
+};
+
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
 const dockerReclaimableWarningBytes = 5 * 1024 * 1024 * 1024;
 const staleStatusMs = 36 * 60 * 60 * 1000;
@@ -275,6 +293,51 @@ function normalizeDockerStorageCategory(value: unknown): OpsDockerStorageCategor
     sizeBytes: numberValue(value.sizeBytes) ?? 0,
     reclaimableBytes: numberValue(value.reclaimableBytes) ?? 0,
     reclaimablePercent: numberValue(value.reclaimablePercent),
+  };
+}
+
+function normalizeDockerImageInventoryItem(value: unknown): OpsDockerImageInventoryItem | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const repository = stringValue(value.repository, "<none>");
+  const tag = stringValue(value.tag, "<none>");
+  const imageId = stringValue(value.imageId);
+  const reference = stringValue(value.reference, `${repository}:${tag}`);
+
+  return {
+    repository,
+    tag,
+    imageId,
+    reference,
+    sizeBytes: numberValue(value.sizeBytes) ?? 0,
+    containers: numberValue(value.containers) ?? 0,
+    createdAt: nullableStringValue(value.createdAt),
+  };
+}
+
+function normalizeDockerImageInventory(value: unknown): OpsStatusSnapshot["dockerImageInventory"] {
+  if (!isRecord(value)) {
+    return {
+      topLimit: 8,
+      totalImageBytes: 0,
+      images: [],
+      status: "unknown",
+      checkedAt: null,
+      error: "Docker image inventory has not been recorded yet.",
+    };
+  }
+
+  return {
+    topLimit: numberValue(value.topLimit) ?? 8,
+    totalImageBytes: numberValue(value.totalImageBytes) ?? 0,
+    images: Array.isArray(value.images)
+      ? value.images.map(normalizeDockerImageInventoryItem).filter((image) => image !== null)
+      : [],
+    status: healthStateValue(value.status),
+    checkedAt: nullableStringValue(value.checkedAt),
+    error: nullableStringValue(value.error),
   };
 }
 
@@ -459,6 +522,10 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("docker_storage_unknown");
   }
 
+  if (status.dockerImageInventory.status === "unknown") {
+    warnings.push("docker_image_inventory_unknown");
+  }
+
   if (status.dockerStorage.status === "warning") {
     warnings.push("docker_reclaimable_high");
   }
@@ -554,6 +621,9 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawBackupTimer = isRecord(raw.backupTimer) ? raw.backupTimer : {};
   const rawBackupService = isRecord(raw.backupService) ? raw.backupService : {};
   const rawDockerStorage = isRecord(raw.dockerStorage) ? raw.dockerStorage : {};
+  const rawDockerImageInventory = isRecord(raw.dockerImageInventory)
+    ? raw.dockerImageInventory
+    : {};
   const rawOpsStatusTimer = isRecord(raw.opsStatusTimer) ? raw.opsStatusTimer : {};
   const rawOpsStatusService = isRecord(raw.opsStatusService) ? raw.opsStatusService : {};
   const rawSmokeTimer = isRecord(raw.smokeTimer) ? raw.smokeTimer : {};
@@ -600,6 +670,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       checkedAt: nullableStringValue(rawDockerStorage.checkedAt),
       error: nullableStringValue(rawDockerStorage.error),
     },
+    dockerImageInventory: normalizeDockerImageInventory(rawDockerImageInventory),
     opsStatusTimer: {
       name: stringValue(rawOpsStatusTimer.name, "roompire-ops-status.timer"),
       activeState: stringValue(rawOpsStatusTimer.activeState, "unknown"),
@@ -877,6 +948,14 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       buildCache: normalizeDockerStorageCategory(null),
       totalReclaimableBytes: 0,
       reclaimableWarningBytes: dockerReclaimableWarningBytes,
+      status: "unknown" as const,
+      checkedAt: new Date().toISOString(),
+      error: "Host status file has not been generated.",
+    },
+    dockerImageInventory: {
+      topLimit: 8,
+      totalImageBytes: 0,
+      images: [],
       status: "unknown" as const,
       checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",

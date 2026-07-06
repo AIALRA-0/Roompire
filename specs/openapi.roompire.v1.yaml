@@ -1872,6 +1872,7 @@ components:
           disk,
           diskTrend,
           dockerStorage,
+          dockerImageInventory,
           opsStatusTimer,
           opsStatusService,
           backupTimer,
@@ -2009,6 +2010,35 @@ components:
             buildCache: { $ref: "#/components/schemas/OpsDockerStorageCategory" }
             totalReclaimableBytes: { type: integer }
             reclaimableWarningBytes: { type: integer }
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        dockerImageInventory:
+          type: object
+          required: [topLimit, totalImageBytes, images, status, checkedAt, error]
+          properties:
+            topLimit: { type: integer, example: 8 }
+            totalImageBytes: { type: integer, example: 32126369792 }
+            images:
+              type: array
+              items:
+                type: object
+                required: [repository, tag, imageId, reference, sizeBytes, containers, createdAt]
+                properties:
+                  repository: { type: string, example: aialra/pdf-onlyoffice }
+                  tag: { type: string, example: local }
+                  imageId: { type: string, example: 4fa60ef14f9d }
+                  reference: { type: string, example: aialra/pdf-onlyoffice:local }
+                  sizeBytes: { type: integer, example: 6109593600 }
+                  containers: { type: integer, example: 1 }
+                  createdAt:
+                    type: string
+                    nullable: true
             status: { $ref: "#/components/schemas/OpsHealthState" }
             checkedAt:
               type: string

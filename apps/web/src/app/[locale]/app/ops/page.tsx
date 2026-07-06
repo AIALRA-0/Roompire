@@ -39,6 +39,7 @@ type SmokeState = OpsStatusSnapshot["latestSmoke"]["status"];
 type BackupEncryptionMode = OpsStatusSnapshot["backupEncryption"]["configured"];
 type BackupOffsiteMode = OpsStatusSnapshot["backupOffsite"]["mode"];
 type DockerStorageCategory = OpsStatusSnapshot["dockerStorage"]["images"];
+type DockerImageInventoryItem = OpsStatusSnapshot["dockerImageInventory"]["images"][number];
 
 function formatBytes(locale: Locale, bytes: number | null) {
   if (bytes === null) {
@@ -144,6 +145,10 @@ function formatReclaimable(locale: Locale, category: DockerStorageCategory) {
 
 function formatDockerCategory(locale: Locale, category: DockerStorageCategory) {
   return `${formatInteger(locale, category.activeCount)}/${formatInteger(locale, category.totalCount)} active, ${formatFileSize(locale, category.sizeBytes)}`;
+}
+
+function formatImageReference(image: DockerImageInventoryItem) {
+  return image.reference || `${image.repository}:${image.tag}`;
 }
 
 function formatDateTime(locale: Locale, value: string | null) {
@@ -254,6 +259,7 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     disk_unknown: ops("warningDiskUnknown"),
     disk_trend_depleting: ops("warningDiskTrendDepleting"),
     docker_storage_unknown: ops("warningDockerStorageUnknown"),
+    docker_image_inventory_unknown: ops("warningDockerImageInventoryUnknown"),
     docker_reclaimable_high: ops("warningDockerReclaimableHigh"),
     ops_status_timer_attention: ops("warningOpsStatusTimer"),
     ops_status_service_attention: ops("warningOpsStatusService"),
@@ -283,7 +289,7 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
 function MetricRow({ label, value, testId }: { label: string; value: string; testId?: string }) {
   return (
     <div
-      className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] items-start gap-3 text-sm"
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] items-start gap-3 text-sm"
       data-testid={testId}
     >
       <span className="min-w-0 text-muted-foreground">{label}</span>
@@ -365,7 +371,7 @@ export default async function OpsPage({ params }: PageProps) {
   const warningLabels = status.summary.warnings.map((warning) => warningLabel(ops, warning));
 
   return (
-    <main className="min-h-svh bg-background text-foreground">
+    <main className="min-h-svh overflow-x-hidden bg-background text-foreground">
       <div className="grid min-h-svh lg:grid-cols-[264px_minmax(0,1fr)]">
         <aside className="hidden border-r border-border bg-card lg:block">
           <div className="flex h-full flex-col px-4 py-5">
@@ -403,9 +409,9 @@ export default async function OpsPage({ params }: PageProps) {
           </div>
         </aside>
 
-        <section className="min-w-0">
+        <section className="w-full min-w-0">
           <header className="sticky top-0 z-20 border-b border-border bg-background/92 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-medium uppercase text-muted-foreground">
                   {activeHouseholdName}
@@ -415,8 +421,8 @@ export default async function OpsPage({ params }: PageProps) {
                   {identity("signedInAs", { name: model.user.displayName })}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <Button asChild variant="outline">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                <Button asChild className="max-w-full px-3" variant="outline">
                   <Link href={`/${locale}/app`}>
                     <ArrowLeft aria-hidden="true" className="h-4 w-4" />
                     {ops("backToDashboard")}
@@ -501,7 +507,7 @@ export default async function OpsPage({ params }: PageProps) {
                   </div>
                   <HardDrive aria-hidden="true" className="h-5 w-5 text-sky-700" />
                 </div>
-                <div className="grid gap-3 p-5">
+                <div className="grid min-w-0 gap-3 p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-xs uppercase text-muted-foreground">{ops("available")}</p>
@@ -642,6 +648,74 @@ export default async function OpsPage({ params }: PageProps) {
                     label={ops("buildCacheReclaimable")}
                     value={formatReclaimable(locale, status.dockerStorage.buildCache)}
                   />
+                  <div
+                    className="mt-2 min-w-0 border-t border-border pt-3"
+                    data-testid="ops-docker-image-inventory"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">{ops("largestImages")}</span>
+                      <Badge
+                        data-testid="ops-docker-image-inventory-status"
+                        variant={healthVariant(status.dockerImageInventory.status)}
+                      >
+                        {healthLabel(ops, status.dockerImageInventory.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid min-w-0 gap-3">
+                      <MetricRow
+                        label={ops("imageTotalSize")}
+                        testId="ops-docker-image-total-size"
+                        value={formatFileSize(locale, status.dockerImageInventory.totalImageBytes)}
+                      />
+                      {status.dockerImageInventory.images.length > 0 ? (
+                        <div className="grid min-w-0 gap-2">
+                          {status.dockerImageInventory.images.map((image) => (
+                            <div
+                              className="min-w-0 rounded-md border border-border bg-background/60 px-3 py-2"
+                              data-testid="ops-docker-image-row"
+                              key={`${image.imageId}-${formatImageReference(image)}`}
+                            >
+                              <div className="flex min-w-0 items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p
+                                    className="truncate text-sm font-medium"
+                                    title={formatImageReference(image)}
+                                  >
+                                    {formatImageReference(image)}
+                                  </p>
+                                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                                    {image.imageId}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 text-sm font-semibold">
+                                  {formatFileSize(locale, image.sizeBytes)}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                <span>
+                                  {ops("imageContainers", {
+                                    count: formatInteger(locale, image.containers),
+                                  })}
+                                </span>
+                                <span>
+                                  {ops("imageCreated", {
+                                    time: formatDateTime(locale, image.createdAt),
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">{ops("noImages")}</p>
+                      )}
+                    </div>
+                    {status.dockerImageInventory.error ? (
+                      <p className="mt-3 text-sm text-rose-700">
+                        {status.dockerImageInventory.error}
+                      </p>
+                    ) : null}
+                  </div>
                   <MetricRow
                     label={ops("checkedAt")}
                     value={formatDateTime(locale, status.dockerStorage.checkedAt)}

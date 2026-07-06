@@ -41,6 +41,7 @@ const configuredDockerReclaimableWarningBytes = Number(
 const dockerReclaimableWarningBytes = Number.isFinite(configuredDockerReclaimableWarningBytes)
   ? configuredDockerReclaimableWarningBytes
   : 5 * 1024 * 1024 * 1024;
+const dockerImageInventoryLimit = Number(process.env.ROOMPIRE_DOCKER_IMAGE_INVENTORY_LIMIT || 8);
 
 function command(commandName, args) {
   const result = spawnSync(commandName, args, {
@@ -894,6 +895,67 @@ function collectDockerStorage() {
   };
 }
 
+function collectDockerImageInventory() {
+  const result = command("docker", ["image", "ls", "--format", "{{json .}}"]);
+  const topLimit = positiveIntegerValue(dockerImageInventoryLimit, 8);
+
+  if (!result.ok) {
+    return {
+      topLimit,
+      totalImageBytes: 0,
+      images: [],
+      status: "unknown",
+      checkedAt: generatedAt,
+      error: result.error,
+    };
+  }
+
+  try {
+    const images = result.stdout
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const parsed = JSON.parse(line);
+        const repository = String(parsed.Repository || "<none>");
+        const tag = String(parsed.Tag || "<none>");
+        const imageId = String(parsed.ID || "");
+        const containers = Number(parsed.Containers || 0);
+
+        return {
+          repository,
+          tag,
+          imageId,
+          reference: `${repository}:${tag}`,
+          sizeBytes: parseDockerSize(parsed.Size),
+          containers: Number.isFinite(containers) ? containers : 0,
+          createdAt: typeof parsed.CreatedAt === "string" ? parsed.CreatedAt : null,
+        };
+      });
+    const totalImageBytes = images.reduce((total, image) => total + image.sizeBytes, 0);
+
+    return {
+      topLimit,
+      totalImageBytes,
+      images: images
+        .sort((left, right) => right.sizeBytes - left.sizeBytes)
+        .slice(0, topLimit),
+      status: "ok",
+      checkedAt: generatedAt,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      topLimit,
+      totalImageBytes: 0,
+      images: [],
+      status: "unknown",
+      checkedAt: generatedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function smokeStatusValue(value) {
   return ["passed", "failed", "missing", "unknown"].includes(value) ? value : "unknown";
 }
@@ -941,6 +1003,7 @@ const snapshot = {
   disk,
   diskTrend: collectDiskTrend(disk),
   dockerStorage: collectDockerStorage(),
+  dockerImageInventory: collectDockerImageInventory(),
   opsStatusTimer: collectOpsStatusTimer(),
   opsStatusService: collectOpsStatusService(),
   backupTimer: collectBackupTimer(),
