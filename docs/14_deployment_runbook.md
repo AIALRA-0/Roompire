@@ -121,7 +121,7 @@ docker system df
 ./scripts/server_housekeeping.sh
 ```
 
-`scripts/server_housekeeping.sh` defaults to a dry run. To remove low-risk generated artifacts, old targeted `/tmp` leftovers, dangling Docker image/build layers, and excess systemd journal archives, run:
+`scripts/server_housekeeping.sh` defaults to a dry run. To remove low-risk generated artifacts, old targeted `/tmp` leftovers, unused Roompire one-shot images such as `roompire-migrator`, dangling Docker image/build layers, and excess systemd journal archives, run:
 
 ```bash
 ROOMPIRE_HOUSEKEEPING_CONFIRM=cleanup ./scripts/server_housekeeping.sh
@@ -129,11 +129,11 @@ ROOMPIRE_HOUSEKEEPING_CONFIRM=cleanup ./scripts/server_housekeeping.sh
 
 For unattended runs, set `ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS=auto` so the current checkout's `.next`, `.turbo`, Playwright report, and test-output directories are removed only when available root-disk bytes fall below `ROOMPIRE_HOUSEKEEPING_REPO_ARTIFACT_MIN_AVAILABLE_BYTES` and no active Next/Playwright/Turbo/pnpm build or test process is detected.
 
-To also clear Python `uv` package caches, add `ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE=true`. The housekeeping script intentionally avoids Docker volumes, running-container data, production backups, and non-dangling images used by currently running services.
+To also clear Python `uv` package caches, add `ROOMPIRE_HOUSEKEEPING_CLEAN_UV_CACHE=true`. The housekeeping script intentionally avoids Docker volumes, running-container data, production backups, and images that any current or stopped container still references. `ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGES=true` removes only configured one-shot Roompire image repositories, defaulting to `roompire-migrator`; the next deploy rebuilds that image before running migrations.
 
 When the server root disk pressure comes from old Codex browser workspaces, add `ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES=true` to remove generated dependency/build/test-output directories outside the current checkout while preserving source files and git history.
 
-For routine unattended cleanup, install the conservative housekeeping timer. It prunes targeted `/tmp` leftovers, dangling Docker/build cache, and excess journal archives, auto-cleans current-checkout build/test artifacts only under low-disk conditions, then refreshes the ops snapshot:
+For routine unattended cleanup, install the conservative housekeeping timer. It prunes targeted `/tmp` leftovers, unused Roompire one-shot images, dangling Docker/build cache, and excess journal archives, auto-cleans current-checkout build/test artifacts only under low-disk conditions, then refreshes the ops snapshot:
 
 ```bash
 cp ops/systemd/roompire-housekeeping.service /etc/systemd/system/

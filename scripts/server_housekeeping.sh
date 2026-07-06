@@ -10,6 +10,8 @@ MANAGE_REPO_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_REPO_ARTIFACTS:-true}
 REPO_ARTIFACT_MIN_AVAILABLE_BYTES=${ROOMPIRE_HOUSEKEEPING_REPO_ARTIFACT_MIN_AVAILABLE_BYTES:-6442450944}
 MANAGE_TMP_ARTIFACTS=${ROOMPIRE_HOUSEKEEPING_CLEAN_TMP:-true}
 MANAGE_DOCKER_PRUNE=${ROOMPIRE_HOUSEKEEPING_DOCKER_PRUNE:-true}
+MANAGE_ROOMPIRE_EPHEMERAL_IMAGES=${ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGES:-true}
+ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES=${ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES:-roompire-migrator}
 MANAGE_JOURNAL_VACUUM=${ROOMPIRE_HOUSEKEEPING_JOURNAL_VACUUM:-true}
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
@@ -209,6 +211,46 @@ clean_browser_workspace_artifacts() {
   )
 }
 
+clean_roompire_ephemeral_images() {
+  section "Roompire ephemeral Docker images"
+
+  if [ "$MANAGE_ROOMPIRE_EPHEMERAL_IMAGES" != "true" ]; then
+    echo "Skipping Roompire ephemeral images; set ROOMPIRE_HOUSEKEEPING_ROOMPIRE_EPHEMERAL_IMAGES=true to remove unused one-shot images."
+    return
+  fi
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is not installed."
+    return
+  fi
+
+  local found=false
+  local reference
+  local image_id
+  local repository
+
+  for repository in $ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES; do
+    while read -r reference image_id; do
+      if [ -z "${reference:-}" ] || [ "$reference" = "<none>:<none>" ]; then
+        continue
+      fi
+
+      found=true
+
+      if docker ps -a --filter "ancestor=$reference" --format '{{.ID}}' | grep -q .; then
+        echo "Skipping $reference ($image_id); one or more containers still reference it."
+        continue
+      fi
+
+      run_or_print docker image rm "$reference"
+    done < <(docker image ls "$repository" --format '{{.Repository}}:{{.Tag}} {{.ID}}' | sort -u)
+  done
+
+  if [ "$found" = false ]; then
+    echo "No matching Roompire ephemeral images found."
+  fi
+}
+
 clean_docker_safely() {
   section "docker safe prune"
 
@@ -264,6 +306,7 @@ clean_repo_artifacts
 clean_tmp_artifacts
 clean_optional_caches
 clean_browser_workspace_artifacts
+clean_roompire_ephemeral_images
 clean_docker_safely
 clean_journal
 collect_ops_status
