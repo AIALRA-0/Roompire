@@ -1887,6 +1887,7 @@ components:
           reminderService,
           housekeepingTimer,
           housekeepingService,
+          backupFreshness,
           backupEncryption,
           backupPassphraseEscrow,
           backupOffsite,
@@ -2365,6 +2366,59 @@ components:
               type: string
               nullable: true
             status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        backupFreshness:
+          type: object
+          required:
+            [
+              backupRoot,
+              staleMs,
+              latestCompleteBackupAt,
+              latestPostgresArtifact,
+              latestPostgresAt,
+              latestUploadsArtifact,
+              latestUploadsAt,
+              latestFileManifestArtifact,
+              latestFileManifestAt,
+              status,
+              checkedAt,
+              error,
+            ]
+          properties:
+            backupRoot: { type: string, example: /srv/aialra/backups/roompire }
+            staleMs: { type: integer, example: 129600000 }
+            latestCompleteBackupAt:
+              type: string
+              format: date-time
+              nullable: true
+            latestPostgresArtifact:
+              type: string
+              nullable: true
+            latestPostgresAt:
+              type: string
+              format: date-time
+              nullable: true
+            latestUploadsArtifact:
+              type: string
+              nullable: true
+            latestUploadsAt:
+              type: string
+              format: date-time
+              nullable: true
+            latestFileManifestArtifact:
+              type: string
+              nullable: true
+            latestFileManifestAt:
+              type: string
+              format: date-time
+              nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
             error:
               type: string
               nullable: true

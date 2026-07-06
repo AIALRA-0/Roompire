@@ -229,6 +229,20 @@ export type OpsStatusSnapshot = {
     status: HealthState;
     error: string | null;
   };
+  backupFreshness: {
+    backupRoot: string;
+    staleMs: number;
+    latestCompleteBackupAt: string | null;
+    latestPostgresArtifact: string | null;
+    latestPostgresAt: string | null;
+    latestUploadsArtifact: string | null;
+    latestUploadsAt: string | null;
+    latestFileManifestArtifact: string | null;
+    latestFileManifestAt: string | null;
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
   backupEncryption: {
     backupRoot: string;
     configured: BackupEncryptionMode;
@@ -318,6 +332,10 @@ const staleStatusMs = 36 * 60 * 60 * 1000;
 const smokeStatusStaleMs = positiveEnvNumber("ROOMPIRE_SMOKE_STATUS_STALE_MS", 2 * 60 * 60 * 1000);
 const restoreDrillStatusStaleMs = positiveEnvNumber(
   "ROOMPIRE_RESTORE_DRILL_STATUS_STALE_MS",
+  36 * 60 * 60 * 1000,
+);
+const backupFreshnessStaleMs = positiveEnvNumber(
+  "ROOMPIRE_BACKUP_FRESHNESS_STALE_MS",
   36 * 60 * 60 * 1000,
 );
 const sharedAppStorageStatusStaleMs = positiveEnvNumber(
@@ -904,6 +922,14 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("housekeeping_service_attention");
   }
 
+  if (status.backupFreshness.status === "warning") {
+    warnings.push("backup_freshness_attention");
+  }
+
+  if (status.backupFreshness.status === "unknown") {
+    warnings.push("backup_freshness_unknown");
+  }
+
   if (status.backupEncryption.configured !== "enabled") {
     warnings.push("backup_encryption_disabled");
   }
@@ -1016,6 +1042,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawReminderService = isRecord(raw.reminderService) ? raw.reminderService : {};
   const rawHousekeepingTimer = isRecord(raw.housekeepingTimer) ? raw.housekeepingTimer : {};
   const rawHousekeepingService = isRecord(raw.housekeepingService) ? raw.housekeepingService : {};
+  const rawBackupFreshness = isRecord(raw.backupFreshness) ? raw.backupFreshness : {};
   const rawBackupEncryption = isRecord(raw.backupEncryption) ? raw.backupEncryption : {};
   const rawBackupPassphraseEscrow = isRecord(raw.backupPassphraseEscrow)
     ? raw.backupPassphraseEscrow
@@ -1167,6 +1194,22 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       finishedAt: nullableStringValue(rawHousekeepingService.finishedAt),
       status: healthStateValue(rawHousekeepingService.status),
       error: nullableStringValue(rawHousekeepingService.error),
+    },
+    backupFreshness: {
+      backupRoot: stringValue(rawBackupFreshness.backupRoot, "/srv/aialra/backups/roompire"),
+      staleMs: numberValue(rawBackupFreshness.staleMs) ?? backupFreshnessStaleMs,
+      latestCompleteBackupAt: nullableStringValue(rawBackupFreshness.latestCompleteBackupAt),
+      latestPostgresArtifact: nullableStringValue(rawBackupFreshness.latestPostgresArtifact),
+      latestPostgresAt: nullableStringValue(rawBackupFreshness.latestPostgresAt),
+      latestUploadsArtifact: nullableStringValue(rawBackupFreshness.latestUploadsArtifact),
+      latestUploadsAt: nullableStringValue(rawBackupFreshness.latestUploadsAt),
+      latestFileManifestArtifact: nullableStringValue(
+        rawBackupFreshness.latestFileManifestArtifact,
+      ),
+      latestFileManifestAt: nullableStringValue(rawBackupFreshness.latestFileManifestAt),
+      status: healthStateValue(rawBackupFreshness.status),
+      checkedAt: nullableStringValue(rawBackupFreshness.checkedAt),
+      error: nullableStringValue(rawBackupFreshness.error),
     },
     backupEncryption: {
       backupRoot: stringValue(rawBackupEncryption.backupRoot, "/srv/aialra/backups/roompire"),
@@ -1372,6 +1415,23 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       startedAt: null,
       finishedAt: null,
       status: "unknown" as const,
+      error: "Host status file has not been generated.",
+    },
+    backupFreshness: {
+      backupRoot:
+        process.env.ROOMPIRE_BACKUP_ROOT?.trim() ||
+        process.env.BACKUP_ROOT?.trim() ||
+        "/srv/aialra/backups/roompire",
+      staleMs: backupFreshnessStaleMs,
+      latestCompleteBackupAt: null,
+      latestPostgresArtifact: null,
+      latestPostgresAt: null,
+      latestUploadsArtifact: null,
+      latestUploadsAt: null,
+      latestFileManifestArtifact: null,
+      latestFileManifestAt: null,
+      status: "unknown" as const,
+      checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",
     },
     backupEncryption: {

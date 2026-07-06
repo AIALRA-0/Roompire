@@ -24,6 +24,13 @@ const housekeepingServiceName =
   process.env.ROOMPIRE_HOUSEKEEPING_SERVICE || "roompire-housekeeping.service";
 const backupRoot =
   process.env.ROOMPIRE_BACKUP_ROOT || process.env.BACKUP_ROOT || "/srv/aialra/backups/roompire";
+const configuredBackupFreshnessStaleMs = Number(
+  process.env.ROOMPIRE_BACKUP_FRESHNESS_STALE_MS || 36 * 60 * 60 * 1000,
+);
+const backupFreshnessStaleMs =
+  Number.isFinite(configuredBackupFreshnessStaleMs) && configuredBackupFreshnessStaleMs > 0
+    ? configuredBackupFreshnessStaleMs
+    : 36 * 60 * 60 * 1000;
 const backupPassphraseEscrowStatusPath =
   process.env.ROOMPIRE_BACKUP_PASSPHRASE_ESCROW_STATUS_FILE ||
   "ops/status/backup-passphrase-escrow.json";
@@ -352,6 +359,134 @@ function walkBackupFiles(root) {
 
 function backupTimestamp(file) {
   return path.basename(file).match(/(\d{8}T\d{6}Z)/)?.[1] || "";
+}
+
+function backupTimestampToIso(timestamp) {
+  const match = timestamp.match(
+    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.000Z`;
+}
+
+function latestBackupArtifact(files, pattern) {
+  return (
+    files
+      .filter((file) => pattern.test(path.basename(file)))
+      .map((file) => {
+        const timestamp = backupTimestamp(file);
+
+        return {
+          file,
+          timestamp,
+          checkedAt: backupTimestampToIso(timestamp),
+        };
+      })
+      .filter((artifact) => artifact.checkedAt !== null)
+      .sort((left, right) => right.timestamp.localeCompare(left.timestamp))[0] ?? null
+  );
+}
+
+function collectBackupFreshness() {
+  const base = {
+    backupRoot,
+    staleMs: backupFreshnessStaleMs,
+    checkedAt: generatedAt,
+  };
+
+  try {
+    if (!fs.existsSync(backupRoot)) {
+      return {
+        ...base,
+        latestCompleteBackupAt: null,
+        latestPostgresArtifact: null,
+        latestPostgresAt: null,
+        latestUploadsArtifact: null,
+        latestUploadsAt: null,
+        latestFileManifestArtifact: null,
+        latestFileManifestAt: null,
+        status: "unknown",
+        error: "Backup root does not exist.",
+      };
+    }
+
+    const files = walkBackupFiles(backupRoot);
+    const latestPostgres = latestBackupArtifact(
+      files,
+      /^roompire_\d{8}T\d{6}Z\.dump(?:\.enc)?$/,
+    );
+    const latestUploads = latestBackupArtifact(
+      files,
+      /^roompire_uploads_\d{8}T\d{6}Z\.tar\.gz(?:\.enc)?$/,
+    );
+    const latestFileManifest = latestBackupArtifact(
+      files,
+      /^roompire_file_manifest_\d{8}T\d{6}Z\.json(?:\.enc)?$/,
+    );
+    const artifactTimes = [
+      latestPostgres?.checkedAt,
+      latestUploads?.checkedAt,
+      latestFileManifest?.checkedAt,
+    ].filter(Boolean);
+    const latestCompleteBackupAt =
+      artifactTimes.length === 3
+        ? artifactTimes.sort((left, right) => Date.parse(left) - Date.parse(right))[0]
+        : null;
+    const errors = [];
+
+    if (!latestPostgres) {
+      errors.push("No PostgreSQL backup artifact was found.");
+    }
+
+    if (!latestUploads) {
+      errors.push("No upload-volume backup artifact was found.");
+    }
+
+    if (!latestFileManifest) {
+      errors.push("No file-manifest backup artifact was found.");
+    }
+
+    if (latestCompleteBackupAt) {
+      const completeBackupMs = Date.parse(latestCompleteBackupAt);
+
+      if (
+        !Number.isFinite(completeBackupMs) ||
+        Date.now() - completeBackupMs > backupFreshnessStaleMs
+      ) {
+        errors.push("Latest complete backup set is stale.");
+      }
+    }
+
+    return {
+      ...base,
+      latestCompleteBackupAt,
+      latestPostgresArtifact: latestPostgres?.file ?? null,
+      latestPostgresAt: latestPostgres?.checkedAt ?? null,
+      latestUploadsArtifact: latestUploads?.file ?? null,
+      latestUploadsAt: latestUploads?.checkedAt ?? null,
+      latestFileManifestArtifact: latestFileManifest?.file ?? null,
+      latestFileManifestAt: latestFileManifest?.checkedAt ?? null,
+      status: errors.length > 0 ? "warning" : "ok",
+      error: errors.join("; ") || null,
+    };
+  } catch (error) {
+    return {
+      ...base,
+      latestCompleteBackupAt: null,
+      latestPostgresArtifact: null,
+      latestPostgresAt: null,
+      latestUploadsArtifact: null,
+      latestUploadsAt: null,
+      latestFileManifestArtifact: null,
+      latestFileManifestAt: null,
+      status: "unknown",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function collectBackupEncryption() {
@@ -1548,6 +1683,7 @@ const snapshot = {
   reminderService: collectReminderService(),
   housekeepingTimer: collectHousekeepingTimer(),
   housekeepingService: collectHousekeepingService(),
+  backupFreshness: collectBackupFreshness(),
   backupEncryption: collectBackupEncryption(),
   backupPassphraseEscrow: collectBackupPassphraseEscrow(),
   backupOffsite: collectBackupOffsite(),

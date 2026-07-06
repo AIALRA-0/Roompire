@@ -505,6 +505,23 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
           status: "ok",
           error: null,
         },
+        backupFreshness: {
+          backupRoot: "/srv/aialra/backups/roompire",
+          staleMs: 36 * 60 * 60 * 1000,
+          latestCompleteBackupAt: generatedAt,
+          latestPostgresArtifact:
+            "/srv/aialra/backups/roompire/postgres/roompire_20260704T235250Z.dump.enc",
+          latestPostgresAt: generatedAt,
+          latestUploadsArtifact:
+            "/srv/aialra/backups/roompire/uploads/roompire_uploads_20260704T235250Z.tar.gz.enc",
+          latestUploadsAt: generatedAt,
+          latestFileManifestArtifact:
+            "/srv/aialra/backups/roompire/file-manifests/roompire_file_manifest_20260704T235250Z.json.enc",
+          latestFileManifestAt: generatedAt,
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
         backupEncryption: {
           backupRoot: "/srv/aialra/backups/roompire",
           configured: "enabled",
@@ -2114,6 +2131,9 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-restore-drill-audit-broken")).toContainText("0");
     await expect(page.getByTestId("ops-housekeeping-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-reminders-timer-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-backup-freshness-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-backup-freshness-complete")).not.toContainText("—");
+    await expect(page.getByTestId("ops-backup-freshness-postgres")).not.toContainText("—");
     await expect(page.getByTestId("ops-backup-encryption-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-encryption-mode")).toContainText("Enabled");
     await expect(page.getByTestId("ops-backup-plaintext-artifacts")).toContainText("0");
@@ -2185,6 +2205,13 @@ test.describe("Roompire real browser smoke", () => {
         housekeepingService: { result: string; execMainStatus: string };
         reminderTimer: { activeState: string; enabledState: string };
         reminderService: { result: string; execMainStatus: string };
+        backupFreshness: {
+          latestCompleteBackupAt: string | null;
+          latestPostgresAt: string | null;
+          latestUploadsAt: string | null;
+          latestFileManifestAt: string | null;
+          status: string;
+        };
         backupEncryption: {
           configured: string;
           encryptedArtifacts: number;
@@ -2294,6 +2321,15 @@ test.describe("Roompire real browser smoke", () => {
     );
     expect(opsPayload.status.reminderService).toEqual(
       expect.objectContaining({ result: "success", execMainStatus: "0" }),
+    );
+    expect(opsPayload.status.backupFreshness).toEqual(
+      expect.objectContaining({
+        latestCompleteBackupAt: expect.any(String),
+        latestPostgresAt: expect.any(String),
+        latestUploadsAt: expect.any(String),
+        latestFileManifestAt: expect.any(String),
+        status: "ok",
+      }),
     );
     expect(opsPayload.status.backupEncryption).toEqual(
       expect.objectContaining({

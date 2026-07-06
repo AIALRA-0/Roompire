@@ -115,6 +115,7 @@ Current implementation hash-chains audit events with `prev_hash` and `event_hash
 - Encrypted backup storage. `scripts/backup_all.sh` supports optional OpenSSL-based backup encryption through `ROOMPIRE_BACKUP_ENCRYPTION=enabled` and a passphrase file kept outside git.
 - Optional offsite copy. `scripts/sync_backup_artifacts.sh` copies encrypted backup artifacts and `.sha256` sidecars to a configured mounted directory or `rclone` remote after the local backup and retention pass succeeds.
 - Daily non-destructive restore drill with `scripts/verify_postgres_backup.sh` to validate dump readability, migration metadata, and audit hash-chain integrity. The script writes `ops/status/latest-restore-drill.json` so the authenticated ops dashboard can warn when the latest recovery proof failed, is missing, or is stale.
+- Ops-visible backup freshness checks for the latest complete local backup set: PostgreSQL dump, upload-volume archive, and file manifest. The authenticated ops dashboard warns when any category is missing or the latest complete set is older than the configured freshness window.
 - Restore instructions in repo docs.
 
 ### Production recommended

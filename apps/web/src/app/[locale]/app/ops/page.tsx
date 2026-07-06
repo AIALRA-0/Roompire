@@ -334,6 +334,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     reminder_service_attention: ops("warningReminderService"),
     housekeeping_timer_attention: ops("warningHousekeepingTimer"),
     housekeeping_service_attention: ops("warningHousekeepingService"),
+    backup_freshness_attention: ops("warningBackupFreshnessAttention"),
+    backup_freshness_unknown: ops("warningBackupFreshnessUnknown"),
     backup_encryption_disabled: ops("warningBackupEncryptionDisabled"),
     backup_encryption_missing_artifacts: ops("warningBackupEncryptionMissingArtifacts"),
     backup_plaintext_artifacts: ops("warningBackupPlaintextArtifacts"),
@@ -1119,6 +1121,45 @@ export default async function OpsPage({ params }: PageProps) {
                       {status.backupTimer.error ?? status.backupService.error}
                     </p>
                   ) : null}
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">
+                        {ops("backupFreshness")}
+                      </span>
+                      <Badge
+                        data-testid="ops-backup-freshness-status"
+                        variant={healthVariant(status.backupFreshness.status)}
+                      >
+                        {healthLabel(ops, status.backupFreshness.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("latestCompleteBackup")}
+                        testId="ops-backup-freshness-complete"
+                        value={formatDateTime(
+                          locale,
+                          status.backupFreshness.latestCompleteBackupAt,
+                        )}
+                      />
+                      <MetricRow
+                        label={ops("latestPostgresBackup")}
+                        testId="ops-backup-freshness-postgres"
+                        value={formatDateTime(locale, status.backupFreshness.latestPostgresAt)}
+                      />
+                      <MetricRow
+                        label={ops("latestUploadsBackup")}
+                        value={formatDateTime(locale, status.backupFreshness.latestUploadsAt)}
+                      />
+                      <MetricRow
+                        label={ops("latestFileManifestBackup")}
+                        value={formatDateTime(locale, status.backupFreshness.latestFileManifestAt)}
+                      />
+                    </div>
+                    {status.backupFreshness.error ? (
+                      <p className="mt-3 text-sm text-rose-700">{status.backupFreshness.error}</p>
+                    ) : null}
+                  </div>
                   <div className="mt-2 border-t border-border pt-3">
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-sm text-muted-foreground">{ops("restoreDrill")}</span>
