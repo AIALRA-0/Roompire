@@ -357,6 +357,49 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
           checkedAt: generatedAt,
           error: null,
         },
+        containerHealth: {
+          containers: [
+            {
+              name: "roompire-web-1",
+              image: "roompire-web:latest",
+              state: "running",
+              running: true,
+              health: "healthy",
+              restartCount: 0,
+              startedAt: generatedAt,
+              finishedAt: null,
+              status: "ok",
+              error: null,
+            },
+            {
+              name: "roompire-postgres-1",
+              image: "postgres:16-alpine",
+              state: "running",
+              running: true,
+              health: "healthy",
+              restartCount: 1,
+              startedAt: generatedAt,
+              finishedAt: null,
+              status: "ok",
+              error: null,
+            },
+            {
+              name: "roompire-redis-1",
+              image: "redis:7-alpine",
+              state: "running",
+              running: true,
+              health: "healthy",
+              restartCount: 0,
+              startedAt: generatedAt,
+              finishedAt: null,
+              status: "ok",
+              error: null,
+            },
+          ],
+          status: "ok",
+          checkedAt: generatedAt,
+          error: null,
+        },
         opsStatusTimer: {
           name: "roompire-ops-status.timer",
           activeState: "active",
@@ -1992,6 +2035,11 @@ test.describe("Roompire real browser smoke", () => {
     await expect(page.getByTestId("ops-docker-image-row").first()).toContainText(
       "aialra/pdf-onlyoffice:local",
     );
+    await expect(page.getByTestId("ops-container-health-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-container-health-count")).toContainText("3");
+    await expect(page.getByTestId("ops-container-health-row").first()).toContainText(
+      "roompire-web-1",
+    );
     await expect(page.getByTestId("ops-backup-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-housekeeping-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-reminders-timer-status")).toContainText("OK");
@@ -2039,6 +2087,10 @@ test.describe("Roompire real browser smoke", () => {
           safeReclaimableImageBytes: number;
           images: Array<{ reference: string; sizeBytes: number }>;
           reclaimableCandidates: Array<{ reference: string; sizeBytes: number }>;
+          status: string;
+        };
+        containerHealth: {
+          containers: Array<{ name: string; health: string; status: string }>;
           status: string;
         };
         opsStatusTimer: { activeState: string; enabledState: string };
@@ -2103,6 +2155,14 @@ test.describe("Roompire real browser smoke", () => {
         ]),
         reclaimableCandidates: expect.arrayContaining([
           expect.objectContaining({ reference: "roompire-migrator:latest" }),
+        ]),
+      }),
+    );
+    expect(opsPayload.status.containerHealth).toEqual(
+      expect.objectContaining({
+        status: "ok",
+        containers: expect.arrayContaining([
+          expect.objectContaining({ name: "roompire-web-1", health: "healthy", status: "ok" }),
         ]),
       }),
     );

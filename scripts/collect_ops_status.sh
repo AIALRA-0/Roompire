@@ -42,6 +42,13 @@ const dockerReclaimableWarningBytes = Number.isFinite(configuredDockerReclaimabl
   ? configuredDockerReclaimableWarningBytes
   : 5 * 1024 * 1024 * 1024;
 const dockerImageInventoryLimit = Number(process.env.ROOMPIRE_DOCKER_IMAGE_INVENTORY_LIMIT || 8);
+const containerHealthNames = String(
+  process.env.ROOMPIRE_CONTAINER_HEALTH_CONTAINERS ||
+    "roompire-web-1 roompire-postgres-1 roompire-redis-1",
+)
+  .split(/\s+/)
+  .map((value) => value.trim())
+  .filter(Boolean);
 const rootStorageInventoryLimit = Number(process.env.ROOMPIRE_ROOT_STORAGE_INVENTORY_LIMIT || 8);
 const rootStorageInventoryTimeoutMs = Number(
   process.env.ROOMPIRE_ROOT_STORAGE_INVENTORY_TIMEOUT_MS || 60000,
@@ -1091,6 +1098,117 @@ function collectDockerImageInventory() {
   }
 }
 
+function nullableDockerTimestamp(value) {
+  if (typeof value !== "string" || !value || value.startsWith("0001-01-01")) {
+    return null;
+  }
+
+  return Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+function dockerContainerStatus(running, health) {
+  if (!running) {
+    return "warning";
+  }
+
+  if (health === "healthy" || health === "none") {
+    return "ok";
+  }
+
+  if (health === "unknown") {
+    return "unknown";
+  }
+
+  return "warning";
+}
+
+function collectContainerHealth() {
+  const names = [...new Set(containerHealthNames)];
+
+  if (names.length === 0) {
+    return {
+      containers: [],
+      status: "unknown",
+      checkedAt: generatedAt,
+      error: "No production container names are configured.",
+    };
+  }
+
+  const containers = names.map((containerName) => {
+    const result = command("docker", ["inspect", containerName]);
+
+    if (!result.ok) {
+      return {
+        name: containerName,
+        image: "",
+        state: "unknown",
+        running: false,
+        health: "unknown",
+        restartCount: 0,
+        startedAt: null,
+        finishedAt: null,
+        status: "unknown",
+        error: result.error,
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(result.stdout);
+      const container = Array.isArray(parsed) ? parsed[0] : parsed;
+      const state = container && typeof container === "object" ? container.State || {} : {};
+      const config = container && typeof container === "object" ? container.Config || {} : {};
+      const name =
+        typeof container?.Name === "string" && container.Name
+          ? container.Name.replace(/^\//, "")
+          : containerName;
+      const running = Boolean(state.Running);
+      const health =
+        state.Health && typeof state.Health.Status === "string"
+          ? state.Health.Status
+          : "none";
+      const restartCount = Number(container?.RestartCount || 0);
+
+      return {
+        name,
+        image: typeof config.Image === "string" ? config.Image : "",
+        state: typeof state.Status === "string" ? state.Status : "unknown",
+        running,
+        health,
+        restartCount: Number.isFinite(restartCount) ? restartCount : 0,
+        startedAt: nullableDockerTimestamp(state.StartedAt),
+        finishedAt: nullableDockerTimestamp(state.FinishedAt),
+        status: dockerContainerStatus(running, health),
+        error: null,
+      };
+    } catch (error) {
+      return {
+        name: containerName,
+        image: "",
+        state: "unknown",
+        running: false,
+        health: "unknown",
+        restartCount: 0,
+        startedAt: null,
+        finishedAt: null,
+        status: "unknown",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+  const allUnknown = containers.every((container) => container.status === "unknown");
+  const allOk = containers.every((container) => container.status === "ok");
+  const errors = containers
+    .filter((container) => container.error)
+    .map((container) => `${container.name}: ${container.error}`);
+
+  return {
+    containers,
+    status: allOk ? "ok" : allUnknown ? "unknown" : "warning",
+    checkedAt: generatedAt,
+    error: errors.join("; ") || null,
+  };
+}
+
 function smokeStatusValue(value) {
   return ["passed", "failed", "missing", "unknown"].includes(value) ? value : "unknown";
 }
@@ -1141,6 +1259,7 @@ const snapshot = {
   diskTrend: collectDiskTrend(disk),
   dockerStorage: collectDockerStorage(dockerImageInventory),
   dockerImageInventory,
+  containerHealth: collectContainerHealth(),
   opsStatusTimer: collectOpsStatusTimer(),
   opsStatusService: collectOpsStatusService(),
   backupTimer: collectBackupTimer(),

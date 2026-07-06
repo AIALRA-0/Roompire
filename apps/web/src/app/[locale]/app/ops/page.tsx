@@ -42,6 +42,7 @@ type BackupOffsiteMode = OpsStatusSnapshot["backupOffsite"]["mode"];
 type DockerStorageCategory = OpsStatusSnapshot["dockerStorage"]["images"];
 type DockerImageInventoryItem = OpsStatusSnapshot["dockerImageInventory"]["images"][number];
 type RootStorageInventoryItem = OpsStatusSnapshot["rootStorageInventory"]["paths"][number];
+type ContainerHealthItem = OpsStatusSnapshot["containerHealth"]["containers"][number];
 
 function formatBytes(locale: Locale, bytes: number | null) {
   if (bytes === null) {
@@ -157,6 +158,10 @@ function formatStoragePath(item: RootStorageInventoryItem) {
   return item.path;
 }
 
+function formatContainerImage(container: ContainerHealthItem) {
+  return container.image || "—";
+}
+
 function formatDateTime(locale: Locale, value: string | null) {
   if (!value) {
     return "—";
@@ -267,6 +272,8 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     root_storage_inventory_unknown: ops("warningRootStorageInventoryUnknown"),
     docker_storage_unknown: ops("warningDockerStorageUnknown"),
     docker_image_inventory_unknown: ops("warningDockerImageInventoryUnknown"),
+    container_health_unknown: ops("warningContainerHealthUnknown"),
+    container_health_attention: ops("warningContainerHealthAttention"),
     docker_safe_reclaimable_high: ops("warningDockerSafeReclaimableHigh"),
     docker_reclaimable_high: ops("warningDockerReclaimableHigh"),
     ops_status_timer_attention: ops("warningOpsStatusTimer"),
@@ -808,6 +815,87 @@ export default async function OpsPage({ params }: PageProps) {
                       <p className="mt-3 text-sm text-rose-700">
                         {status.dockerImageInventory.error}
                       </p>
+                    ) : null}
+                  </div>
+                  <div
+                    className="mt-2 min-w-0 border-t border-border pt-3"
+                    data-testid="ops-container-health"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">
+                        {ops("containerHealth")}
+                      </span>
+                      <Badge
+                        data-testid="ops-container-health-status"
+                        variant={healthVariant(status.containerHealth.status)}
+                      >
+                        {healthLabel(ops, status.containerHealth.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid min-w-0 gap-3">
+                      <MetricRow
+                        label={ops("containerCount")}
+                        testId="ops-container-health-count"
+                        value={formatInteger(locale, status.containerHealth.containers.length)}
+                      />
+                      {status.containerHealth.containers.length > 0 ? (
+                        <div className="grid min-w-0 gap-2">
+                          {status.containerHealth.containers.map((container) => (
+                            <div
+                              className="min-w-0 rounded-md border border-border bg-background/60 px-3 py-2"
+                              data-testid="ops-container-health-row"
+                              key={container.name}
+                            >
+                              <div className="flex min-w-0 items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p
+                                    className="truncate text-sm font-medium"
+                                    title={container.name}
+                                  >
+                                    {container.name}
+                                  </p>
+                                  <p
+                                    className="mt-1 truncate text-xs text-muted-foreground"
+                                    title={formatContainerImage(container)}
+                                  >
+                                    {formatContainerImage(container)}
+                                  </p>
+                                </div>
+                                <Badge
+                                  className="shrink-0"
+                                  variant={healthVariant(container.status)}
+                                >
+                                  {healthLabel(ops, container.status)}
+                                </Badge>
+                              </div>
+                              <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                                <span className="truncate" title={container.state}>
+                                  {ops("containerState")}: {container.state}
+                                </span>
+                                <span className="truncate" title={container.health}>
+                                  {ops("containerHealthCheck")}: {container.health}
+                                </span>
+                                <span>
+                                  {ops("containerRestarts")}:{" "}
+                                  {formatInteger(locale, container.restartCount)}
+                                </span>
+                                <span className="truncate">
+                                  {ops("containerStarted")}:{" "}
+                                  {formatDateTime(locale, container.startedAt)}
+                                </span>
+                              </div>
+                              {container.error ? (
+                                <p className="mt-2 text-xs text-rose-700">{container.error}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">{ops("noContainers")}</p>
+                      )}
+                    </div>
+                    {status.containerHealth.error ? (
+                      <p className="mt-3 text-sm text-rose-700">{status.containerHealth.error}</p>
                     ) : null}
                   </div>
                   <MetricRow

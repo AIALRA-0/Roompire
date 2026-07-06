@@ -100,6 +100,12 @@ export type OpsStatusSnapshot = {
     checkedAt: string | null;
     error: string | null;
   };
+  containerHealth: {
+    containers: OpsContainerHealthItem[];
+    status: HealthState;
+    checkedAt: string | null;
+    error: string | null;
+  };
   opsStatusTimer: {
     name: string;
     activeState: string;
@@ -248,6 +254,19 @@ export type OpsRootStorageInventoryItem = {
   sizeBytes: number;
 };
 
+export type OpsContainerHealthItem = {
+  name: string;
+  image: string;
+  state: string;
+  running: boolean;
+  health: string;
+  restartCount: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  status: HealthState;
+  error: string | null;
+};
+
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
 const dockerReclaimableWarningBytes = 5 * 1024 * 1024 * 1024;
 const staleStatusMs = 36 * 60 * 60 * 1000;
@@ -373,6 +392,51 @@ function normalizeDockerImageInventory(value: unknown): OpsStatusSnapshot["docke
       ? value.reclaimableCandidates
           .map(normalizeDockerImageInventoryItem)
           .filter((image) => image !== null)
+      : [],
+    status: healthStateValue(value.status),
+    checkedAt: nullableStringValue(value.checkedAt),
+    error: nullableStringValue(value.error),
+  };
+}
+
+function normalizeContainerHealthItem(value: unknown): OpsContainerHealthItem | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const name = stringValue(value.name);
+
+  if (!name) {
+    return null;
+  }
+
+  return {
+    name,
+    image: stringValue(value.image),
+    state: stringValue(value.state, "unknown"),
+    running: booleanValue(value.running),
+    health: stringValue(value.health, "unknown"),
+    restartCount: numberValue(value.restartCount) ?? 0,
+    startedAt: nullableStringValue(value.startedAt),
+    finishedAt: nullableStringValue(value.finishedAt),
+    status: healthStateValue(value.status),
+    error: nullableStringValue(value.error),
+  };
+}
+
+function normalizeContainerHealth(value: unknown): OpsStatusSnapshot["containerHealth"] {
+  if (!isRecord(value)) {
+    return {
+      containers: [],
+      status: "unknown",
+      checkedAt: null,
+      error: "Container health has not been recorded yet.",
+    };
+  }
+
+  return {
+    containers: Array.isArray(value.containers)
+      ? value.containers.map(normalizeContainerHealthItem).filter((item) => item !== null)
       : [],
     status: healthStateValue(value.status),
     checkedAt: nullableStringValue(value.checkedAt),
@@ -615,6 +679,12 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("docker_image_inventory_unknown");
   }
 
+  if (status.containerHealth.status === "unknown") {
+    warnings.push("container_health_unknown");
+  } else if (status.containerHealth.status === "warning") {
+    warnings.push("container_health_attention");
+  }
+
   if (status.dockerStorage.status === "warning") {
     warnings.push("docker_safe_reclaimable_high");
   }
@@ -725,6 +795,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
   const rawDockerImageInventory = isRecord(raw.dockerImageInventory)
     ? raw.dockerImageInventory
     : {};
+  const rawContainerHealth = isRecord(raw.containerHealth) ? raw.containerHealth : {};
   const rawOpsStatusTimer = isRecord(raw.opsStatusTimer) ? raw.opsStatusTimer : {};
   const rawOpsStatusService = isRecord(raw.opsStatusService) ? raw.opsStatusService : {};
   const rawSmokeTimer = isRecord(raw.smokeTimer) ? raw.smokeTimer : {};
@@ -785,6 +856,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       error: nullableStringValue(rawDockerStorage.error),
     },
     dockerImageInventory: normalizeDockerImageInventory(rawDockerImageInventory),
+    containerHealth: normalizeContainerHealth(rawContainerHealth),
     opsStatusTimer: {
       name: stringValue(rawOpsStatusTimer.name, "roompire-ops-status.timer"),
       activeState: stringValue(rawOpsStatusTimer.activeState, "unknown"),
@@ -1085,6 +1157,12 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       safeReclaimableImageBytes: 0,
       images: [],
       reclaimableCandidates: [],
+      status: "unknown" as const,
+      checkedAt: new Date().toISOString(),
+      error: "Host status file has not been generated.",
+    },
+    containerHealth: {
+      containers: [],
       status: "unknown" as const,
       checkedAt: new Date().toISOString(),
       error: "Host status file has not been generated.",

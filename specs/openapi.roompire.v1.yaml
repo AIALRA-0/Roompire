@@ -1874,6 +1874,7 @@ components:
           diskTrend,
           dockerStorage,
           dockerImageInventory,
+          containerHealth,
           opsStatusTimer,
           opsStatusService,
           backupTimer,
@@ -2095,6 +2096,54 @@ components:
                   sizeBytes: { type: integer, example: 406847488 }
                   containers: { type: integer, example: 0 }
                   createdAt:
+                    type: string
+                    nullable: true
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
+            error:
+              type: string
+              nullable: true
+        containerHealth:
+          type: object
+          required: [containers, status, checkedAt, error]
+          properties:
+            containers:
+              type: array
+              items:
+                type: object
+                required:
+                  [
+                    name,
+                    image,
+                    state,
+                    running,
+                    health,
+                    restartCount,
+                    startedAt,
+                    finishedAt,
+                    status,
+                    error,
+                  ]
+                properties:
+                  name: { type: string, example: roompire-web-1 }
+                  image: { type: string, example: roompire-web:latest }
+                  state: { type: string, example: running }
+                  running: { type: boolean, example: true }
+                  health: { type: string, example: healthy }
+                  restartCount: { type: integer, example: 0 }
+                  startedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  finishedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  status: { $ref: "#/components/schemas/OpsHealthState" }
+                  error:
                     type: string
                     nullable: true
             status: { $ref: "#/components/schemas/OpsHealthState" }
