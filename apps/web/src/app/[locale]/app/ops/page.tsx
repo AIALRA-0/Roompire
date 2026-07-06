@@ -184,6 +184,10 @@ function formatDateTime(locale: Locale, value: string | null) {
   }).format(new Date(timestamp));
 }
 
+function formatBoolean(ops: Awaited<ReturnType<typeof getTranslations>>, value: boolean) {
+  return value ? ops("enabledValue") : ops("disabledValue");
+}
+
 function healthVariant(status: HealthState) {
   return status === "ok" ? "success" : status === "warning" ? "warning" : "neutral";
 }
@@ -334,6 +338,10 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     reminder_service_attention: ops("warningReminderService"),
     housekeeping_timer_attention: ops("warningHousekeepingTimer"),
     housekeeping_service_attention: ops("warningHousekeepingService"),
+    housekeeping_latest_failed: ops("warningHousekeepingLatestFailed"),
+    housekeeping_latest_missing: ops("warningHousekeepingLatestMissing"),
+    housekeeping_latest_unconfirmed: ops("warningHousekeepingLatestUnconfirmed"),
+    housekeeping_latest_stale: ops("warningHousekeepingLatestStale"),
     backup_freshness_attention: ops("warningBackupFreshnessAttention"),
     backup_freshness_unknown: ops("warningBackupFreshnessUnknown"),
     backup_encryption_disabled: ops("warningBackupEncryptionDisabled"),
@@ -1409,6 +1417,98 @@ export default async function OpsPage({ params }: PageProps) {
                         value={formatDateTime(locale, status.housekeepingService.finishedAt)}
                       />
                     </div>
+                  </div>
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">
+                        {ops("latestHousekeeping")}
+                      </span>
+                      <Badge
+                        data-testid="ops-housekeeping-latest-status"
+                        variant={healthVariant(status.latestHousekeeping.status)}
+                      >
+                        {healthLabel(ops, status.latestHousekeeping.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("cleanupConfirmed")}
+                        testId="ops-housekeeping-confirmed"
+                        value={formatBoolean(ops, status.latestHousekeeping.cleanupConfirmed)}
+                      />
+                      <MetricRow
+                        label={ops("cleanupFinishedAt")}
+                        testId="ops-housekeeping-finished"
+                        value={formatDateTime(locale, status.latestHousekeeping.finishedAt)}
+                      />
+                      <MetricRow
+                        label={ops("cleanupExitCode")}
+                        value={formatNullableInteger(locale, status.latestHousekeeping.exitCode)}
+                      />
+                      <MetricRow
+                        label={ops("cleanupReclaimed")}
+                        testId="ops-housekeeping-reclaimed"
+                        value={formatSignedFileSize(
+                          locale,
+                          status.latestHousekeeping.reclaimedBytes,
+                        )}
+                      />
+                      <MetricRow
+                        label={ops("cleanupAvailableBefore")}
+                        value={formatBytes(locale, status.latestHousekeeping.availableBytesBefore)}
+                      />
+                      <MetricRow
+                        label={ops("cleanupAvailableAfter")}
+                        value={formatBytes(locale, status.latestHousekeeping.availableBytesAfter)}
+                      />
+                      <MetricRow
+                        label={ops("cleanupRepoArtifacts")}
+                        value={status.latestHousekeeping.repoArtifactsMode}
+                      />
+                      <MetricRow
+                        label={ops("cleanupBrowserWorkspaces")}
+                        value={status.latestHousekeeping.browserWorkspacesMode}
+                      />
+                      <MetricRow
+                        label={ops("cleanupDockerPrune")}
+                        value={formatBoolean(ops, status.latestHousekeeping.dockerPruneEnabled)}
+                      />
+                      <MetricRow
+                        label={ops("cleanupEphemeralImages")}
+                        value={
+                          status.latestHousekeeping.roompireEphemeralImagesEnabled &&
+                          status.latestHousekeeping.roompireEphemeralImageRepositories.length > 0
+                            ? status.latestHousekeeping.roompireEphemeralImageRepositories.join(
+                                ", ",
+                              )
+                            : formatBoolean(
+                                ops,
+                                status.latestHousekeeping.roompireEphemeralImagesEnabled,
+                              )
+                        }
+                      />
+                      <MetricRow
+                        label={ops("cleanupStatusFile")}
+                        value={status.latestHousekeeping.statusFile}
+                      />
+                    </div>
+                    {status.latestHousekeeping.message ? (
+                      <p
+                        className={cn(
+                          "mt-3 text-sm",
+                          status.latestHousekeeping.status === "warning"
+                            ? "text-rose-700"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {status.latestHousekeeping.message}
+                      </p>
+                    ) : null}
+                    {status.latestHousekeeping.error ? (
+                      <p className="mt-2 text-sm text-rose-700">
+                        {status.latestHousekeeping.error}
+                      </p>
+                    ) : null}
                   </div>
                   {status.housekeepingTimer.error || status.housekeepingService.error ? (
                     <p className="text-sm text-rose-700">

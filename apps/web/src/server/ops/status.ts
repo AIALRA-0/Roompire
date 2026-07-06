@@ -38,6 +38,33 @@ export type OpsRestoreDrillStatus = {
   message: string | null;
 };
 
+export type OpsHousekeepingStatus = {
+  status: HealthState;
+  statusFile: string;
+  generatedAt: string | null;
+  cleanupConfirmed: boolean;
+  message: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  exitCode: number | null;
+  rootPath: string;
+  availableBytesBefore: number | null;
+  availableBytesAfter: number | null;
+  reclaimedBytes: number | null;
+  repoArtifactsMode: string;
+  repoArtifactMinAvailableBytes: number | null;
+  tmpCleanupEnabled: boolean;
+  uvCacheCleanupEnabled: boolean;
+  dockerPruneEnabled: boolean;
+  roompireEphemeralImagesEnabled: boolean;
+  roompireEphemeralImageRepositories: string[];
+  journalVacuumEnabled: boolean;
+  browserWorkspacesMode: string;
+  workspaceArtifactMinAvailableBytes: number | null;
+  checkedAt: string | null;
+  error: string | null;
+};
+
 export type OpsStatusSnapshot = {
   schemaVersion: 1;
   source: "host_status_file" | "runtime_fallback";
@@ -288,6 +315,7 @@ export type OpsStatusSnapshot = {
   };
   latestSmoke: OpsSmokeStatus;
   latestRestoreDrill: OpsRestoreDrillStatus;
+  latestHousekeeping: OpsHousekeepingStatus;
 };
 
 export type OpsDockerStorageCategory = {
@@ -345,6 +373,10 @@ const sharedAppStorageStatusStaleMs = positiveEnvNumber(
 const backupPassphraseEscrowStaleMs = positiveEnvNumber(
   "ROOMPIRE_BACKUP_PASSPHRASE_ESCROW_STALE_MS",
   180 * 24 * 60 * 60 * 1000,
+);
+const housekeepingStatusStaleMs = positiveEnvNumber(
+  "ROOMPIRE_HOUSEKEEPING_STATUS_STALE_MS",
+  48 * 60 * 60 * 1000,
 );
 
 function positiveEnvNumber(name: string, fallback: number) {
@@ -790,6 +822,68 @@ function normalizeRestoreDrill(value: unknown): OpsRestoreDrillStatus {
   };
 }
 
+function normalizeHousekeeping(value: unknown): OpsHousekeepingStatus {
+  if (!isRecord(value)) {
+    return {
+      status: "unknown",
+      statusFile: "ops/status/latest-housekeeping.json",
+      generatedAt: null,
+      cleanupConfirmed: false,
+      message: "No housekeeping cleanup status has been recorded yet.",
+      startedAt: null,
+      finishedAt: null,
+      exitCode: null,
+      rootPath: "/",
+      availableBytesBefore: null,
+      availableBytesAfter: null,
+      reclaimedBytes: null,
+      repoArtifactsMode: "unknown",
+      repoArtifactMinAvailableBytes: null,
+      tmpCleanupEnabled: false,
+      uvCacheCleanupEnabled: false,
+      dockerPruneEnabled: false,
+      roompireEphemeralImagesEnabled: false,
+      roompireEphemeralImageRepositories: [],
+      journalVacuumEnabled: false,
+      browserWorkspacesMode: "unknown",
+      workspaceArtifactMinAvailableBytes: null,
+      checkedAt: null,
+      error: "Housekeeping cleanup status has not been recorded yet.",
+    };
+  }
+
+  return {
+    status: healthStateValue(value.status),
+    statusFile: stringValue(value.statusFile, "ops/status/latest-housekeeping.json"),
+    generatedAt: nullableStringValue(value.generatedAt),
+    cleanupConfirmed: booleanValue(value.cleanupConfirmed),
+    message: nullableStringValue(value.message),
+    startedAt: nullableStringValue(value.startedAt),
+    finishedAt: nullableStringValue(value.finishedAt),
+    exitCode: numberValue(value.exitCode),
+    rootPath: stringValue(value.rootPath, "/"),
+    availableBytesBefore: numberValue(value.availableBytesBefore),
+    availableBytesAfter: numberValue(value.availableBytesAfter),
+    reclaimedBytes: numberValue(value.reclaimedBytes),
+    repoArtifactsMode: stringValue(value.repoArtifactsMode, "unknown"),
+    repoArtifactMinAvailableBytes: numberValue(value.repoArtifactMinAvailableBytes),
+    tmpCleanupEnabled: booleanValue(value.tmpCleanupEnabled),
+    uvCacheCleanupEnabled: booleanValue(value.uvCacheCleanupEnabled),
+    dockerPruneEnabled: booleanValue(value.dockerPruneEnabled),
+    roompireEphemeralImagesEnabled: booleanValue(value.roompireEphemeralImagesEnabled),
+    roompireEphemeralImageRepositories: Array.isArray(value.roompireEphemeralImageRepositories)
+      ? value.roompireEphemeralImageRepositories.filter(
+          (repository): repository is string => typeof repository === "string",
+        )
+      : [],
+    journalVacuumEnabled: booleanValue(value.journalVacuumEnabled),
+    browserWorkspacesMode: stringValue(value.browserWorkspacesMode, "unknown"),
+    workspaceArtifactMinAvailableBytes: numberValue(value.workspaceArtifactMinAvailableBytes),
+    checkedAt: nullableStringValue(value.checkedAt),
+    error: nullableStringValue(value.error),
+  };
+}
+
 function diskStatusFromValues(
   availableBytes: number | null,
   usedPercent: number | null,
@@ -816,6 +910,9 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     : Number.NaN;
   const latestRestoreDrillGeneratedAtTime = status.latestRestoreDrill.generatedAt
     ? Date.parse(status.latestRestoreDrill.generatedAt)
+    : Number.NaN;
+  const latestHousekeepingGeneratedAtTime = status.latestHousekeeping.generatedAt
+    ? Date.parse(status.latestHousekeeping.generatedAt)
     : Number.NaN;
   const sharedAppStorageGeneratedAtTime = status.sharedAppStorageInventory.generatedAt
     ? Date.parse(status.sharedAppStorageInventory.generatedAt)
@@ -920,6 +1017,30 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
 
   if (status.housekeepingService.status === "warning") {
     warnings.push("housekeeping_service_attention");
+  }
+
+  if (status.latestHousekeeping.status === "warning") {
+    warnings.push("housekeeping_latest_failed");
+  }
+
+  if (status.latestHousekeeping.status === "unknown") {
+    warnings.push("housekeeping_latest_missing");
+  }
+
+  if (
+    status.latestHousekeeping.status !== "unknown" &&
+    !status.latestHousekeeping.cleanupConfirmed
+  ) {
+    warnings.push("housekeeping_latest_unconfirmed");
+  }
+
+  if (
+    status.latestHousekeeping.status !== "unknown" &&
+    status.latestHousekeeping.generatedAt !== null &&
+    (!Number.isFinite(latestHousekeepingGeneratedAtTime) ||
+      Date.now() - latestHousekeepingGeneratedAtTime > housekeepingStatusStaleMs)
+  ) {
+    warnings.push("housekeeping_latest_stale");
   }
 
   if (status.backupFreshness.status === "warning") {
@@ -1048,6 +1169,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
     ? raw.backupPassphraseEscrow
     : {};
   const rawBackupOffsite = isRecord(raw.backupOffsite) ? raw.backupOffsite : {};
+  const rawLatestHousekeeping = isRecord(raw.latestHousekeeping) ? raw.latestHousekeeping : {};
   const availableBytes = numberValue(rawDisk.availableBytes);
   const usedPercent = numberValue(rawDisk.usedPercent);
   const diskStatus = healthStateValue(rawDisk.status);
@@ -1259,6 +1381,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
     },
     latestSmoke: normalizeSmoke(raw.latestSmoke),
     latestRestoreDrill: normalizeRestoreDrill(raw.latestRestoreDrill),
+    latestHousekeeping: normalizeHousekeeping(rawLatestHousekeeping),
   };
   const warnings = deriveWarnings(partial);
 
@@ -1554,6 +1677,7 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
     },
     latestSmoke: normalizeSmoke(null),
     latestRestoreDrill: normalizeRestoreDrill(null),
+    latestHousekeeping: normalizeHousekeeping(null),
   };
   const warnings = deriveWarnings(partial);
 

@@ -486,6 +486,32 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
           status: "ok",
           error: null,
         },
+        latestHousekeeping: {
+          status: "ok",
+          statusFile: "ops/status/latest-housekeeping.json",
+          generatedAt,
+          cleanupConfirmed: true,
+          message: "Housekeeping completed.",
+          startedAt: "2026-07-04T03:35:00.000Z",
+          finishedAt: "2026-07-04T03:36:00.000Z",
+          exitCode: 0,
+          rootPath: "/",
+          availableBytesBefore: 6 * 1024 * 1024 * 1024,
+          availableBytesAfter: 8 * 1024 * 1024 * 1024,
+          reclaimedBytes: 2 * 1024 * 1024 * 1024,
+          repoArtifactsMode: "auto",
+          repoArtifactMinAvailableBytes: 6 * 1024 * 1024 * 1024,
+          tmpCleanupEnabled: true,
+          uvCacheCleanupEnabled: false,
+          dockerPruneEnabled: true,
+          roompireEphemeralImagesEnabled: true,
+          roompireEphemeralImageRepositories: ["roompire-migrator"],
+          journalVacuumEnabled: true,
+          browserWorkspacesMode: "auto",
+          workspaceArtifactMinAvailableBytes: 10 * 1024 * 1024 * 1024,
+          checkedAt: generatedAt,
+          error: null,
+        },
         reminderTimer: {
           name: "roompire-reminders.timer",
           activeState: "active",
@@ -2206,6 +2232,10 @@ test.describe("Roompire real browser smoke", () => {
     );
     await expect(page.getByTestId("ops-restore-drill-audit-broken")).toContainText("0");
     await expect(page.getByTestId("ops-housekeeping-timer-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-housekeeping-latest-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-housekeeping-confirmed")).toContainText("Enabled");
+    await expect(page.getByTestId("ops-housekeeping-finished")).not.toContainText("—");
+    await expect(page.getByTestId("ops-housekeeping-reclaimed")).toContainText("+2 GB");
     await expect(page.getByTestId("ops-reminders-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-freshness-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-freshness-complete")).not.toContainText("—");
@@ -2279,6 +2309,14 @@ test.describe("Roompire real browser smoke", () => {
         opsStatusService: { result: string; execMainStatus: string };
         housekeepingTimer: { activeState: string; enabledState: string };
         housekeepingService: { result: string; execMainStatus: string };
+        latestHousekeeping: {
+          status: string;
+          cleanupConfirmed: boolean;
+          exitCode: number | null;
+          reclaimedBytes: number | null;
+          repoArtifactsMode: string;
+          browserWorkspacesMode: string;
+        };
         reminderTimer: { activeState: string; enabledState: string };
         reminderService: { result: string; execMainStatus: string };
         backupFreshness: {
@@ -2391,6 +2429,16 @@ test.describe("Roompire real browser smoke", () => {
     );
     expect(opsPayload.status.housekeepingService).toEqual(
       expect.objectContaining({ result: "success", execMainStatus: "0" }),
+    );
+    expect(opsPayload.status.latestHousekeeping).toEqual(
+      expect.objectContaining({
+        status: "ok",
+        cleanupConfirmed: true,
+        exitCode: 0,
+        reclaimedBytes: 2 * 1024 * 1024 * 1024,
+        repoArtifactsMode: "auto",
+        browserWorkspacesMode: "auto",
+      }),
     );
     expect(opsPayload.status.reminderTimer).toEqual(
       expect.objectContaining({ activeState: "active", enabledState: "enabled" }),

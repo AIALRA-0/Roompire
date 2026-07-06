@@ -47,6 +47,8 @@ const backupOffsiteStatusPath =
 const smokeStatusPath = process.env.ROOMPIRE_SMOKE_STATUS_FILE || "ops/status/latest-smoke.json";
 const restoreDrillStatusPath =
   process.env.ROOMPIRE_RESTORE_DRILL_STATUS_FILE || "ops/status/latest-restore-drill.json";
+const housekeepingStatusPath =
+  process.env.ROOMPIRE_HOUSEKEEPING_STATUS_FILE || "ops/status/latest-housekeeping.json";
 const sharedAppStorageStatusPath =
   process.env.ROOMPIRE_SHARED_APP_STORAGE_STATUS_FILE ||
   "ops/status/shared-app-storage.json";
@@ -1581,6 +1583,10 @@ function restoreDrillStatusValue(value) {
   return ["passed", "failed", "missing", "unknown"].includes(value) ? value : "unknown";
 }
 
+function nullableNumberValue(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function readLatestSmoke() {
   if (!fs.existsSync(smokeStatusPath)) {
     return {
@@ -1660,6 +1666,106 @@ function readLatestRestoreDrill() {
   }
 }
 
+function readLatestHousekeeping() {
+  if (!fs.existsSync(housekeepingStatusPath)) {
+    return {
+      status: "unknown",
+      statusFile: housekeepingStatusPath,
+      generatedAt: null,
+      cleanupConfirmed: false,
+      message: "No housekeeping cleanup status has been recorded yet.",
+      startedAt: null,
+      finishedAt: null,
+      exitCode: null,
+      rootPath: diskPath,
+      availableBytesBefore: null,
+      availableBytesAfter: null,
+      reclaimedBytes: null,
+      repoArtifactsMode: "unknown",
+      repoArtifactMinAvailableBytes: null,
+      tmpCleanupEnabled: false,
+      uvCacheCleanupEnabled: false,
+      dockerPruneEnabled: false,
+      roompireEphemeralImagesEnabled: false,
+      roompireEphemeralImageRepositories: [],
+      journalVacuumEnabled: false,
+      browserWorkspacesMode: "unknown",
+      workspaceArtifactMinAvailableBytes: null,
+      checkedAt: generatedAt,
+      error: "Housekeeping cleanup status has not been recorded yet.",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(housekeepingStatusPath, "utf8"));
+    const repositories = Array.isArray(parsed.roompireEphemeralImageRepositories)
+      ? parsed.roompireEphemeralImageRepositories.filter((value) => typeof value === "string")
+      : [];
+
+    return {
+      status: healthStateValue(parsed.status),
+      statusFile: housekeepingStatusPath,
+      generatedAt: typeof parsed.generatedAt === "string" ? parsed.generatedAt : null,
+      cleanupConfirmed: parsed.cleanupConfirmed === true,
+      message: typeof parsed.message === "string" ? parsed.message : null,
+      startedAt: typeof parsed.startedAt === "string" ? parsed.startedAt : null,
+      finishedAt: typeof parsed.finishedAt === "string" ? parsed.finishedAt : null,
+      exitCode: nullableNumberValue(parsed.exitCode),
+      rootPath: typeof parsed.rootPath === "string" ? parsed.rootPath : diskPath,
+      availableBytesBefore: nullableNumberValue(parsed.availableBytesBefore),
+      availableBytesAfter: nullableNumberValue(parsed.availableBytesAfter),
+      reclaimedBytes: nullableNumberValue(parsed.reclaimedBytes),
+      repoArtifactsMode:
+        typeof parsed.repoArtifactsMode === "string" ? parsed.repoArtifactsMode : "unknown",
+      repoArtifactMinAvailableBytes: nullableNumberValue(
+        parsed.repoArtifactMinAvailableBytes,
+      ),
+      tmpCleanupEnabled: parsed.tmpCleanupEnabled === true,
+      uvCacheCleanupEnabled: parsed.uvCacheCleanupEnabled === true,
+      dockerPruneEnabled: parsed.dockerPruneEnabled === true,
+      roompireEphemeralImagesEnabled: parsed.roompireEphemeralImagesEnabled === true,
+      roompireEphemeralImageRepositories: repositories,
+      journalVacuumEnabled: parsed.journalVacuumEnabled === true,
+      browserWorkspacesMode:
+        typeof parsed.browserWorkspacesMode === "string"
+          ? parsed.browserWorkspacesMode
+          : "unknown",
+      workspaceArtifactMinAvailableBytes: nullableNumberValue(
+        parsed.workspaceArtifactMinAvailableBytes,
+      ),
+      checkedAt: generatedAt,
+      error: typeof parsed.error === "string" ? parsed.error : null,
+    };
+  } catch (error) {
+    return {
+      status: "unknown",
+      statusFile: housekeepingStatusPath,
+      generatedAt: null,
+      cleanupConfirmed: false,
+      message: error instanceof Error ? error.message : String(error),
+      startedAt: null,
+      finishedAt: null,
+      exitCode: null,
+      rootPath: diskPath,
+      availableBytesBefore: null,
+      availableBytesAfter: null,
+      reclaimedBytes: null,
+      repoArtifactsMode: "unknown",
+      repoArtifactMinAvailableBytes: null,
+      tmpCleanupEnabled: false,
+      uvCacheCleanupEnabled: false,
+      dockerPruneEnabled: false,
+      roompireEphemeralImagesEnabled: false,
+      roompireEphemeralImageRepositories: [],
+      journalVacuumEnabled: false,
+      browserWorkspacesMode: "unknown",
+      workspaceArtifactMinAvailableBytes: null,
+      checkedAt: generatedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 const disk = collectDisk();
 const dockerImageInventory = collectDockerImageInventory();
 const snapshot = {
@@ -1689,6 +1795,7 @@ const snapshot = {
   backupOffsite: collectBackupOffsite(),
   latestSmoke: readLatestSmoke(),
   latestRestoreDrill: readLatestRestoreDrill(),
+  latestHousekeeping: readLatestHousekeeping(),
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });

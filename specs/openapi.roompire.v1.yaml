@@ -1927,6 +1927,7 @@ components:
           reminderService,
           housekeepingTimer,
           housekeepingService,
+          latestHousekeeping,
           backupFreshness,
           backupEncryption,
           backupPassphraseEscrow,
@@ -2406,6 +2407,97 @@ components:
               type: string
               nullable: true
             status: { $ref: "#/components/schemas/OpsHealthState" }
+            error:
+              type: string
+              nullable: true
+        latestHousekeeping:
+          type: object
+          required:
+            [
+              status,
+              statusFile,
+              generatedAt,
+              cleanupConfirmed,
+              message,
+              startedAt,
+              finishedAt,
+              exitCode,
+              rootPath,
+              availableBytesBefore,
+              availableBytesAfter,
+              reclaimedBytes,
+              repoArtifactsMode,
+              repoArtifactMinAvailableBytes,
+              tmpCleanupEnabled,
+              uvCacheCleanupEnabled,
+              dockerPruneEnabled,
+              roompireEphemeralImagesEnabled,
+              roompireEphemeralImageRepositories,
+              journalVacuumEnabled,
+              browserWorkspacesMode,
+              workspaceArtifactMinAvailableBytes,
+              checkedAt,
+              error,
+            ]
+          properties:
+            status: { $ref: "#/components/schemas/OpsHealthState" }
+            statusFile:
+              type: string
+              example: ops/status/latest-housekeeping.json
+            generatedAt:
+              type: string
+              format: date-time
+              nullable: true
+            cleanupConfirmed: { type: boolean }
+            message:
+              type: string
+              nullable: true
+            startedAt:
+              type: string
+              format: date-time
+              nullable: true
+            finishedAt:
+              type: string
+              format: date-time
+              nullable: true
+            exitCode:
+              type: integer
+              nullable: true
+            rootPath: { type: string, example: / }
+            availableBytesBefore:
+              type: integer
+              nullable: true
+            availableBytesAfter:
+              type: integer
+              nullable: true
+            reclaimedBytes:
+              type: integer
+              nullable: true
+            repoArtifactsMode:
+              type: string
+              example: auto
+            repoArtifactMinAvailableBytes:
+              type: integer
+              nullable: true
+            tmpCleanupEnabled: { type: boolean }
+            uvCacheCleanupEnabled: { type: boolean }
+            dockerPruneEnabled: { type: boolean }
+            roompireEphemeralImagesEnabled: { type: boolean }
+            roompireEphemeralImageRepositories:
+              type: array
+              items: { type: string }
+              example: [roompire-migrator]
+            journalVacuumEnabled: { type: boolean }
+            browserWorkspacesMode:
+              type: string
+              example: auto
+            workspaceArtifactMinAvailableBytes:
+              type: integer
+              nullable: true
+            checkedAt:
+              type: string
+              format: date-time
+              nullable: true
             error:
               type: string
               nullable: true

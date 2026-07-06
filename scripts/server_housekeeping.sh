@@ -18,6 +18,11 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 WORKSPACES_ROOT=${ROOMPIRE_HOUSEKEEPING_WORKSPACES_ROOT:-$(dirname -- "$REPO_ROOT")}
 CLEAN_BROWSER_WORKSPACES=${ROOMPIRE_HOUSEKEEPING_CLEAN_BROWSER_WORKSPACES:-false}
+STATUS_FILE=${ROOMPIRE_HOUSEKEEPING_STATUS_FILE:-ops/status/latest-housekeeping.json}
+STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+START_AVAILABLE_BYTES=""
+CURRENT_STAGE="initializing"
+STATUS_WRITTEN=false
 
 if [ "$CONFIRM" = "cleanup" ]; then
   DRY_RUN=false
@@ -70,6 +75,122 @@ report_disk() {
 available_bytes() {
   df -PB1 "$ROOT_PATH" | awk 'NR == 2 { print $4 }'
 }
+
+write_housekeeping_status() {
+  local exit_code=$1
+  local finished_at
+  local end_available_bytes
+  local reclaimed_bytes=""
+  local status
+  local message
+
+  if [ "$DRY_RUN" = true ]; then
+    return
+  fi
+
+  finished_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  end_available_bytes=$(available_bytes 2>/dev/null || true)
+
+  if [[ "$START_AVAILABLE_BYTES" =~ ^[0-9]+$ ]] && [[ "$end_available_bytes" =~ ^[0-9]+$ ]]; then
+    reclaimed_bytes=$((end_available_bytes - START_AVAILABLE_BYTES))
+  fi
+
+  if [ "$exit_code" -eq 0 ]; then
+    status="ok"
+    message="Housekeeping completed."
+  else
+    status="warning"
+    message="Housekeeping failed during $CURRENT_STAGE."
+  fi
+
+  STATUS_FILE="$STATUS_FILE" \
+    STATUS="$status" \
+    MESSAGE="$message" \
+    STARTED_AT="$STARTED_AT" \
+    FINISHED_AT="$finished_at" \
+    EXIT_CODE="$exit_code" \
+    ROOT_PATH="$ROOT_PATH" \
+    AVAILABLE_BYTES_BEFORE="$START_AVAILABLE_BYTES" \
+    AVAILABLE_BYTES_AFTER="$end_available_bytes" \
+    RECLAIMED_BYTES="$reclaimed_bytes" \
+    REPO_ARTIFACTS_MODE="$MANAGE_REPO_ARTIFACTS" \
+    REPO_ARTIFACT_MIN_AVAILABLE_BYTES="$REPO_ARTIFACT_MIN_AVAILABLE_BYTES" \
+    TMP_CLEANUP_ENABLED="$MANAGE_TMP_ARTIFACTS" \
+    UV_CACHE_CLEANUP_ENABLED="$CLEAN_UV_CACHE" \
+    DOCKER_PRUNE_ENABLED="$MANAGE_DOCKER_PRUNE" \
+    ROOMPIRE_EPHEMERAL_IMAGES_ENABLED="$MANAGE_ROOMPIRE_EPHEMERAL_IMAGES" \
+    ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES="$ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES" \
+    JOURNAL_VACUUM_ENABLED="$MANAGE_JOURNAL_VACUUM" \
+    BROWSER_WORKSPACES_MODE="$CLEAN_BROWSER_WORKSPACES" \
+    WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES="$WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES" \
+    node <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+function nullableNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function booleanValue(value) {
+  return value === "true";
+}
+
+const statusFile = process.env.STATUS_FILE;
+const payload = {
+  schemaVersion: 1,
+  generatedAt: process.env.FINISHED_AT,
+  status: process.env.STATUS,
+  cleanupConfirmed: true,
+  message: process.env.MESSAGE,
+  startedAt: process.env.STARTED_AT,
+  finishedAt: process.env.FINISHED_AT,
+  exitCode: nullableNumber(process.env.EXIT_CODE),
+  rootPath: process.env.ROOT_PATH || "/",
+  availableBytesBefore: nullableNumber(process.env.AVAILABLE_BYTES_BEFORE),
+  availableBytesAfter: nullableNumber(process.env.AVAILABLE_BYTES_AFTER),
+  reclaimedBytes: nullableNumber(process.env.RECLAIMED_BYTES),
+  repoArtifactsMode: process.env.REPO_ARTIFACTS_MODE || "unknown",
+  repoArtifactMinAvailableBytes: nullableNumber(
+    process.env.REPO_ARTIFACT_MIN_AVAILABLE_BYTES,
+  ),
+  tmpCleanupEnabled: booleanValue(process.env.TMP_CLEANUP_ENABLED),
+  uvCacheCleanupEnabled: booleanValue(process.env.UV_CACHE_CLEANUP_ENABLED),
+  dockerPruneEnabled: booleanValue(process.env.DOCKER_PRUNE_ENABLED),
+  roompireEphemeralImagesEnabled: booleanValue(
+    process.env.ROOMPIRE_EPHEMERAL_IMAGES_ENABLED,
+  ),
+  roompireEphemeralImageRepositories: String(
+    process.env.ROOMPIRE_EPHEMERAL_IMAGE_REPOSITORIES || "",
+  )
+    .split(/\s+/)
+    .filter(Boolean),
+  journalVacuumEnabled: booleanValue(process.env.JOURNAL_VACUUM_ENABLED),
+  browserWorkspacesMode: process.env.BROWSER_WORKSPACES_MODE || "unknown",
+  workspaceArtifactMinAvailableBytes: nullableNumber(
+    process.env.WORKSPACE_ARTIFACT_MIN_AVAILABLE_BYTES,
+  ),
+  error: process.env.STATUS === "ok" ? null : process.env.MESSAGE,
+};
+
+fs.mkdirSync(path.dirname(statusFile), { recursive: true });
+const tmpPath = `${statusFile}.tmp`;
+fs.writeFileSync(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o644 });
+fs.renameSync(tmpPath, statusFile);
+NODE
+}
+
+on_exit() {
+  local exit_code=$?
+
+  if [ "$STATUS_WRITTEN" != true ]; then
+    write_housekeeping_status "$exit_code" || true
+  fi
+
+  exit "$exit_code"
+}
+
+trap on_exit EXIT
 
 repo_artifact_activity() {
   if ! command -v ps >/dev/null 2>&1; then
@@ -332,19 +453,34 @@ collect_ops_status() {
   run_or_print "$REPO_ROOT/scripts/collect_ops_status.sh"
 }
 
+START_AVAILABLE_BYTES=$(available_bytes 2>/dev/null || true)
+
 if [ "$DRY_RUN" = true ]; then
   echo "Dry run. Set ROOMPIRE_HOUSEKEEPING_CONFIRM=cleanup to delete safe artifacts."
 else
   echo "Cleanup confirmed."
 fi
 
+CURRENT_STAGE="initial disk report"
 report_disk
+CURRENT_STAGE="repo artifacts"
 clean_repo_artifacts
+CURRENT_STAGE="temporary artifacts"
 clean_tmp_artifacts
+CURRENT_STAGE="optional caches"
 clean_optional_caches
+CURRENT_STAGE="old browser workspace artifacts"
 clean_browser_workspace_artifacts
+CURRENT_STAGE="Roompire ephemeral Docker images"
 clean_roompire_ephemeral_images
+CURRENT_STAGE="docker safe prune"
 clean_docker_safely
+CURRENT_STAGE="journald vacuum"
 clean_journal
-collect_ops_status
+CURRENT_STAGE="final disk report"
 report_disk
+CURRENT_STAGE="status write"
+write_housekeeping_status 0
+CURRENT_STAGE="ops status"
+collect_ops_status
+STATUS_WRITTEN=true
