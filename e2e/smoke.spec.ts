@@ -536,6 +536,16 @@ async function writeOpsStatusFixture(options: OpsStatusFixtureOptions = {}) {
           failedPath: null,
           message: null,
         },
+        latestRestoreDrill: {
+          status: "passed",
+          generatedAt,
+          backupFile: "/srv/aialra/backups/roompire/postgres/roompire_20260704T235250Z.dump.enc",
+          drillDatabase: "roompire_restore_drill_20260705T000000Z_1234",
+          auditTotal: 12,
+          auditHashed: 12,
+          auditBroken: 0,
+          message: "Restore drill completed successfully.",
+        },
       },
       null,
       2,
@@ -2041,6 +2051,11 @@ test.describe("Roompire real browser smoke", () => {
       "roompire-web-1",
     );
     await expect(page.getByTestId("ops-backup-timer-status")).toContainText("OK");
+    await expect(page.getByTestId("ops-restore-drill-status")).toContainText("Passed");
+    await expect(page.getByTestId("ops-restore-drill-backup-file")).toContainText(
+      "roompire_20260704T235250Z.dump.enc",
+    );
+    await expect(page.getByTestId("ops-restore-drill-audit-broken")).toContainText("0");
     await expect(page.getByTestId("ops-housekeeping-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-reminders-timer-status")).toContainText("OK");
     await expect(page.getByTestId("ops-backup-encryption-status")).toContainText("OK");
@@ -2109,6 +2124,12 @@ test.describe("Roompire real browser smoke", () => {
           configured: boolean;
           artifactCount: number;
           status: string;
+        };
+        latestRestoreDrill: {
+          status: string;
+          auditTotal: number | null;
+          auditHashed: number | null;
+          auditBroken: number | null;
         };
         smokeTimer: { activeState: string; enabledState: string };
         smokeService: { result: string; execMainStatus: string };
@@ -2197,6 +2218,14 @@ test.describe("Roompire real browser smoke", () => {
         configured: true,
         artifactCount: 6,
         status: "ok",
+      }),
+    );
+    expect(opsPayload.status.latestRestoreDrill).toEqual(
+      expect.objectContaining({
+        status: "passed",
+        auditTotal: 12,
+        auditHashed: 12,
+        auditBroken: 0,
       }),
     );
     expect(opsPayload.status.smokeTimer).toEqual(

@@ -7,6 +7,7 @@ import { prisma } from "@/server/db/prisma";
 
 type HealthState = "ok" | "warning" | "unknown";
 type SmokeState = "passed" | "failed" | "missing" | "unknown";
+type RestoreDrillState = "passed" | "failed" | "missing" | "unknown";
 type BackupEncryptionMode = "enabled" | "disabled" | "unknown";
 type BackupOffsiteMode = "disabled" | "local" | "rclone" | "unknown";
 
@@ -23,6 +24,17 @@ export type OpsSmokeStatus = {
   baseUrl: string | null;
   checks: OpsSmokeCheck[];
   failedPath: string | null;
+  message: string | null;
+};
+
+export type OpsRestoreDrillStatus = {
+  status: RestoreDrillState;
+  generatedAt: string | null;
+  backupFile: string | null;
+  drillDatabase: string | null;
+  auditTotal: number | null;
+  auditHashed: number | null;
+  auditBroken: number | null;
   message: string | null;
 };
 
@@ -229,6 +241,7 @@ export type OpsStatusSnapshot = {
     error: string | null;
   };
   latestSmoke: OpsSmokeStatus;
+  latestRestoreDrill: OpsRestoreDrillStatus;
 };
 
 export type OpsDockerStorageCategory = {
@@ -271,6 +284,10 @@ const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
 const dockerReclaimableWarningBytes = 5 * 1024 * 1024 * 1024;
 const staleStatusMs = 36 * 60 * 60 * 1000;
 const smokeStatusStaleMs = positiveEnvNumber("ROOMPIRE_SMOKE_STATUS_STALE_MS", 2 * 60 * 60 * 1000);
+const restoreDrillStatusStaleMs = positiveEnvNumber(
+  "ROOMPIRE_RESTORE_DRILL_STATUS_STALE_MS",
+  36 * 60 * 60 * 1000,
+);
 
 function positiveEnvNumber(name: string, fallback: number) {
   const value = Number(process.env[name]);
@@ -299,6 +316,12 @@ function healthStateValue(value: unknown): HealthState {
 }
 
 function smokeStateValue(value: unknown): SmokeState {
+  return value === "passed" || value === "failed" || value === "missing" || value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function restoreDrillStateValue(value: unknown): RestoreDrillState {
   return value === "passed" || value === "failed" || value === "missing" || value === "unknown"
     ? value
     : "unknown";
@@ -615,6 +638,32 @@ function normalizeSmoke(value: unknown): OpsSmokeStatus {
   };
 }
 
+function normalizeRestoreDrill(value: unknown): OpsRestoreDrillStatus {
+  if (!isRecord(value)) {
+    return {
+      status: "missing",
+      generatedAt: null,
+      backupFile: null,
+      drillDatabase: null,
+      auditTotal: null,
+      auditHashed: null,
+      auditBroken: null,
+      message: "No restore-drill status has been recorded yet.",
+    };
+  }
+
+  return {
+    status: restoreDrillStateValue(value.status),
+    generatedAt: nullableStringValue(value.generatedAt),
+    backupFile: nullableStringValue(value.backupFile),
+    drillDatabase: nullableStringValue(value.drillDatabase),
+    auditTotal: numberValue(value.auditTotal),
+    auditHashed: numberValue(value.auditHashed),
+    auditBroken: numberValue(value.auditBroken),
+    message: nullableStringValue(value.message),
+  };
+}
+
 function diskStatusFromValues(
   availableBytes: number | null,
   usedPercent: number | null,
@@ -638,6 +687,9 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
   const generatedAtTime = Date.parse(status.generatedAt);
   const latestSmokeGeneratedAtTime = status.latestSmoke.generatedAt
     ? Date.parse(status.latestSmoke.generatedAt)
+    : Number.NaN;
+  const latestRestoreDrillGeneratedAtTime = status.latestRestoreDrill.generatedAt
+    ? Date.parse(status.latestRestoreDrill.generatedAt)
     : Number.NaN;
 
   if (!status.statusFile.loaded) {
@@ -760,6 +812,26 @@ function deriveWarnings(status: Omit<OpsStatusSnapshot, "summary">) {
     warnings.push("backup_offsite_disabled");
   } else if (status.backupOffsite.status !== "ok") {
     warnings.push("backup_offsite_attention");
+  }
+
+  if (status.latestRestoreDrill.status === "failed") {
+    warnings.push("restore_drill_failed");
+  }
+
+  if (
+    status.latestRestoreDrill.status === "missing" ||
+    status.latestRestoreDrill.status === "unknown"
+  ) {
+    warnings.push("restore_drill_missing");
+  }
+
+  if (
+    status.latestRestoreDrill.status !== "missing" &&
+    status.latestRestoreDrill.status !== "unknown" &&
+    (!Number.isFinite(latestRestoreDrillGeneratedAtTime) ||
+      Date.now() - latestRestoreDrillGeneratedAtTime > restoreDrillStatusStaleMs)
+  ) {
+    warnings.push("restore_drill_stale");
   }
 
   if (status.latestSmoke.status === "failed") {
@@ -980,6 +1052,7 @@ function normalizeLoadedStatus(parsed: unknown, filePath: string): OpsStatusSnap
       error: nullableStringValue(rawBackupOffsite.error),
     },
     latestSmoke: normalizeSmoke(raw.latestSmoke),
+    latestRestoreDrill: normalizeRestoreDrill(raw.latestRestoreDrill),
   };
   const warnings = deriveWarnings(partial);
 
@@ -1221,6 +1294,7 @@ async function runtimeFallbackStatus(statusFilePath: string | null, error: strin
       error: "Host status file has not been generated.",
     },
     latestSmoke: normalizeSmoke(null),
+    latestRestoreDrill: normalizeRestoreDrill(null),
   };
   const warnings = deriveWarnings(partial);
 

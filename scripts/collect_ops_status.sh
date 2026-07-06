@@ -27,6 +27,8 @@ const backupRoot =
 const backupOffsiteStatusPath =
   process.env.ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE || "ops/status/backup-offsite.json";
 const smokeStatusPath = process.env.ROOMPIRE_SMOKE_STATUS_FILE || "ops/status/latest-smoke.json";
+const restoreDrillStatusPath =
+  process.env.ROOMPIRE_RESTORE_DRILL_STATUS_FILE || "ops/status/latest-restore-drill.json";
 const diskHistoryPath = process.env.ROOMPIRE_OPS_DISK_HISTORY_FILE || "ops/status/disk-history.json";
 const generatedAt = new Date().toISOString();
 const diskWarningAvailableBytes = 5 * 1024 * 1024 * 1024;
@@ -1213,6 +1215,10 @@ function smokeStatusValue(value) {
   return ["passed", "failed", "missing", "unknown"].includes(value) ? value : "unknown";
 }
 
+function restoreDrillStatusValue(value) {
+  return ["passed", "failed", "missing", "unknown"].includes(value) ? value : "unknown";
+}
+
 function readLatestSmoke() {
   if (!fs.existsSync(smokeStatusPath)) {
     return {
@@ -1248,6 +1254,50 @@ function readLatestSmoke() {
   }
 }
 
+function readLatestRestoreDrill() {
+  if (!fs.existsSync(restoreDrillStatusPath)) {
+    return {
+      status: "missing",
+      generatedAt: null,
+      backupFile: null,
+      drillDatabase: null,
+      auditTotal: null,
+      auditHashed: null,
+      auditBroken: null,
+      message: "No restore-drill status has been recorded yet.",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(restoreDrillStatusPath, "utf8"));
+    const auditTotal = Number(parsed.auditTotal);
+    const auditHashed = Number(parsed.auditHashed);
+    const auditBroken = Number(parsed.auditBroken);
+
+    return {
+      status: restoreDrillStatusValue(parsed.status),
+      generatedAt: typeof parsed.generatedAt === "string" ? parsed.generatedAt : null,
+      backupFile: typeof parsed.backupFile === "string" ? parsed.backupFile : null,
+      drillDatabase: typeof parsed.drillDatabase === "string" ? parsed.drillDatabase : null,
+      auditTotal: Number.isFinite(auditTotal) ? auditTotal : null,
+      auditHashed: Number.isFinite(auditHashed) ? auditHashed : null,
+      auditBroken: Number.isFinite(auditBroken) ? auditBroken : null,
+      message: typeof parsed.message === "string" ? parsed.message : null,
+    };
+  } catch (error) {
+    return {
+      status: "unknown",
+      generatedAt: null,
+      backupFile: null,
+      drillDatabase: null,
+      auditTotal: null,
+      auditHashed: null,
+      auditBroken: null,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 const disk = collectDisk();
 const dockerImageInventory = collectDockerImageInventory();
 const snapshot = {
@@ -1273,6 +1323,7 @@ const snapshot = {
   backupEncryption: collectBackupEncryption(),
   backupOffsite: collectBackupOffsite(),
   latestSmoke: readLatestSmoke(),
+  latestRestoreDrill: readLatestRestoreDrill(),
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });

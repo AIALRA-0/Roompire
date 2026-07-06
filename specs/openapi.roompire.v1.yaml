@@ -1829,6 +1829,9 @@ components:
     OpsSmokeState:
       type: string
       enum: [passed, failed, missing, unknown]
+    OpsRestoreDrillState:
+      type: string
+      enum: [passed, failed, missing, unknown]
     OpsBackupEncryptionMode:
       type: string
       enum: [enabled, disabled, unknown]
@@ -1888,6 +1891,7 @@ components:
           smokeTimer,
           smokeService,
           latestSmoke,
+          latestRestoreDrill,
         ]
       properties:
         schemaVersion: { type: integer, enum: [1] }
@@ -2433,6 +2437,45 @@ components:
               items: { $ref: "#/components/schemas/OpsSmokeCheck" }
             failedPath:
               type: string
+              nullable: true
+            message:
+              type: string
+              nullable: true
+        latestRestoreDrill:
+          type: object
+          required:
+            [
+              status,
+              generatedAt,
+              backupFile,
+              drillDatabase,
+              auditTotal,
+              auditHashed,
+              auditBroken,
+              message,
+            ]
+          properties:
+            status: { $ref: "#/components/schemas/OpsRestoreDrillState" }
+            generatedAt:
+              type: string
+              format: date-time
+              nullable: true
+            backupFile:
+              type: string
+              nullable: true
+              example: /srv/aialra/backups/roompire/postgres/roompire_20260706T041700Z.dump.enc
+            drillDatabase:
+              type: string
+              nullable: true
+              example: roompire_restore_drill_20260706T041702Z_1234
+            auditTotal:
+              type: integer
+              nullable: true
+            auditHashed:
+              type: integer
+              nullable: true
+            auditBroken:
+              type: integer
               nullable: true
             message:
               type: string

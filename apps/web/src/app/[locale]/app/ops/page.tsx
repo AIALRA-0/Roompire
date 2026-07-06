@@ -37,6 +37,7 @@ type PageProps = {
 
 type HealthState = OpsStatusSnapshot["summary"]["status"];
 type SmokeState = OpsStatusSnapshot["latestSmoke"]["status"];
+type RestoreDrillState = OpsStatusSnapshot["latestRestoreDrill"]["status"];
 type BackupEncryptionMode = OpsStatusSnapshot["backupEncryption"]["configured"];
 type BackupOffsiteMode = OpsStatusSnapshot["backupOffsite"]["mode"];
 type DockerStorageCategory = OpsStatusSnapshot["dockerStorage"]["images"];
@@ -94,6 +95,10 @@ function formatPercent(locale: Locale, value: number | null) {
 
 function formatInteger(locale: Locale, value: number) {
   return new Intl.NumberFormat(locale).format(value);
+}
+
+function formatNullableInteger(locale: Locale, value: number | null) {
+  return value === null ? "—" : formatInteger(locale, value);
 }
 
 function formatNumber(locale: Locale, value: number) {
@@ -187,6 +192,10 @@ function smokeVariant(status: SmokeState) {
   return status === "passed" ? "success" : status === "failed" ? "danger" : "warning";
 }
 
+function restoreDrillVariant(status: RestoreDrillState) {
+  return status === "passed" ? "success" : status === "failed" ? "danger" : "warning";
+}
+
 function healthLabel(ops: Awaited<ReturnType<typeof getTranslations>>, status: HealthState) {
   if (status === "ok") {
     return ops("statusOk");
@@ -210,6 +219,25 @@ function smokeLabel(ops: Awaited<ReturnType<typeof getTranslations>>, status: Sm
 
   if (status === "missing") {
     return ops("smokeMissing");
+  }
+
+  return ops("statusUnknown");
+}
+
+function restoreDrillLabel(
+  ops: Awaited<ReturnType<typeof getTranslations>>,
+  status: RestoreDrillState,
+) {
+  if (status === "passed") {
+    return ops("restoreDrillPassed");
+  }
+
+  if (status === "failed") {
+    return ops("restoreDrillFailed");
+  }
+
+  if (status === "missing") {
+    return ops("restoreDrillMissing");
   }
 
   return ops("statusUnknown");
@@ -294,6 +322,9 @@ function warningLabel(ops: Awaited<ReturnType<typeof getTranslations>>, warning:
     backup_encryption_unknown: ops("warningBackupEncryptionUnknown"),
     backup_offsite_disabled: ops("warningBackupOffsiteDisabled"),
     backup_offsite_attention: ops("warningBackupOffsiteAttention"),
+    restore_drill_failed: ops("warningRestoreDrillFailed"),
+    restore_drill_missing: ops("warningRestoreDrillMissing"),
+    restore_drill_stale: ops("warningRestoreDrillStale"),
     smoke_failed: ops("warningSmokeFailed"),
     smoke_missing: ops("warningSmokeMissing"),
     smoke_stale: ops("warningSmokeStale"),
@@ -965,6 +996,53 @@ export default async function OpsPage({ params }: PageProps) {
                       {status.backupTimer.error ?? status.backupService.error}
                     </p>
                   ) : null}
+                  <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">{ops("restoreDrill")}</span>
+                      <Badge
+                        data-testid="ops-restore-drill-status"
+                        variant={restoreDrillVariant(status.latestRestoreDrill.status)}
+                      >
+                        {restoreDrillLabel(ops, status.latestRestoreDrill.status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-3">
+                      <MetricRow
+                        label={ops("restoreDrillCheckedAt")}
+                        value={formatDateTime(locale, status.latestRestoreDrill.generatedAt)}
+                      />
+                      <MetricRow
+                        label={ops("restoreDrillBackup")}
+                        testId="ops-restore-drill-backup-file"
+                        value={status.latestRestoreDrill.backupFile ?? "—"}
+                      />
+                      <MetricRow
+                        label={ops("restoreDrillAuditTotal")}
+                        value={formatNullableInteger(locale, status.latestRestoreDrill.auditTotal)}
+                      />
+                      <MetricRow
+                        label={ops("restoreDrillAuditHashed")}
+                        value={formatNullableInteger(locale, status.latestRestoreDrill.auditHashed)}
+                      />
+                      <MetricRow
+                        label={ops("restoreDrillAuditBroken")}
+                        testId="ops-restore-drill-audit-broken"
+                        value={formatNullableInteger(locale, status.latestRestoreDrill.auditBroken)}
+                      />
+                    </div>
+                    {status.latestRestoreDrill.message ? (
+                      <p
+                        className={cn(
+                          "mt-3 text-sm",
+                          status.latestRestoreDrill.status === "failed"
+                            ? "text-rose-700"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {status.latestRestoreDrill.message}
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="mt-2 border-t border-border pt-3">
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-sm text-muted-foreground">{ops("encryption")}</span>

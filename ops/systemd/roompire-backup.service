@@ -15,4 +15,5 @@ Environment=ROOMPIRE_BACKUP_ENCRYPTION_PASSPHRASE_FILE=/srv/aialra/secrets/roomp
 Environment=ROOMPIRE_BACKUP_REMOVE_PLAINTEXT=true
 Environment=ROOMPIRE_BACKUP_OFFSITE_MODE=disabled
 Environment=ROOMPIRE_BACKUP_OFFSITE_STATUS_FILE=ops/status/backup-offsite.json
+Environment=ROOMPIRE_RESTORE_DRILL_STATUS_FILE=ops/status/latest-restore-drill.json
 ExecStart=/usr/bin/env bash ./scripts/backup_all.sh
