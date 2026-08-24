@@ -6,7 +6,7 @@ Codex and future agents must update this file after every meaningful session. Ke
 
 - Name: Roompire
 - Repo: https://github.com/AIALRA-0/Roompire.git
-- Domain: roompire.aialra.online
+- Domain placeholder: roompire.example.invalid
 - Current strategy: self-developed PWA-first shared-house ledger + calendar/task system.
 
 ## Immutable decisions
@@ -31,6 +31,9 @@ Codex and future agents must update this file after every meaningful session. Ke
 - Deterministic seed script creates `USC 3B2B`, Alice/Bob/Chen/Dana, 11 categories, one submitted grocery proposal, two pending shares, and one audit event.
 - Vitest covers decimal equal split behavior using `decimal.js`.
 - Playwright E2E covers real browser desktop and mobile landing/dashboard navigation plus zh-CN protected-route failure state.
+- Chinese-first `README.md` and English `README.en.md` now document implemented scope, future scope, invariants, setup, verification, security boundaries, and the complete document map.
+- README visuals include an original SVG hero and an anonymized real-browser landing-page screenshot under `assets/readme`.
+- The current branch uses `roompire.example.invalid` wherever public documentation needs a deployment-domain placeholder; the real deployment domain belongs only in private configuration.
 
 ## Current phase
 
@@ -47,6 +50,9 @@ Phase 0: repository bootstrap. Baseline is implemented and verified locally; nex
 | 2026-07-04 | Pin Prisma to 6.x                                     | The supplied schema uses the stable Prisma datasource URL style; Prisma 7 requires a config migration that is not needed for Phase 0. |
 | 2026-07-04 | Pin TypeScript to 5.x and ESLint to 9.x               | Current Next.js ecosystem is stable on these major versions; TS 6 and ESLint 10 introduced avoidable bootstrap friction.              |
 | 2026-07-04 | Use Postgres 18 volume mount at `/var/lib/postgresql` | Postgres 18 Docker image expects the newer major-version-specific data layout.                                                        |
+| 2026-08-24 | Publish a Chinese-first bilingual repository landing page | The repository needs a factual, visual, privacy-safe entry point that distinguishes Phase 0 implementation from future product scope. |
+| 2026-08-24 | Read the pnpm version from `packageManager` in GitHub workflows | Keeping a second workflow version caused CI to select pnpm 10 while the repository requires pnpm 11.9.0. |
+| 2026-08-24 | Keep deployment identifiers out of tracked public material | Public examples now use the reserved `.invalid` namespace while real deployment values remain private. |
 
 ## Open questions for later human review
 
@@ -66,15 +72,24 @@ Phase 0: repository bootstrap. Baseline is implemented and verified locally; nex
 
 ## Last session verification
 
-- `pnpm install` passed with pnpm 11 build-script approvals recorded in `pnpm-workspace.yaml`.
-- `pnpm format:check` passed.
-- `pnpm db:validate` passed.
+### 2026-08-24 README and repository validation
+
+- `pnpm install --frozen-lockfile` passed and installed 538 workspace packages; the lockfile supply-chain policy passed for 677 entries.
 - `pnpm lint` passed.
 - `pnpm typecheck` passed.
-- `pnpm test` passed: 1 test file, 3 tests.
+- `pnpm test` passed: 1 test file and 3 tests.
 - `pnpm build` passed with Next.js 16.2.10.
-- `pnpm e2e` passed: 4 Playwright tests across Chromium desktop and mobile.
-- `REDIS_PORT=6380 docker compose up -d postgres redis` started local services successfully on this machine, avoiding an existing Redis on host port 6379.
-- `pnpm db:migrate` applied `20260704000000_init`.
+- Prisma schema validation passed using an equivalent private Windows environment injection command because the root helper uses POSIX shell syntax.
+- `pnpm exec playwright test` passed: 4 real-browser tests across Chromium desktop and mobile.
+- Browser console verification found 0 errors and 0 warnings after adding explicit application icon metadata.
+- Both README files passed the repository README audit; the Chinese README passed the human-readable Chinese validator.
+- Repository privacy scan found no current-working-tree occurrence of the removed production domain.
+- GitHub workflow configuration now lets the pnpm action read version 11.9.0 from `packageManager`; remote CI confirmation is pending the next push.
+- `pnpm format:check` reports tracked CRLF working-tree line endings on Windows, so no broad formatting rewrite was applied during this documentation change.
+
+### Prior Phase 0 database verification
+
+- Local Postgres and Redis services started successfully with a private host-port override.
+- Migration `20260704000000_init` applied successfully.
 - `pnpm db:seed` passed twice, confirming idempotency.
-- Database verification query returned 4 users, 1 household, 11 categories, 1 proposal, 2 shares, and 1 audit event.
+- The development database contained the deterministic fictional Phase 0 sample set described by the seed script.

@@ -7,7 +7,7 @@ Copy and paste this prompt into Codex as the initial long-running project instru
 You are the long-running software engineering agent for **Roompire**.
 
 Repository: `https://github.com/AIALRA-0/Roompire.git`  
-Production domain: `roompire.aialra.online`  
+Production domain placeholder: `roompire.example.invalid`
 You have GitHub push permission by default. Use GitHub for version control throughout the project.
 
 ## Mission

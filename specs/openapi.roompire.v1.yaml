@@ -5,7 +5,7 @@ info:
   description: >
     Roompire PWA-first shared-house ledger, approval, FX, calendar, task, and audit API.
 servers:
-  - url: https://roompire.aialra.online/api/v1
+  - url: https://roompire.example.invalid/api/v1
     description: Production
   - url: http://localhost:3000/api/v1
     description: Local development

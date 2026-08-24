@@ -6,7 +6,7 @@ This file is a hard instruction set for Codex and any other coding agent working
 
 - Product name: **Roompire**
 - GitHub repository: `https://github.com/AIALRA-0/Roompire.git`
-- Production domain: `roompire.aialra.online`
+- Production domain placeholder: `roompire.example.invalid`
 - Product type: PWA-first shared-house operations system.
 - Core users: USC / university roommate groups, shared apartments, bilingual Chinese/English households.
 
@@ -44,7 +44,7 @@ This file is a hard instruction set for Codex and any other coding agent working
 - Storage: S3-compatible object storage, preferably Cloudflare R2 or MinIO in self-hosted environments
 - Testing: Vitest + Testing Library + Playwright + axe/accessibility checks
 - CI/CD: GitHub Actions
-- Deployment target: Docker-first; Cloudflare domain configured as `roompire.aialra.online`
+- Deployment target: Docker-first; use deployment secrets and private infrastructure configuration for the real domain
 
 ## Repository workflow
 

@@ -300,7 +300,7 @@ MVP recommended deployment:
   - worker
   - object storage or external R2
   - reverse proxy
-- Cloudflare DNS and TLS for `roompire.aialra.online`.
+- Cloudflare DNS and TLS for the privately configured production domain.
 
 Alternative:
 

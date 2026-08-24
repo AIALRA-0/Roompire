@@ -176,7 +176,7 @@ Deliverables:
 Exit criteria:
 
 - Staging deployment accessible.
-- Production domain prepared: `roompire.aialra.online`.
+- Production domain remains private; public documentation uses `roompire.example.invalid`.
 - Backup and restore drill succeeds.
 - No secrets committed.
 

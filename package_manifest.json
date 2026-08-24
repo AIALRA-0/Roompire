@@ -2,7 +2,7 @@
   "packageName": "roompire_dev_package",
   "createdAt": "2026-07-03",
   "repo": "https://github.com/AIALRA-0/Roompire.git",
-  "domain": "roompire.aialra.online",
+  "domain": "roompire.example.invalid",
   "documents": [
     "README.md",
     "AGENTS.md",
