@@ -68,7 +68,7 @@ export default async function LandingPage({ params }: PageProps) {
                 </Link>
               </Button>
               <Button asChild variant="outline">
-                <Link href="https://github.com/AIALRA-0/Roompire/blob/main/docs/01_project_plan.md">
+                <Link href="https://github.com/AIALRA-0/Roompire/blob/HEAD/docs/01_project_plan.md">
                   <FileText aria-hidden="true" className="h-4 w-4" />
                   {t("secondaryCta")}
                 </Link>

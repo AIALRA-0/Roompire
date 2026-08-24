@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   description: "Approval-based shared-house operations for expenses, ledger, FX, and tasks.",
   applicationName: "Roompire",
   manifest: "/manifest.webmanifest",
+  icons: { icon: "/icon.svg" },
 };
 
 export const viewport: Viewport = {
