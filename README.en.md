@@ -216,6 +216,8 @@ Table 10.1 — Checks executed against the current branch on 2026-08-24
 | Next.js build | Passed | Next.js 16.2.10 generated landing, dashboard, state, API, and manifest routes |
 | Prisma schema | Passed | Validated with equivalent Windows environment injection |
 | Playwright | Passed | 4 Chromium desktop and mobile real-browser checks |
+| GitHub Actions CI | Passed | Remote install, lint, type, unit-test, and build stages completed |
+| GitHub Actions E2E | Passed | Remote containers, database, build, and all 4 real-browser tests completed |
 | Format check | Environment difference | Windows working-tree line endings are reported by Prettier; no broad rewrite was applied |
 
 </div>

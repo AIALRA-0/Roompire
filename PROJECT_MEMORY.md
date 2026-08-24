@@ -84,7 +84,8 @@ Phase 0: repository bootstrap. Baseline is implemented and verified locally; nex
 - Browser console verification found 0 errors and 0 warnings after adding explicit application icon metadata.
 - Both README files passed the repository README audit; the Chinese README passed the human-readable Chinese validator.
 - Repository privacy scan found no current-working-tree occurrence of the removed production domain.
-- GitHub workflow configuration now lets the pnpm action read version 11.9.0 from `packageManager`; remote CI confirmation is pending the next push.
+- GitHub Actions CI run `32779247037` passed installation, lint, typecheck, unit-test, and build stages on commit `6b1961c`.
+- Manually dispatched GitHub Actions E2E run `32779278635` passed container setup, database preparation, build, and 4 Chromium tests on commit `6b1961c`.
 - `pnpm format:check` reports tracked CRLF working-tree line endings on Windows, so no broad formatting rewrite was applied during this documentation change.
 
 ### Prior Phase 0 database verification

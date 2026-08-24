@@ -222,6 +222,8 @@ pnpm db:seed # 写入可重复执行的虚构开发数据
 | Next.js 构建 | 通过 | Next.js 16.2.10 生成落地页、仪表盘、状态页、接口和 Manifest 路由 |
 | Prisma 模型 | 通过 | 使用 Windows 等价环境注入完成模型验证 |
 | Playwright | 通过 | Chromium 桌面端和移动端共 4 项真实浏览器测试通过 |
+| GitHub Actions CI | 通过 | 远端完成依赖安装、代码规范、类型、单元测试和构建 |
+| GitHub Actions E2E | 通过 | 远端容器、数据库、构建和 4 项真实浏览器测试全部通过 |
 | 格式检查 | 存在环境差异 | Windows 工作树的换行符导致 Prettier 报告，未执行会放大差异的全仓库重写 |
 
 </div>
